@@ -1,14 +1,12 @@
-import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
+import { getServerSession } from '@/features/auth/actions';
 import { redirect } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 const StudentCreditDashboard = dynamic(() => import('@/features/bnpl/components/StudentCreditDashboard'));
 
 export default async function CreditDashboardPage() {
-  const supabase = await createServerSupabaseClient();
-  if (!supabase) redirect('/auth/login');
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/auth/login');
+  const { user } = await getServerSession();
+  if (!user) redirect('/auth/login?next=/dashboard/student/credit');
 
   return (
     <div className="page-pad">

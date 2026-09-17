@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useAuthStore } from '../store';
-import { authService } from '../services/auth-service';
+import { loginWithCredentials } from '../actions/credentials';
 import ForgotPasswordForm from './ForgotPasswordForm';
+import type { Role } from '../types';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -21,43 +22,53 @@ export default function LoginForm() {
     const normalizedEmail = email.toLowerCase().trim();
     setLoading(true);
 
-    const { user, error: err } = await authService.signIn(normalizedEmail, password);
-    setLoading(false);
-    if (err) {
-      if (err.toLowerCase().includes('email not confirmed')) {
-        setError('Please verify your email. Check your inbox or sign up again to receive a new verification email.');
-      } else {
-        setError(err);
+    try {
+      const res = await loginWithCredentials(normalizedEmail, password);
+      setLoading(false);
+
+      if (!res.success || !res.user) {
+        setError(res.error || 'Sign-in failed. Please check your email and password.');
+        return;
       }
-      return;
-    }
-    if (!user) {
-      setError('Sign-in failed. Please try again.');
-      return;
-    }
 
-    let role = user.role;
-    if (!role) {
-      const { profile } = await authService.fetchProfile(user.id);
-      role = profile?.role ?? null;
-    }
+      const user = res.user;
+      const role = (user.role as Role) || null;
 
-    useAuthStore.getState().setUser({ ...user, role });
+      useAuthStore.getState().setUser({
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+        role,
+        avatarUrl: user.avatarUrl ?? null,
+        phone: user.phone ?? null,
+        permissions: user.permissions ?? [],
+      });
 
-    const roleTarget: Record<string, string> = {
-      admin: '/dashboard/admin',
-      super_admin: '/dashboard/admin',
-      owner: '/dashboard/owner',
-      delivery: '/dashboard/delivery',
-    };
+      const roleTarget: Record<string, string> = {
+        admin: '/dashboard/admin',
+        super_admin: '/dashboard/admin',
+        owner: '/dashboard/admin',
+        delivery: '/dashboard/delivery',
+        merchant: '/dashboard/merchant',
+        staff: '/dashboard/admin',
+        manager: '/dashboard/admin',
+      };
 
-    if (role) {
-      const target = (next && next.startsWith('/') && !roleTarget[role])
-        ? next
-        : (roleTarget[role] ?? '/');
-      window.location.href = target;
-    } else {
-      window.location.href = '/auth/onboarding';
+      if (role) {
+        // If it's not student/delivery/merchant, default to /dashboard/admin
+        const isEmployeeOrAdmin = role !== 'student' && role !== 'delivery' && role !== 'merchant';
+        const defaultTarget = roleTarget[role] || (isEmployeeOrAdmin ? '/dashboard/admin' : '/');
+        const target = (next && next.startsWith('/') && !roleTarget[role])
+          ? next
+          : defaultTarget;
+        window.location.href = target;
+      } else {
+        window.location.href = '/';
+      }
+    } catch (err: unknown) {
+      setLoading(false);
+      console.error('Login error:', err);
+      setError('An unexpected error occurred while signing in. Please try again.');
     }
   }
 

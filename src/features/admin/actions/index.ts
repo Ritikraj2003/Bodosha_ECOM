@@ -2,7 +2,6 @@
 
 import { adminRepository } from '../repositories';
 import { getServerSession, getServerProfile } from '@/features/auth/actions';
-import { createAdminClient } from '@/infrastructure/supabase/admin';
 import { clearSettingsCache, getOwnerEmail } from '@/lib/settings';
 import { revalidatePath } from 'next/cache';
 import { isOwnerEmail } from '@/config/auth-access';
@@ -10,7 +9,7 @@ import type { AdminFilter, SystemSetting } from '../types';
 
 import { getAdminEmails } from '@/lib/settings';
 import { isAdminEmail } from '@/config/auth-access';
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 
 export async function authorizeAdmin() {
   const { user } = await getServerSession();
@@ -25,20 +24,21 @@ export async function authorizeAdmin() {
   const isOwner = isOwnerEmail(user.email, ownerEmail);
 
   if (!profile && (isAdminByEmail || isAdminBySession || isOwner)) {
-    const supabase = createServiceClient();
-    if (supabase) {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        email: user.email,
-        full_name: user.fullName,
-        role: user.role || 'admin',
-        is_active: true,
-      });
-    }
+    try {
+      await query(`
+        INSERT INTO public.profiles (id, email, full_name, role, is_active)
+        VALUES ($1, $2, $3, $4, true)
+        ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
+      `, [user.id, user.email, user.fullName, user.role || 'admin']);
+    } catch {}
   }
 
   const effectiveRole = profile?.role || user.role;
-  const isAuthorized = ['admin', 'super_admin'].includes(effectiveRole ?? '') || isAdminByEmail || isOwner;
+  const isAuthorized =
+    ['admin', 'super_admin', 'staff', 'manager', 'owner'].includes(effectiveRole ?? '') ||
+    ((user as any).permissions && (user as any).permissions.length > 0) ||
+    isAdminByEmail ||
+    isOwner;
 
   if (!isAuthorized) throw new Error('Forbidden');
   return {
@@ -127,13 +127,7 @@ export async function verifyStudent(id: string, creditLimit: number = 0) {
     const w = Array.isArray(student.wallet) ? student.wallet[0] : student.wallet;
     if (!w) return { success: false, error: 'No wallet account' };
     
-    const { createAdminClient } = await import('@/infrastructure/supabase/admin');
-    const admin = createAdminClient();
-    const { error } = await admin.from('wallets').update({ 
-      status: 'active',
-      credit_limit: creditLimit
-    }).eq('id', w.id);
-    if (error) throw new Error(error.message);
+    await query(`UPDATE public.wallets SET status = 'active', credit_limit = $1, updated_at = NOW() WHERE id = $2`, [creditLimit, w.id]);
 
     await adminRepository.createAuditLog({
       table_name: 'wallets',
@@ -152,10 +146,7 @@ export async function verifyStudent(id: string, creditLimit: number = 0) {
 export async function resetStudentVerification(id: string, reason: string) {
   try {
     const { user } = await authorizeAdmin();
-    const { createAdminClient } = await import('@/infrastructure/supabase/admin');
-    const admin = createAdminClient();
-    const { error } = await admin.from('wallets').update({ status: 'pending' }).eq('user_id', id);
-    if (error) throw new Error(error.message);
+    await query(`UPDATE public.wallets SET status = 'pending', updated_at = NOW() WHERE user_id = $1`, [id]);
 
     await adminRepository.createAuditLog({
       table_name: 'wallets',
@@ -352,12 +343,7 @@ export async function regenerateOrderQr(orderId: string) {
 
     // Persisting the token is best-effort (needs the pickup_qr_token column).
     try {
-      const admin = createAdminClient();
-      const { error } = await admin
-        .from('orders')
-        .update({ pickup_qr_token: token })
-        .eq('id', orderId);
-      if (error) throw new Error(error.message);
+      await query(`UPDATE public.orders SET pickup_qr_token = $1 WHERE id = $2`, [token, orderId]);
     } catch {}
 
     await adminRepository.createAuditLog({
@@ -636,18 +622,17 @@ export async function updateSystemSetting(id: string, value: string) {
     let setting = all.find((s) => s.id === id || s.key === id);
 
     if (!setting) {
-      const { createAdminClient } = await import('@/infrastructure/supabase/admin');
-      const admin = createAdminClient();
       const settingType = id.endsWith('_slots') || id.includes('locations') ? 'json'
         : id.includes('enabled') || id.includes('available') ? 'boolean'
         : 'string';
-      const { data: created, error: createErr } = await admin
-        .from('system_settings')
-        .upsert({ key: id, value, type: settingType }, { onConflict: 'key' })
-        .select()
-        .single();
-      if (!createErr && created) {
-        setting = created as unknown as typeof all[0];
+      const createdRes = await query(`
+        INSERT INTO public.system_settings (key, value, type)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+        RETURNING *
+      `, [id, value, settingType]);
+      if (createdRes.rows.length > 0) {
+        setting = createdRes.rows[0] as unknown as typeof all[0];
       }
     }
 
@@ -844,20 +829,16 @@ export async function getAdminUsers(filter: AdminFilter = {}) {
 export async function deleteUser(userId: string) {
   try {
     await authorizeAdmin();
-    const admin = createAdminClient();
 
-    await admin.from('orders').update({ user_id: null }).eq('user_id', userId);
-    await admin.from('orders').update({ delivery_partner_id: null }).eq('delivery_partner_id', userId);
-    await admin.from('payments').update({ user_id: null }).eq('user_id', userId);
-    await admin.from('restaurants').update({ owner_id: null }).eq('owner_id', userId);
-    await admin.from('audit_logs').update({ changed_by: null }).eq('changed_by', userId);
-    await admin.from('restaurant_settings').update({ created_by: null }).eq('created_by', userId);
+    await query('UPDATE public.orders SET user_id = null WHERE user_id = $1', [userId]);
+    await query('UPDATE public.orders SET delivery_partner_id = null WHERE delivery_partner_id = $1', [userId]);
+    await query('UPDATE public.payments SET user_id = null WHERE user_id = $1', [userId]);
+    await query('UPDATE public.restaurants SET owner_id = null WHERE owner_id = $1', [userId]);
+    await query('UPDATE public.audit_logs SET user_id = null WHERE user_id = $1', [userId]);
+    await query('UPDATE public.restaurant_settings SET created_by = null WHERE created_by = $1', [userId]);
+    await query('DELETE FROM public.profiles WHERE id = $1', [userId]);
+    await query('DELETE FROM public.users WHERE id = $1', [userId]);
 
-    const { error: profileErr } = await admin.from('profiles').delete().eq('id', userId);
-    if (profileErr) throw new Error(profileErr.message);
-
-    const { error } = await admin.auth.admin.deleteUser(userId);
-    if (error) throw new Error(error.message);
     return { success: true };
   } catch (e) {
     return { success: false, error: (e as Error).message };

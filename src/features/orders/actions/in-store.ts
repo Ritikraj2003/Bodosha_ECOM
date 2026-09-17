@@ -1,7 +1,8 @@
 'use server';
 
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 import { authorizeAdmin } from '@/features/admin/actions';
+import { mapProductRow, mapCategoryRow } from '@/features/products/repositories';
 import type { CartItem } from '@/features/cart/types';
 import type { Product, Category } from '@/features/products/types';
 
@@ -32,21 +33,21 @@ export interface InStoreFilter {
 export async function searchCustomerByPhone(phone: string) {
   try {
     await authorizeAdmin();
-    const supabase = createServiceClient();
-    if (!supabase) return { success: false, error: 'Service client not configured' };
 
     const cleanPhone = phone.trim().replace(/[^\d+]/g, '');
     if (!cleanPhone || cleanPhone.length < 5) {
       return { success: true, data: null };
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('id, full_name, phone, email')
-      .or(`phone.eq.${cleanPhone},phone.eq.+91${cleanPhone},phone.ilike.%${cleanPhone}%`)
-      .limit(1)
-      .maybeSingle();
+    const res = await query<any>(
+      `SELECT id, full_name, phone, email
+       FROM public.profiles
+       WHERE phone = $1 OR phone = $2 OR phone ILIKE $3
+       LIMIT 1`,
+      [cleanPhone, `+91${cleanPhone}`, `%${cleanPhone}%`]
+    );
 
+    const profile = res.rows[0];
     if (profile) {
       return {
         success: true,
@@ -68,22 +69,34 @@ export async function searchCustomerByPhone(phone: string) {
 export async function getInStoreCatalog() {
   try {
     await authorizeAdmin();
-    const supabase = createServiceClient();
-    if (!supabase) return { success: false, error: 'Service client not configured' };
 
     const [catRes, prodRes] = await Promise.all([
-      supabase.from('categories').select('*').eq('is_active', true).is('deleted_at', null).order('display_order', { ascending: true }),
-      supabase.from('products').select('*').eq('is_active', true).eq('is_available', true).is('deleted_at', null).order('name', { ascending: true }),
+      query<any>(`
+        SELECT id, restaurant_id, name, slug, description, display_order, is_active, created_at, updated_at
+        FROM public.categories
+        WHERE is_active = true
+        ORDER BY display_order ASC, name ASC
+      `),
+      query<any>(`
+        SELECT *
+        FROM public.products
+        WHERE is_active = true AND is_available = true AND deleted_at IS NULL
+        ORDER BY sort_order ASC, name ASC
+      `),
     ]);
+
+    const categories: Category[] = catRes.rows.map(mapCategoryRow);
+    const products: Product[] = prodRes.rows.map(mapProductRow);
 
     return {
       success: true,
       data: {
-        categories: (catRes.data ?? []) as Category[],
-        products: (prodRes.data ?? []) as Product[],
+        categories,
+        products,
       },
     };
   } catch (err) {
+    console.error('getInStoreCatalog error:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Failed to fetch catalog' };
   }
 }
@@ -91,8 +104,6 @@ export async function getInStoreCatalog() {
 export async function createInStoreOrder(params: InStoreOrderParams) {
   try {
     const { user: adminUser } = await authorizeAdmin();
-    const supabase = createServiceClient();
-    if (!supabase) return { success: false, error: 'Service unavailable' };
 
     const { items, discountAmount = 0, paymentMethod, customerPhone, customerName, customerEmail, notes, orderType = 'in_store' } = params;
 
@@ -111,29 +122,22 @@ export async function createInStoreOrder(params: InStoreOrderParams) {
     const finalOrderType = isTakeaway ? 'takeaway' : 'in_store';
 
     // Resolve active restaurant
-    const { data: restaurant } = await supabase
-      .from('restaurants')
-      .select('id')
-      .is('deleted_at', null)
-      .limit(1)
-      .maybeSingle();
-
-    if (!restaurant) {
-      return { success: false, error: 'No active restaurant found' };
-    }
+    const restRes = await query<any>(
+      `SELECT id FROM public.restaurants WHERE deleted_at IS NULL ORDER BY is_active DESC, created_at ASC LIMIT 1`
+    );
+    const restaurantId = restRes.rows[0]?.id || 'd1111111-1111-1111-1111-111111111111';
 
     // Lookup existing profile matching phone number to associate user_id if phone provided
     const cleanPhone = finalCustomerPhone ? finalCustomerPhone.replace(/[^\d+]/g, '') : '';
     let matchedUserId: string | null = null;
     if (cleanPhone && cleanPhone.length >= 5) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id')
-        .or(`phone.eq.${cleanPhone},phone.eq.+91${cleanPhone}`)
-        .limit(1)
-        .maybeSingle();
-      if (profile?.id) matchedUserId = profile.id;
+      const profRes = await query<any>(
+        `SELECT id FROM public.profiles WHERE phone = $1 OR phone = $2 LIMIT 1`,
+        [cleanPhone, `+91${cleanPhone}`]
+      );
+      if (profRes.rows[0]?.id) matchedUserId = profRes.rows[0].id;
     }
+    const finalUserId = matchedUserId || adminUser.id;
 
     const isCash = paymentMethod === 'cash';
     const isUpi = paymentMethod === 'upi';
@@ -170,86 +174,102 @@ export async function createInStoreOrder(params: InStoreOrderParams) {
     const finalTotal = Math.max(0, calculatedSubtotal + finalTaxAmount - finalDiscountAmount);
     const nowIso = new Date().toISOString();
 
-    const orderPayload = {
-      user_id: matchedUserId,
-      restaurant_id: restaurant.id,
-      status: isInstantSettled ? 'delivered' : 'pending',
-      payment_status: isInstantSettled ? 'confirmed' : 'pending',
-      payment_method: paymentMethod,
-      order_type: finalOrderType,
-      subtotal: calculatedSubtotal,
-      delivery_fee: 0,
-      tax_amount: finalTaxAmount,
-      discount_amount: finalDiscountAmount,
-      total: finalTotal,
-      customer_name: finalCustomerName,
-      customer_phone: finalCustomerPhone,
-      customer_email: finalCustomerEmail,
-      delivery_address: { address: isTakeaway ? 'In Store Take Away' : 'In Store Counter Checkout' },
-      delivery_notes: notes?.trim() || (isTakeaway ? 'In Store Take Away order' : 'In Store counter order'),
-      accepted_at: isInstantSettled ? nowIso : null,
-      delivered_at: isInstantSettled ? nowIso : null,
-    };
+    const trackingCode = `DD-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
+    const deliveryAddressObj = { address: isTakeaway ? 'In Store Take Away' : 'In Store Counter Checkout' };
+    const notesText = notes?.trim() || (isTakeaway ? 'In Store Take Away order' : 'In Store counter order');
+    const orderStatus = isInstantSettled ? 'delivered' : 'placed';
+    const paymentStatus = isInstantSettled ? 'confirmed' : 'pending';
 
-    const { data: order, error: orderError } = await supabase
-      .from('orders')
-      .insert(orderPayload)
-      .select('id, tracking_code')
-      .single();
+    const orderInsert = await query<any>(`
+      INSERT INTO public.orders (
+        user_id, restaurant_id, tracking_code, status, order_type,
+        subtotal, tax_amount, delivery_fee, discount_amount, total_amount, total,
+        delivery_address, delivery_address_json, delivery_notes, special_instructions,
+        customer_name, customer_phone, customer_email,
+        payment_method, payment_status,
+        accepted_at, confirmed_at, delivered_at, placed_at, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10, $10,
+        $11, $11, $12, $12,
+        $13, $14, $15,
+        $16, $17,
+        $18, $18, $19, NOW(), NOW(), NOW()
+      )
+      RETURNING id, tracking_code
+    `, [
+      finalUserId,
+      restaurantId,
+      trackingCode,
+      orderStatus,
+      finalOrderType,
+      calculatedSubtotal,
+      finalTaxAmount,
+      0, // delivery_fee
+      finalDiscountAmount,
+      finalTotal, // total_amount & total
+      JSON.stringify(deliveryAddressObj),
+      notesText,
+      finalCustomerName,
+      finalCustomerPhone,
+      finalCustomerEmail,
+      paymentMethod,
+      paymentStatus,
+      isInstantSettled ? nowIso : null,
+      isInstantSettled ? nowIso : null,
+    ]);
 
-    if (orderError || !order) {
-      return { success: false, error: orderError?.message || 'Failed to create order' };
+    const order = orderInsert.rows[0];
+    if (!order) {
+      return { success: false, error: 'Failed to create order' };
     }
 
-    // Prepare line items with authoritative prices
-    const orderItems = priceResolution.lineItems.map((li) => ({
-      order_id: order.id,
-      product_id: li.product_id ?? null,
-      product_name: li.product_name,
-      product_price: li.product_price,
-      unit_price: li.unit_price,
-      quantity: li.quantity,
-      subtotal: li.subtotal,
-      special_instructions: li.special_instructions ?? null,
-    }));
-
-    let { error: itemsError } = await supabase.from('order_items').insert(orderItems);
-
-    if (itemsError && String(itemsError.message || '').toLowerCase().includes('foreign key')) {
-      const fallbackItems = orderItems.map((it) => ({ ...it, product_id: null }));
-      const retry = await supabase.from('order_items').insert(fallbackItems);
-      itemsError = retry.error;
-    }
-
-    if (itemsError) {
-      console.error('Failed to save in-store order line items:', itemsError);
-      await supabase.from('orders').delete().eq('id', order.id);
-      return { success: false, error: 'Failed to save order line items' };
+    // Insert line items
+    for (const li of priceResolution.lineItems) {
+      await query(`
+        INSERT INTO public.order_items (
+          order_id, product_id, product_name, product_price, unit_price, quantity, subtotal, item_total, notes, special_instructions, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8, NOW())
+      `, [
+        order.id,
+        li.product_id || null,
+        li.product_name,
+        li.product_price,
+        li.unit_price,
+        li.quantity,
+        li.subtotal,
+        li.special_instructions || null,
+      ]);
     }
 
     if (isInstantSettled) {
       // Record payment (cash or upi)
-      await supabase.from('payments').insert({
-        order_id: order.id,
-        user_id: matchedUserId,
-        amount: finalTotal,
-        currency: 'INR',
-        payment_method: paymentMethod,
-        gateway: isUpi ? 'upi' : 'manual',
-        status: 'confirmed',
-      });
+      await query(`
+        INSERT INTO public.payments (
+          order_id, amount, currency, payment_method, status, gateway_payment_id, created_at, updated_at
+        ) VALUES ($1, $2, 'INR', $3, 'confirmed', $4, NOW(), NOW())
+      `, [
+        order.id,
+        finalTotal,
+        paymentMethod,
+        isUpi ? 'in_store_upi' : 'in_store_cash',
+      ]);
 
       // Audit log
-      await supabase.from('audit_logs').insert({
-        table_name: 'orders',
-        record_id: order.id,
-        action: 'create_in_store_order',
-        new_data: { total: finalTotal, payment_method: paymentMethod, tracking_code: order.tracking_code, order_type: finalOrderType },
-        changed_by: adminUser.id,
-      });
+      await query(`
+        INSERT INTO public.audit_logs (
+          table_name, record_id, action, user_id, new_data, created_at
+        ) VALUES ($1, $2, $3, $4, $5, NOW())
+      `, [
+        'orders',
+        order.id,
+        'create_in_store_order',
+        adminUser.id,
+        JSON.stringify({ total: finalTotal, payment_method: paymentMethod, tracking_code: order.tracking_code, order_type: finalOrderType }),
+      ]);
 
       // Trigger Telegram notification (NO email sent)
-      await sendInStoreNotification(order.id);
+      sendInStoreNotification(order.id).catch(console.error);
     }
 
     return {
@@ -261,6 +281,7 @@ export async function createInStoreOrder(params: InStoreOrderParams) {
       },
     };
   } catch (err) {
+    console.error('createInStoreOrder error:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Failed to place in-store order' };
   }
 }
@@ -268,77 +289,107 @@ export async function createInStoreOrder(params: InStoreOrderParams) {
 export async function getInStoreOrdersAndStats(filter: InStoreFilter = {}) {
   try {
     await authorizeAdmin();
-    const supabase = createServiceClient();
-    if (!supabase) return { success: false, error: 'Service client not configured' };
-
     const today = new Date().toISOString().slice(0, 10);
     const { search, paymentMethod, orderType, fromDate, toDate, page = 1, pageSize = 20 } = filter;
 
-    // Fetch stats for in-store orders (including in-store takeaways) matching date filter if provided
-    let statsQuery = supabase
-      .from('orders')
-      .select('id, total, payment_method, payment_status, created_at, order_type, delivery_address')
-      .or('order_type.eq.in_store,delivery_address->>address.ilike.In Store%')
-      .is('deleted_at', null);
+    const conditions: string[] = [
+      `(order_type IN ('in_store', 'takeaway') OR (delivery_address_json->>'address') ILIKE 'In Store%' OR delivery_notes ILIKE '%In Store%')`,
+      `deleted_at IS NULL`,
+    ];
+    const params: any[] = [];
+    let pIdx = 1;
 
     if (orderType && orderType !== 'all') {
-      statsQuery = statsQuery.eq('order_type', orderType);
+      conditions.push(`order_type = $${pIdx++}`);
+      params.push(orderType);
+    }
+    if (fromDate) {
+      conditions.push(`created_at >= $${pIdx++}`);
+      params.push(fromDate);
+    }
+    if (toDate) {
+      conditions.push(`created_at <= $${pIdx++}`);
+      params.push(toDate);
     }
 
-    if (fromDate) statsQuery = statsQuery.gte('created_at', fromDate);
-    if (toDate) statsQuery = statsQuery.lte('created_at', toDate);
+    const statsRes = await query<any>(`
+      SELECT id, COALESCE(total, total_amount, 0)::numeric as total, payment_method, payment_status, created_at, order_type
+      FROM public.orders
+      WHERE ${conditions.join(' AND ')}
+    `, params);
 
-    const { data: allInStore } = await statsQuery;
-
-    const rows = allInStore ?? [];
-
+    const rows = statsRes.rows;
     const totalOrders = rows.length;
     const totalRevenue = rows
       .filter((r) => r.payment_status === 'confirmed')
       .reduce((sum, r) => sum + Number(r.total || 0), 0);
-
     const todayRevenue = rows
-      .filter((r) => r.payment_status === 'confirmed' && r.created_at >= today)
+      .filter((r) => r.payment_status === 'confirmed' && String(r.created_at).slice(0, 10) >= today)
       .reduce((sum, r) => sum + Number(r.total || 0), 0);
-
     const cashRevenue = rows
       .filter((r) => r.payment_method === 'cash' && r.payment_status === 'confirmed')
       .reduce((sum, r) => sum + Number(r.total || 0), 0);
-
     const onlineRevenue = rows
       .filter((r) => (r.payment_method === 'razorpay' || r.payment_method === 'upi') && r.payment_status === 'confirmed')
       .reduce((sum, r) => sum + Number(r.total || 0), 0);
 
-    // Query paginated list
-    let listQuery = supabase
-      .from('orders')
-      .select('*, order_items(*)', { count: 'exact' })
-      .or('order_type.eq.in_store,delivery_address->>address.ilike.In Store%')
-      .is('deleted_at', null);
+    // Filter for paginated list
+    const listConditions = [...conditions];
+    const listParams = [...params];
 
     if (paymentMethod && paymentMethod !== 'all') {
-      listQuery = listQuery.eq('payment_method', paymentMethod);
+      listConditions.push(`payment_method = $${pIdx++}`);
+      listParams.push(paymentMethod);
     }
-
-    if (orderType && orderType !== 'all') {
-      listQuery = listQuery.eq('order_type', orderType);
-    }
-
     if (search) {
-      listQuery = listQuery.or(
-        `tracking_code.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%`
-      );
+      listConditions.push(`(tracking_code ILIKE $${pIdx} OR customer_name ILIKE $${pIdx} OR customer_phone ILIKE $${pIdx})`);
+      listParams.push(`%${search}%`);
+      pIdx++;
     }
 
-    if (fromDate) listQuery = listQuery.gte('created_at', fromDate);
-    if (toDate) listQuery = listQuery.lte('created_at', toDate);
+    const countRes = await query<any>(`
+      SELECT COUNT(*)::int as count
+      FROM public.orders
+      WHERE ${listConditions.join(' AND ')}
+    `, listParams);
+    const count = countRes.rows[0]?.count || 0;
 
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
+    const offset = (page - 1) * pageSize;
+    listParams.push(pageSize, offset);
+    const ordersRes = await query<any>(`
+      SELECT id, tracking_code, customer_name, customer_phone, customer_email,
+             order_type, delivery_address, delivery_address_json, delivery_notes,
+             subtotal, tax_amount, discount_amount, COALESCE(total, total_amount, 0)::numeric as total,
+             payment_method, payment_status, status, created_at
+      FROM public.orders
+      WHERE ${listConditions.join(' AND ')}
+      ORDER BY created_at DESC
+      LIMIT $${pIdx++} OFFSET $${pIdx++}
+    `, listParams);
 
-    listQuery = listQuery.order('created_at', { ascending: false }).range(from, to);
+    const orderIds = ordersRes.rows.map((o) => o.id);
+    const itemsMap: Record<string, any[]> = {};
+    if (orderIds.length > 0) {
+      const itemsRes = await query<any>(`
+        SELECT id, order_id, product_name, quantity, COALESCE(unit_price, product_price, 0)::numeric as unit_price, COALESCE(subtotal, item_total, 0)::numeric as subtotal
+        FROM public.order_items
+        WHERE order_id = ANY($1::uuid[])
+      `, [orderIds]);
+      for (const it of itemsRes.rows) {
+        if (!itemsMap[it.order_id]) itemsMap[it.order_id] = [];
+        itemsMap[it.order_id].push(it);
+      }
+    }
 
-    const { data: orderList, count } = await listQuery;
+    const formattedOrders = ordersRes.rows.map((o) => ({
+      ...o,
+      total: Number(o.total),
+      subtotal: Number(o.subtotal),
+      tax_amount: Number(o.tax_amount),
+      discount_amount: Number(o.discount_amount),
+      delivery_address: o.delivery_address || o.delivery_address_json || { address: 'In Store' },
+      order_items: itemsMap[o.id] || [],
+    }));
 
     return {
       success: true,
@@ -350,36 +401,39 @@ export async function getInStoreOrdersAndStats(filter: InStoreFilter = {}) {
           cashRevenue,
           onlineRevenue,
         },
-        orders: orderList ?? [],
-        total: count ?? 0,
+        orders: formattedOrders,
+        total: count,
         page,
         pageSize,
-        totalPages: Math.ceil((count ?? 0) / pageSize),
+        totalPages: Math.ceil(count / pageSize),
       },
     };
   } catch (err) {
+    console.error('getInStoreOrdersAndStats error:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Failed to fetch in-store history' };
   }
 }
 
 async function sendInStoreNotification(orderId: string) {
   try {
-    const supabase = createServiceClient();
-    if (!supabase) return;
-
-    const { data } = await supabase
-      .from('orders')
-      .select('*, order_items(*)')
-      .eq('id', orderId)
-      .maybeSingle();
-
+    const oRes = await query<any>(`
+      SELECT id, tracking_code, customer_name, customer_phone, order_type, total, total_amount, payment_method, status
+      FROM public.orders
+      WHERE id = $1
+    `, [orderId]);
+    const data = oRes.rows[0];
     if (!data) return;
 
-    // Send Telegram notification ONLY. Do NOT send email ("i dont want to sent mail")
-    const items = (data.order_items ?? []).map((i: { product_name: string; quantity: number; subtotal: number }) => ({
+    const itemsRes = await query<any>(`
+      SELECT product_name, quantity, COALESCE(subtotal, item_total, 0)::numeric as subtotal
+      FROM public.order_items
+      WHERE order_id = $1
+    `, [orderId]);
+
+    const items = itemsRes.rows.map((i: any) => ({
       name: i.product_name,
-      quantity: i.quantity,
-      price: Math.round(i.subtotal / i.quantity),
+      quantity: Number(i.quantity),
+      price: Math.round(Number(i.subtotal) / Number(i.quantity || 1)),
     }));
 
     const { sendTelegramMessageWithButtons } = await import('@/lib/telegram');
@@ -389,13 +443,14 @@ async function sendInStoreNotification(orderId: string) {
     const headerTitle = isTakeaway ? '🥡 New In-Store Take Away Order!' : '🏪 New In-Store Counter Order!';
     const typeBadge = isTakeaway ? '🥡 Take Away' : '🏪 In Store (Counter)';
 
-    const itemsList = items.map((i: { name: string; quantity: number; price: number }) => `  • ${i.name} ×${i.quantity} — ₹${i.price * i.quantity}`).join('\n');
+    const itemsList = items.map((i: any) => `  • ${i.name} ×${i.quantity} — ₹${i.price * i.quantity}`).join('\n');
 
     const paymentLabel =
       data.payment_method === 'upi' ? 'UPI (In Store Counter)'
       : data.payment_method === 'razorpay' ? 'ONLINE / RAZORPAY (In Store Counter)'
       : 'CASH (In Store Counter)';
 
+    const totalVal = data.total || data.total_amount || 0;
     const msg =
       `<b>${headerTitle}</b>\n` +
       `📦 <b>#${data.tracking_code}</b>\n` +
@@ -403,11 +458,13 @@ async function sendInStoreNotification(orderId: string) {
       (data.customer_name ? `👤 ${data.customer_name}\n` : '') +
       (data.customer_phone ? `📞 ${data.customer_phone}\n` : '') +
       `💳 <b>${paymentLabel}</b>\n` +
-      `💰 <b>₹${data.total}</b>\n\n` +
+      `💰 <b>₹${totalVal}</b>\n\n` +
       `<b>Items:</b>\n` +
       itemsList;
 
     const statusLabel = data.status === 'delivered' ? '📦 Delivered' : '⏳ Pending';
     await sendTelegramMessageWithButtons(`${msg}\n\n${statusLabel}`, buttons);
-  } catch {}
+  } catch (err) {
+    console.error('sendInStoreNotification error:', err);
+  }
 }

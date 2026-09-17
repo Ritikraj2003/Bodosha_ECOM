@@ -1,20 +1,18 @@
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 
 type SettingRow = { key: string; value: string; type: string; is_secret: boolean };
 
 /** Whether the store is marked open by the merchant (Open/Closed toggle). Null when unknown/no restaurant. */
 export async function getStoreIsOpen(): Promise<boolean | null> {
-  const supabase = createServiceClient();
-  if (!supabase) return null;
-  const { data } = await supabase
-    .from('restaurants')
-    .select('is_open')
-    .eq('deleted_at', null)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  return data.is_open === true;
+  try {
+    const res = await query<{ is_open: boolean }>(
+      'SELECT is_open FROM public.restaurants WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1'
+    );
+    if (res.rows.length === 0) return null;
+    return res.rows[0].is_open === true;
+  } catch {
+    return null;
+  }
 }
 
 const TTL_MS = 15_000;
@@ -24,33 +22,20 @@ async function loadAll(): Promise<Record<string, SettingRow>> {
   const now = Date.now();
   if (cache.data && now - cache.fetchedAt < TTL_MS) return cache.data;
 
-  const supabase = createServiceClient();
-  if (!supabase) return {};
-
-  const { data, error } = await supabase
-    .from('system_settings')
-    .select('key, value, type, is_secret');
-
-  if (error && String(error.message).toLowerCase().includes('is_secret')) {
-    // Fresh/legacy DB without is_secret column (migration 20260811120000 not
-    // applied). Fall back to base columns so reading settings keeps working.
-    const { data: fallback } = await supabase
-      .from('system_settings')
-      .select('key, value, type');
-    const rowsFb: Record<string, SettingRow> = {};
-    (fallback ?? []).forEach((r) => {
-      rowsFb[r.key as string] = { ...(r as unknown as Record<string, unknown>), is_secret: false } as unknown as SettingRow;
+  try {
+    const { rows: dbRows } = await query<SettingRow>(
+      'SELECT key, value, type, is_secret FROM public.system_settings'
+    );
+    const rows: Record<string, SettingRow> = {};
+    dbRows.forEach((r) => {
+      rows[r.key] = r;
     });
-    cache = { data: rowsFb, fetchedAt: now };
-    return rowsFb;
+    cache = { data: rows, fetchedAt: now };
+    return rows;
+  } catch (err) {
+    console.error('loadAll settings error from DB:', err);
+    return cache.data ?? {};
   }
-
-  const rows: Record<string, SettingRow> = {};
-  (data ?? []).forEach((r) => {
-    rows[r.key as string] = r as unknown as SettingRow;
-  });
-  cache = { data: rows, fetchedAt: now };
-  return rows;
 }
 
 export function clearSettingsCache(): void {

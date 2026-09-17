@@ -44,36 +44,65 @@ export const authService = {
     } catch (e) {
       console.warn('Error clearing push subscription on signOut:', e);
     }
+
+    try {
+      const { logoutAction } = await import('@/features/auth/actions/credentials');
+      await logoutAction();
+    } catch (e) {
+      console.warn('logoutAction error:', e);
+    }
+
     const supabase = createClient();
-    const { error } = await supabase.auth.signOut();
-    return { error: error?.message ?? null };
+    if (supabase) {
+      await supabase.auth.signOut().catch(() => null);
+    }
+    return { error: null };
   },
 
   async getSession(): Promise<{ user: AuthUser | null }> {
-    const supabase = createClient();
     try {
-      const { data } = await supabase.auth.getUser();
-      if (!data.user) return { user: null };
-      const user = mapUser(data.user);
-      try {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('phone, full_name, role, avatar_url')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (profile) {
-          if (profile.phone) user.phone = profile.phone;
-          if (profile.full_name) user.fullName = profile.full_name;
-          if (profile.role) user.role = profile.role as Role;
-          if (profile.avatar_url) user.avatarUrl = profile.avatar_url;
+      if (typeof window !== 'undefined') {
+        const res = await fetch('/api/auth/session', {
+          headers: { 'Cache-Control': 'no-cache' },
+          cache: 'no-store',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user) {
+            return {
+              user: {
+                id: data.user.id,
+                email: data.user.email,
+                fullName: data.user.fullName || data.user.email?.split('@')[0] || 'User',
+                role: (data.user.role as Role) || null,
+                avatarUrl: data.user.avatarUrl ?? null,
+                phone: data.user.phone ?? null,
+                permissions: data.user.permissions ?? [],
+              },
+            };
+          }
         }
-      } catch {}
-      return { user };
-    } catch {
-      // Invalid/expired refresh token — clear the stale local session
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => null);
-      return { user: null };
+      }
+
+      const { getServerSession } = await import('@/features/auth/actions');
+      const res = await getServerSession();
+      if (res?.user) {
+        return {
+          user: {
+            id: res.user.id,
+            email: res.user.email,
+            fullName: res.user.fullName || res.user.email?.split('@')[0] || 'User',
+            role: (res.user.role as Role) || null,
+            avatarUrl: res.user.avatarUrl ?? null,
+            phone: res.user.phone ?? null,
+            permissions: (res.user as any).permissions ?? [],
+          },
+        };
+      }
+    } catch (e) {
+      console.warn('getSession error:', e);
     }
+    return { user: null };
   },
 
   async fetchProfile(userId: string) {

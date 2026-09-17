@@ -1,6 +1,6 @@
 'use server';
 
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 import { getServerSession } from '@/features/auth/actions';
 import { sendOtpEmail } from '@/lib/email';
 import { rateLimit, rateLimitKey } from '@/lib/rate-limit';
@@ -19,42 +19,41 @@ function generateOtp(): string {
 }
 
 export async function getCitStudentStatus() {
-  const supabase = createServiceClient();
-  if (!supabase) return { status: null, error: 'Service not configured' };
-
   const { user } = await getServerSession();
   if (!user) return { status: null, error: 'Not authenticated' };
 
   const isCitDomain = user.email.toLowerCase().endsWith(CIT_DOMAIN);
 
-  const { data } = await supabase
-    .from('profiles')
-    .select('is_cit_student, student_email, student_verified_at')
-    .eq('id', user.id)
-    .maybeSingle();
+  try {
+    const res = await query(
+      'SELECT is_cit_student, student_email, student_verified_at FROM public.profiles WHERE id = $1',
+      [user.id]
+    );
+    const data = res.rows[0];
 
-  if (isCitDomain && (!data || !data.is_cit_student)) {
-    await supabase.from('profiles').update({
-      is_cit_student: true,
-      student_email: user.email.toLowerCase(),
-      student_verified_at: new Date().toISOString(),
-    }).eq('id', user.id);
+    if (isCitDomain && (!data || !data.is_cit_student)) {
+      await query(`
+        UPDATE public.profiles
+        SET is_cit_student = true, student_email = $1, student_verified_at = NOW(), updated_at = NOW()
+        WHERE id = $2
+      `, [user.email.toLowerCase(), user.id]);
+    }
+
+    return {
+      status: {
+        isVerified: isCitDomain || !!data?.is_cit_student,
+        studentEmail: data?.student_email ?? null,
+        verifiedAt: data?.student_verified_at ?? null,
+      },
+      error: null,
+    };
+  } catch (err: any) {
+    console.error('getCitStudentStatus error:', err);
+    return { status: null, error: err.message };
   }
-
-  return {
-    status: {
-      isVerified: isCitDomain || !!data?.is_cit_student,
-      studentEmail: data?.student_email ?? null,
-      verifiedAt: data?.student_verified_at ?? null,
-    },
-    error: null,
-  };
 }
 
 export async function sendCitOtp(email: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured' };
-
   const { user } = await getServerSession();
   if (!user) return { success: false, error: 'Not authenticated' };
 
@@ -63,7 +62,7 @@ export async function sendCitOtp(email: string) {
   }
 
   const rlKey = rateLimitKey('cit-otp-send', user.id);
-  const rl = await rateLimit(rlKey, { interval: 3600_000, maxRequests: 3 });
+  const rl = await rateLimit(rlKey, { interval: 3600_000, maxRequests: 5 });
   if (!rl.success) {
     return { success: false, error: 'Too many OTP requests. Try again later.' };
   }
@@ -72,14 +71,15 @@ export async function sendCitOtp(email: string) {
   const otpHash = hashOtp(otp);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS).toISOString();
 
-  const { error: insertError } = await supabase.from('cit_otp_requests').insert({
-    user_id: user.id,
-    email: email.toLowerCase(),
-    otp_hash: otpHash,
-    expires_at: expiresAt,
-  });
-
-  if (insertError) return { success: false, error: 'Failed to send OTP' };
+  try {
+    await query(`
+      INSERT INTO public.cit_otp_requests (user_id, email, otp_hash, expires_at, created_at, requested_at)
+      VALUES ($1, $2, $3, $4, NOW(), NOW())
+    `, [user.id, email.toLowerCase().trim(), otpHash, expiresAt]);
+  } catch (e: any) {
+    console.error('sendCitOtp insert error:', e);
+    return { success: false, error: 'Failed to record OTP request' };
+  }
 
   const sent = await sendOtpEmail(email, otp);
   if (!sent) {
@@ -93,9 +93,6 @@ export async function sendCitOtp(email: string) {
 }
 
 export async function verifyCitOtp(email: string, otp: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured' };
-
   const { user } = await getServerSession();
   if (!user) return { success: false, error: 'Not authenticated' };
 
@@ -107,64 +104,51 @@ export async function verifyCitOtp(email: string, otp: string) {
     return { success: false, error: 'Invalid OTP format' };
   }
 
-  const { data: requests, error: fetchError } = await supabase
-    .from('cit_otp_requests')
-    .select('*')
-    .eq('user_id', user.id)
-    .eq('email', email.toLowerCase())
-    .is('verified_at', null)
-    .order('requested_at', { ascending: false })
-    .limit(1);
+  try {
+    const res = await query(`
+      SELECT * FROM public.cit_otp_requests
+      WHERE user_id = $1 AND email = $2 AND verified_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 1;
+    `, [user.id, email.toLowerCase().trim()]);
 
-  if (fetchError || !requests || requests.length === 0) {
-    return { success: false, error: 'No OTP request found. Request a new OTP.' };
+    if (res.rows.length === 0) {
+      return { success: false, error: 'No OTP request found. Request a new OTP.' };
+    }
+
+    const request = res.rows[0];
+
+    if (new Date(request.expires_at) < new Date()) {
+      return { success: false, error: 'OTP has expired. Request a new one.' };
+    }
+
+    if (request.attempts >= MAX_ATTEMPTS) {
+      return { success: false, error: 'Too many failed attempts. Request a new OTP.' };
+    }
+
+    await query('UPDATE public.cit_otp_requests SET attempts = attempts + 1 WHERE id = $1', [request.id]);
+
+    const otpHash = hashOtp(otp);
+    if (request.otp_hash !== otpHash) {
+      return { success: false, error: 'Invalid OTP' };
+    }
+
+    await query('UPDATE public.cit_otp_requests SET verified_at = NOW() WHERE id = $1', [request.id]);
+
+    await query(`
+      UPDATE public.profiles
+      SET is_cit_student = true, student_email = $1, student_verified_at = NOW(), updated_at = NOW()
+      WHERE id = $2
+    `, [email.toLowerCase().trim(), user.id]);
+
+    return { success: true };
+  } catch (e: any) {
+    console.error('verifyCitOtp error:', e);
+    return { success: false, error: e.message || 'OTP verification failed' };
   }
-
-  const request = requests[0];
-
-  if (new Date(request.expires_at) < new Date()) {
-    return { success: false, error: 'OTP has expired. Request a new one.' };
-  }
-
-  if (request.attempts >= MAX_ATTEMPTS) {
-    return { success: false, error: 'Too many failed attempts. Request a new OTP.' };
-  }
-
-  await supabase
-    .from('cit_otp_requests')
-    .update({ attempts: request.attempts + 1 })
-    .eq('id', request.id);
-
-  const otpHash = hashOtp(otp);
-  if (request.otp_hash !== otpHash) {
-    return { success: false, error: 'Invalid OTP' };
-  }
-
-  const now = new Date().toISOString();
-
-  await supabase
-    .from('cit_otp_requests')
-    .update({ verified_at: now })
-    .eq('id', request.id);
-
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .update({
-      is_cit_student: true,
-      student_email: email.toLowerCase(),
-      student_verified_at: now,
-    })
-    .eq('id', user.id);
-
-  if (profileError) return { success: false, error: 'Failed to update profile' };
-
-  return { success: true };
 }
 
 export async function sendSignupOtp(email: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured' };
-
   if (!email?.trim() || !email.includes('@')) {
     return { success: false, error: 'Invalid email address' };
   }
@@ -172,7 +156,7 @@ export async function sendSignupOtp(email: string) {
   const normalizedEmail = email.toLowerCase().trim();
 
   const rlKey = rateLimitKey('signup-otp-send', normalizedEmail);
-  const rl = await rateLimit(rlKey, { interval: 3600_000, maxRequests: 3 });
+  const rl = await rateLimit(rlKey, { interval: 3600_000, maxRequests: 10 });
   if (!rl.success) {
     return { success: false, error: 'Too many OTP requests. Try again later.' };
   }
@@ -181,17 +165,14 @@ export async function sendSignupOtp(email: string) {
   const otpHash = hashOtp(otp);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS).toISOString();
 
-  const { error: insertError } = await supabase.from('cit_otp_requests').insert({
-    email: normalizedEmail,
-    otp_hash: otpHash,
-    expires_at: expiresAt,
-  });
-
-  if (insertError) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('sendSignupOtp insert error:', insertError);
-    }
-    return { success: false, error: 'Failed to send OTP' };
+  try {
+    await query(`
+      INSERT INTO public.cit_otp_requests (email, otp_hash, expires_at, created_at, requested_at)
+      VALUES ($1, $2, $3, NOW(), NOW())
+    `, [normalizedEmail, otpHash, expiresAt]);
+  } catch (insertError: any) {
+    console.error('sendSignupOtp insert error:', insertError);
+    return { success: false, error: 'Failed to record OTP request' };
   }
 
   const sent = await sendOtpEmail(email, otp);
@@ -206,51 +187,46 @@ export async function sendSignupOtp(email: string) {
 }
 
 export async function verifySignupOtp(email: string, otp: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured' };
-
   if (!otp || otp.length !== 6 || !/^\d{6}$/.test(otp)) {
     return { success: false, error: 'Invalid OTP format' };
   }
 
   const normalizedEmail = email.toLowerCase().trim();
 
-  const { data: requests, error: fetchError } = await supabase
-    .from('cit_otp_requests')
-    .select('*')
-    .eq('email', normalizedEmail)
-    .is('verified_at', null)
-    .order('requested_at', { ascending: false })
-    .limit(1);
+  try {
+    const res = await query(`
+      SELECT * FROM public.cit_otp_requests
+      WHERE email = $1 AND verified_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 1;
+    `, [normalizedEmail]);
 
-  if (fetchError || !requests || requests.length === 0) {
-    return { success: false, error: 'No OTP request found. Request a new OTP.' };
+    if (res.rows.length === 0) {
+      return { success: false, error: 'No OTP request found. Request a new OTP.' };
+    }
+
+    const request = res.rows[0];
+
+    if (new Date(request.expires_at) < new Date()) {
+      return { success: false, error: 'OTP has expired. Request a new one.' };
+    }
+
+    if (request.attempts >= MAX_ATTEMPTS) {
+      return { success: false, error: 'Too many failed attempts. Request a new OTP.' };
+    }
+
+    await query('UPDATE public.cit_otp_requests SET attempts = attempts + 1 WHERE id = $1', [request.id]);
+
+    const otpHash = hashOtp(otp);
+    if (request.otp_hash !== otpHash) {
+      return { success: false, error: 'Invalid OTP' };
+    }
+
+    await query('UPDATE public.cit_otp_requests SET verified_at = NOW() WHERE id = $1', [request.id]);
+
+    return { success: true, isCit: normalizedEmail.endsWith(CIT_DOMAIN) };
+  } catch (e: any) {
+    console.error('verifySignupOtp error:', e);
+    return { success: false, error: e.message || 'OTP verification failed' };
   }
-
-  const request = requests[0];
-
-  if (new Date(request.expires_at) < new Date()) {
-    return { success: false, error: 'OTP has expired. Request a new one.' };
-  }
-
-  if (request.attempts >= MAX_ATTEMPTS) {
-    return { success: false, error: 'Too many failed attempts. Request a new OTP.' };
-  }
-
-  await supabase
-    .from('cit_otp_requests')
-    .update({ attempts: request.attempts + 1 })
-    .eq('id', request.id);
-
-  const otpHash = hashOtp(otp);
-  if (request.otp_hash !== otpHash) {
-    return { success: false, error: 'Invalid OTP' };
-  }
-
-  await supabase
-    .from('cit_otp_requests')
-    .update({ verified_at: new Date().toISOString() })
-    .eq('id', request.id);
-
-  return { success: true, isCit: normalizedEmail.endsWith(CIT_DOMAIN) };
 }

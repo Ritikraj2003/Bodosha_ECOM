@@ -189,7 +189,7 @@ export async function getExpenseSummary(
     let totalIncome = 0;
     let totalExpenses = 0;
 
-    const allCalculated: ExpenseTransaction[] = (allRaw || []).map((raw) => {
+    const allCalculated: ExpenseTransaction[] = (allRaw || []).map((raw: any) => {
       const amount = Number(raw.amount) || 0;
       const type = raw.type as 'income' | 'expense';
 

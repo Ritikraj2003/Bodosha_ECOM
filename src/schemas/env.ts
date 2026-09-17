@@ -6,9 +6,8 @@ const urlOrLocalhost = z.string().refine((v) => {
 }, 'Must be a valid URL');
 
 export const envSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  DIRECT_URL: z.string().optional(),
   NEXT_PUBLIC_APP_URL: urlOrLocalhost.default('http://localhost:3000'),
   NEXT_PUBLIC_APP_NAME: z.string().min(1).default('Dilip Da'),
   NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().optional(),

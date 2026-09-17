@@ -82,7 +82,7 @@ export async function sendPushToUser(
 
     // 2. Dispatch to each registered device
     await Promise.all(
-      subscriptions.map(async (sub) => {
+      subscriptions.map(async (sub: any) => {
         try {
           const pushSubscription = {
             endpoint: sub.endpoint,
@@ -247,8 +247,8 @@ export async function sendPushToAdmins(
     }
 
     const adminUserIds = new Set<string>();
-    (roleProfiles || []).forEach((p) => adminUserIds.add(p.id));
-    (emailProfiles || []).forEach((p) => adminUserIds.add(p.id));
+    (roleProfiles || []).forEach((p: any) => adminUserIds.add(p.id));
+    (emailProfiles || []).forEach((p: any) => adminUserIds.add(p.id));
 
     if (adminUserIds.size === 0) {
       return { success: true, sentCount: 0 };
@@ -284,7 +284,7 @@ export async function sendPushToAdmins(
 
     // 3. Dispatch to all admin devices simultaneously
     await Promise.all(
-      subscriptions.map(async (sub) => {
+      subscriptions.map(async (sub: any) => {
         try {
           const pushSubscription = {
             endpoint: sub.endpoint,
@@ -369,9 +369,9 @@ export async function sendPushToDeliveryPartners(
     }
 
     const deliveryUserIds = new Set<string>();
-    (roleProfiles || []).forEach((p) => deliveryUserIds.add(p.id));
-    (partnerRows || []).forEach((p) => deliveryUserIds.add(p.id));
-    (emailProfiles || []).forEach((p) => deliveryUserIds.add(p.id));
+    (roleProfiles || []).forEach((p: any) => deliveryUserIds.add(p.id));
+    (partnerRows || []).forEach((p: any) => deliveryUserIds.add(p.id));
+    (emailProfiles || []).forEach((p: any) => deliveryUserIds.add(p.id));
 
     if (deliveryUserIds.size === 0) {
       return { success: true, sentCount: 0 };
@@ -407,7 +407,7 @@ export async function sendPushToDeliveryPartners(
 
     // 3. Dispatch to all delivery partner devices
     await Promise.all(
-      subscriptions.map(async (sub) => {
+      subscriptions.map(async (sub: any) => {
         try {
           const pushSubscription = {
             endpoint: sub.endpoint,

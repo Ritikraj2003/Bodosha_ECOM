@@ -1,31 +1,29 @@
 'use server';
 
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 import { menuSections as fallbackMenuSections, type MenuItem, type MenuSection } from '../data';
 
 export async function getPublicMenu(): Promise<{ success: boolean; sections: MenuSection[]; source: 'db' | 'fallback' }> {
   try {
-    const supabase = createServiceClient();
-    if (!supabase) {
-      return { success: true, sections: fallbackMenuSections, source: 'fallback' };
-    }
-
     // 1. Fetch active categories
-    const { data: categories, error: catError } = await supabase
-      .from('categories')
-      .select('id, name, display_order')
-      .eq('is_active', true)
-      .order('display_order', { ascending: true });
+    const catRes = await query(`
+      SELECT id, name, display_order
+      FROM public.categories
+      WHERE is_active = true
+      ORDER BY display_order ASC;
+    `);
+    const categories = catRes.rows;
 
     // 2. Fetch active products
-    const { data: products, error: prodError } = await supabase
-      .from('products')
-      .select('*')
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .order('sort_order', { ascending: true });
+    const prodRes = await query(`
+      SELECT *
+      FROM public.products
+      WHERE is_active = true AND deleted_at IS NULL
+      ORDER BY sort_order ASC, name ASC;
+    `);
+    const products = prodRes.rows;
 
-    if (catError || prodError || !products || products.length === 0) {
+    if (!products || products.length === 0) {
       return { success: true, sections: fallbackMenuSections, source: 'fallback' };
     }
 

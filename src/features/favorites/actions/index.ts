@@ -16,7 +16,7 @@ export async function getUserFavoriteIds(): Promise<{ success: boolean; data?: s
     .eq('user_id', user.id);
   if (error) return { success: false, error: error.message };
 
-  return { success: true, data: (data ?? []).map((row) => row.item_id) };
+  return { success: true, data: (data ?? []).map((row: any) => row.item_id) };
 }
 
 export async function addFavoriteItem(itemId: string): Promise<{ success: boolean; error?: string }> {

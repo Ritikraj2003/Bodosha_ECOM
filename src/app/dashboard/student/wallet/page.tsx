@@ -1,14 +1,12 @@
-import { createServerSupabaseClient } from '@/infrastructure/supabase/server';
+import { getServerSession } from '@/features/auth/actions';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import StudentWalletDashboard from '@/features/wallet/components/StudentWalletDashboard';
 
 export default async function StudentWalletPage() {
-  const supabase = await createServerSupabaseClient();
-  if (!supabase) redirect('/auth/login');
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect('/auth/login');
+  const { user } = await getServerSession();
+  if (!user) redirect('/auth/login?next=/dashboard/student/wallet');
 
   return (
     <div className="page-pad">

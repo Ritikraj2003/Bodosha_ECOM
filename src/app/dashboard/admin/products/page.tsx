@@ -8,6 +8,8 @@ import {
 import { getProducts, getCategories, updateProduct, deleteProduct, restoreProduct } from '@/features/products/actions';
 import type { Product, Category } from '@/features/products/types';
 import { Skeleton, EmptyState } from '@/components/ui';
+import { hasPermission } from '@/lib/permissions';
+import { useAuthStore } from '@/features/auth/store';
 
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -17,6 +19,14 @@ export default function AdminProductsPage() {
   const [search, setSearch] = useState('');
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
   const [view, setView] = useState<'active' | 'archived'>('active');
+
+  const currentUser = useAuthStore((s) => s.user);
+  const userRole = currentUser?.role ?? null;
+  const userPermissions = currentUser?.permissions ?? [];
+
+  const canAddProduct = hasPermission(userPermissions, ['PROD_ADD', 'products.create'], userRole);
+  const canEditProduct = hasPermission(userPermissions, ['PROD_EDIT', 'products.edit'], userRole);
+  const canDeleteProduct = hasPermission(userPermissions, ['PROD_DEL', 'products.delete'], userRole);
   
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -321,12 +331,14 @@ export default function AdminProductsPage() {
           </p>
         </div>
         {view === 'active' ? (
-          <button
-            onClick={openCreateForm}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-zred text-white text-sm font-semibold rounded-xl hover:bg-zred-dark transition-all shadow-z shrink-0"
-          >
-            <Plus size={18} /> Add New Product
-          </button>
+          canAddProduct ? (
+            <button
+              onClick={openCreateForm}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-zred text-white text-sm font-semibold rounded-xl hover:bg-zred-dark transition-all shadow-z shrink-0"
+            >
+              <Plus size={18} /> Add New Product
+            </button>
+          ) : null
         ) : (
           <button
             onClick={() => setView('active')}
@@ -845,37 +857,45 @@ export default function AdminProductsPage() {
                           >
                             <RotateCcw size={15} />
                           </button>
-                          <button
-                            onClick={() => handleDelete(prod)}
-                            title="Delete Permanently"
-                            className="p-2 rounded-lg hover:bg-red-500/10 text-ztext-lighter hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {canDeleteProduct && (
+                            <button
+                              onClick={() => handleDelete(prod)}
+                              title="Delete Permanently"
+                              className="p-2 rounded-lg hover:bg-red-500/10 text-ztext-lighter hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleToggleActive(prod)}
-                            title={prod.is_active ? 'Hide Product' : 'Show Product'}
-                            className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
-                          >
-                            {prod.is_active ? <EyeOff size={15} /> : <Eye size={15} />}
-                          </button>
-                          <button
-                            onClick={() => openEditForm(prod)}
-                            title="Edit Product"
-                            className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
-                          >
-                            <Edit3 size={15} />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(prod)}
-                            title="Delete Product"
-                            className="p-2 rounded-lg hover:bg-red-500/10 text-ztext-lighter hover:text-red-400 transition-colors"
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {canEditProduct && (
+                            <button
+                              onClick={() => handleToggleActive(prod)}
+                              title={prod.is_active ? 'Hide Product' : 'Show Product'}
+                              className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
+                            >
+                              {prod.is_active ? <EyeOff size={15} /> : <Eye size={15} />}
+                            </button>
+                          )}
+                          {canEditProduct && (
+                            <button
+                              onClick={() => openEditForm(prod)}
+                              title="Edit Product"
+                              className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                          )}
+                          {canDeleteProduct && (
+                            <button
+                              onClick={() => handleDelete(prod)}
+                              title="Delete Product"
+                              className="p-2 rounded-lg hover:bg-red-500/10 text-ztext-lighter hover:text-red-400 transition-colors"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       )}
                     </td>

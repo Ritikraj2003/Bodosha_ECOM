@@ -16,7 +16,7 @@ export default function ResetPasswordForm() {
   useEffect(() => {
     const supabase = createClient();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any) => {
       if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
         setReady(true);
       }
@@ -27,7 +27,7 @@ export default function ResetPasswordForm() {
     const tokenHash = searchParams.get('token_hash');
 
     if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ error: codeErr }) => {
+      supabase.auth.exchangeCodeForSession(code).then(({ error: codeErr }: any) => {
         if (!codeErr) {
           setReady(true);
         } else {
@@ -38,7 +38,7 @@ export default function ResetPasswordForm() {
     }
 
     if (tokenHash) {
-      supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }).then(({ error: otpErr }) => {
+      supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }).then(({ error: otpErr }: any) => {
         if (!otpErr) {
           setReady(true);
         } else {
@@ -55,12 +55,12 @@ export default function ResetPasswordForm() {
     const type = params.get('type');
 
     if (accessToken && refreshToken && type === 'recovery') {
-      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ error: sessionError }) => {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ error: sessionError }: any) => {
         if (!sessionError) setReady(true);
         else setError('Invalid or expired reset link. Please request a new one.');
       });
     } else {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      supabase.auth.getSession().then(({ data: { session } }: any) => {
         if (session) setReady(true);
         else setError('Invalid or expired reset link. Please request a new one.');
       });

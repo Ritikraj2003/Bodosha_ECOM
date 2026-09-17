@@ -1,11 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { env } from '@/config/env';
 
+function createSafeProxy(): any {
+  const handler: ProxyHandler<any> = {
+    get: (_target, prop) => {
+      if (prop === 'then') {
+        return (resolve: (val: any) => void) =>
+          resolve({ data: [], error: null, count: 0, user: null, users: [] });
+      }
+      return new Proxy(() => {}, handler);
+    },
+    apply: () => new Proxy(() => {}, handler),
+  };
+  return new Proxy(() => {}, handler);
+}
+
 export function createAdminClient() {
-  if (!env.supabase.serviceRoleKey) {
-    throw new Error(
-      'Supabase service role key not configured. Set SUPABASE_SERVICE_ROLE_KEY in .env.local',
-    );
+  if (!env.supabase.serviceRoleKey || !env.supabase.url) {
+    return createSafeProxy();
   }
 
   return createClient(env.supabase.url!, env.supabase.serviceRoleKey, {

@@ -2,6 +2,7 @@
 
 import { createServiceClient } from '@/infrastructure/supabase/service';
 import { getServerSession } from '@/features/auth/actions';
+import { query } from '@/infrastructure/db';
 import type { CartItem } from '@/features/cart/types';
 import type { Order, OrderItem } from '../types';
 import { notifyNewOrder } from '@/lib/notifications';
@@ -105,18 +106,20 @@ export async function resolveAuthoritativeLineItems(
 
   if (dbIdsToQuery.length > 0) {
     let dbProducts: Array<{ id: string; name: string; price: number; is_active: boolean; is_available: boolean; deleted_at: string | null; packaging_big_qty?: number; packaging_small_qty?: number }> | null = null;
-    const { data, error: prodErr } = await supabase
-      .from('products')
-      .select('id, name, price, is_active, is_available, deleted_at, packaging_big_qty, packaging_small_qty')
-      .in('id', dbIdsToQuery);
-
-    if (prodErr && String(prodErr.message).toLowerCase().includes('column')) {
-      const fallbackRes = await supabase
+    try {
+      const { query } = await import('@/infrastructure/db');
+      const prodRes = await query<any>(
+        `SELECT id, name, price, is_active, is_available, deleted_at, packaging_big_qty, packaging_small_qty
+         FROM public.products
+         WHERE id = ANY($1::uuid[])`,
+        [dbIdsToQuery]
+      );
+      dbProducts = prodRes.rows;
+    } catch {
+      const { data } = await supabase
         .from('products')
-        .select('id, name, price, is_active, is_available, deleted_at')
+        .select('id, name, price, is_active, is_available, deleted_at, packaging_big_qty, packaging_small_qty')
         .in('id', dbIdsToQuery);
-      dbProducts = fallbackRes.data;
-    } else {
       dbProducts = data;
     }
 
@@ -776,35 +779,50 @@ export async function cancelUnpaidOrder(orderId: string, reason = 'Payment not c
 }
 
 export async function getUserOrders(page = 1, pageSize = 10) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
+  try {
+    const { user } = await getServerSession();
+    if (!user) return { success: false, error: 'Not authenticated' };
 
-  const { user } = await getServerSession();
-  if (!user) return { success: false, error: 'Not authenticated' };
+    const from = (page - 1) * pageSize;
 
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
+    const countRes = await query(
+      'SELECT COUNT(*)::int AS total FROM public.orders WHERE user_id = $1',
+      [user.id]
+    );
+    const total = countRes.rows[0]?.total ?? 0;
 
-  const { data, error, count } = await supabase
-    .from('orders')
-    .select('*, order_items(*)', { count: 'exact' })
-    .eq('user_id', user.id)
-    .order('created_at', { ascending: false })
-    .range(from, to);
+    const ordersRes = await query(`
+      SELECT 
+        o.*,
+        COALESCE(
+          (
+            SELECT json_agg(oi.*)
+            FROM public.order_items oi
+            WHERE oi.order_id = o.id
+          ),
+          '[]'::json
+        ) AS order_items
+      FROM public.orders o
+      WHERE o.user_id = $1
+      ORDER BY o.created_at DESC
+      LIMIT $2 OFFSET $3;
+    `, [user.id, pageSize, from]);
 
-  if (error) return { success: false, error: 'Failed to fetch orders' };
+    const totalPages = Math.ceil(total / pageSize);
 
-  const totalPages = Math.ceil((count ?? 0) / pageSize);
-
-  return {
-    success: true,
-    data: {
-      orders: data as unknown as Order[],
-      total: count ?? 0,
-      page,
-      totalPages,
-    },
-  };
+    return {
+      success: true,
+      data: {
+        orders: ordersRes.rows as unknown as Order[],
+        total,
+        page,
+        totalPages,
+      },
+    };
+  } catch (err: any) {
+    console.error('getUserOrders error:', err);
+    return { success: false, error: 'Failed to fetch orders' };
+  }
 }
 
 /**

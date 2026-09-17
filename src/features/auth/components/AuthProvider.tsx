@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const supabase = createClient();
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any) => {
         if (event === 'PASSWORD_RECOVERY') {
           if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/auth/reset-password')) {
             window.location.href = `/auth/reset-password${window.location.search}${window.location.hash}`;

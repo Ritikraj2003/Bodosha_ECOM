@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/infrastructure/supabase/admin';
+import { query } from '@/infrastructure/db';
 import type {
   DashboardStats, AdminStudent, AdminMerchant, AdminOrder, AdminUser,
   CreditAccountAdmin, PaymentAdmin, AuditEntry, SystemSetting,
@@ -8,124 +9,72 @@ import { notifyOrderStatusPush, sendPushToUser, sendPushToDeliveryPartners } fro
 
 export class AdminRepository {
   async getDashboardStats(): Promise<DashboardStats | null> {
-    const admin = createAdminClient();
     try {
       const today = new Date().toISOString().slice(0, 10);
       const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay()); weekStart.setHours(0,0,0,0);
       const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
-      const weekStartStr = weekStart.toISOString();
-      const monthStartStr = monthStart.toISOString();
 
-      const nonTerminal = ['pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery'];
+      const statsRes = await query(`
+        SELECT
+          (SELECT COUNT(*) FROM public.users WHERE deleted_at IS NULL)::int AS total_users,
+          (SELECT COUNT(*) FROM public.users WHERE role = 'student' AND deleted_at IS NULL)::int AS total_students,
+          (SELECT COUNT(*) FROM public.users WHERE role = 'merchant' AND deleted_at IS NULL)::int AS total_merchants,
+          (SELECT COUNT(*) FROM public.restaurants WHERE deleted_at IS NULL)::int AS total_restaurants,
+          (SELECT COUNT(*) FROM public.orders)::int AS total_orders,
+          (SELECT COUNT(*) FROM public.orders WHERE status IN ('pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery'))::int AS active_orders,
+          (SELECT COUNT(*) FROM public.orders WHERE status IN ('completed', 'delivered'))::int AS completed_orders,
+          (SELECT COUNT(*) FROM public.orders WHERE status = 'cancelled')::int AS cancelled_orders,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered'))::numeric AS total_revenue,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $1)::numeric AS today_revenue,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $2)::numeric AS weekly_revenue,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $3)::numeric AS monthly_revenue,
+          (SELECT COALESCE(SUM(used_credit), 0) FROM public.credit_accounts)::numeric AS bnpl_outstanding,
+          (SELECT COALESCE(SUM(credit_limit), 0) FROM public.credit_accounts)::numeric AS total_credit_issued,
+          (SELECT COALESCE(SUM(amount), 0) FROM public.credit_repayments WHERE status = 'paid')::numeric AS total_credit_repaid,
+          (SELECT COUNT(*) FROM public.credit_repayments WHERE status = 'pending' AND due_date < $4)::int AS total_overdue_accounts,
+          (SELECT COUNT(*) FROM public.restaurants WHERE is_active = true AND deleted_at IS NULL)::int AS active_merchants,
+          (SELECT COUNT(*) FROM public.restaurants WHERE is_active = false AND deleted_at IS NULL)::int AS pending_merchant_approvals;
+      `, [today, weekStart.toISOString(), monthStart.toISOString(), today]);
 
-      const safeQuery = async <T>(promise: PromiseLike<T>, fallback: T): Promise<T> => {
-        try {
-          const res = await promise;
-          if (res && typeof res === 'object' && 'error' in (res as Record<string, unknown>) && (res as Record<string, unknown>).error) {
-            return fallback;
-          }
-          return res ?? fallback;
-        } catch {
-          return fallback;
-        }
-      };
+      const s = statsRes.rows[0] || {};
 
-      type CountResult = { count: number | null };
-      type DataResult<R> = { data: R[] | null };
+      const activityRes = await query(`
+        SELECT a.id, a.action, a.table_name, a.record_id, a.created_at, a.user_id AS changed_by,
+               u.full_name AS user_name
+        FROM public.audit_logs a
+        LEFT JOIN public.users u ON a.user_id = u.id
+        ORDER BY a.created_at DESC
+        LIMIT 10
+      `);
 
-      const [
-        { count: totalUsers },
-        { count: totalStudents },
-        { count: totalMerchants },
-        { count: totalRestaurants },
-        { count: totalOrders },
-        { data: revenueRows },
-        { data: todayRevenueRows },
-        { data: weeklyRevenueRows },
-        { data: monthlyRevenueRows },
-        { data: activeOrdersRows },
-        { data: completedOrdersRows },
-        { data: cancelledOrdersRows },
-        { data: bnplData },
-        { data: repaidData },
-        { data: overdueRows },
-        { data: activeMerchantRows },
-        { count: pendingApprovals },
-        { data: activityRows },
-      ] = await Promise.all([
-        safeQuery<CountResult>(admin.from('profiles').select('*', { count: 'exact', head: true }).is('deleted_at', null), { count: 0 }),
-        safeQuery<CountResult>(admin.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'student').is('deleted_at', null), { count: 0 }),
-        safeQuery<CountResult>(admin.from('profiles').select('*', { count: 'exact', head: true }).eq('role', 'merchant').is('deleted_at', null), { count: 0 }),
-        safeQuery<CountResult>(admin.from('restaurants').select('*', { count: 'exact', head: true }).is('deleted_at', null), { count: 0 }),
-        safeQuery<CountResult>(admin.from('orders').select('*', { count: 'exact', head: true }).is('deleted_at', null), { count: 0 }),
-        safeQuery<DataResult<{ total: number }>>(admin.from('orders').select('total').in('status', ['completed', 'delivered']).is('deleted_at', null), { data: [] }),
-        safeQuery<DataResult<{ total: number }>>(admin.from('orders').select('total').in('status', ['completed', 'delivered']).is('deleted_at', null).gte('created_at', today), { data: [] }),
-        safeQuery<DataResult<{ total: number }>>(admin.from('orders').select('total').in('status', ['completed', 'delivered']).is('deleted_at', null).gte('created_at', weekStartStr), { data: [] }),
-        safeQuery<DataResult<{ total: number }>>(admin.from('orders').select('total').in('status', ['completed', 'delivered']).is('deleted_at', null).gte('created_at', monthStartStr), { data: [] }),
-        safeQuery<DataResult<{ id: string }>>(admin.from('orders').select('id').in('status', nonTerminal).is('deleted_at', null), { data: [] }),
-        safeQuery<DataResult<{ id: string }>>(admin.from('orders').select('id').in('status', ['completed', 'delivered']).is('deleted_at', null), { data: [] }),
-        safeQuery<DataResult<{ id: string }>>(admin.from('orders').select('id').eq('status', 'cancelled').is('deleted_at', null), { data: [] }),
-        safeQuery<DataResult<{ outstanding: number; credit_limit: number }>>(admin.from('credit_accounts').select('outstanding, credit_limit').is('deleted_at', null), { data: [] }),
-        safeQuery<DataResult<{ amount: number }>>(admin.from('credit_transactions').select('amount').eq('type', 'repayment'), { data: [] }),
-        safeQuery<DataResult<{ credit_account_id: string }>>(admin.from('credit_repayments').select('credit_account_id').eq('status', 'pending').lt('due_date', today), { data: [] }),
-        safeQuery<DataResult<{ owner_id: string }>>(admin.from('restaurants').select('owner_id').eq('status', 'active').is('deleted_at', null), { data: [] }),
-        safeQuery<CountResult>(admin.from('restaurants').select('*', { count: 'exact', head: true }).eq('status', 'pending').is('deleted_at', null), { count: 0 }),
-        safeQuery<DataResult<{ id: string; action: string; table_name: string; record_id: string | null; created_at: string; changed_by: string | null }>>(admin.from('audit_logs').select('id, action, table_name, record_id, created_at, changed_by').order('created_at', { ascending: false }).limit(10), { data: [] }),
-      ]);
-
-      const totalRevenue = (revenueRows ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
-      const todayRevenue = (todayRevenueRows ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
-      const weeklyRevenue = (weeklyRevenueRows ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
-      const monthlyRevenue = (monthlyRevenueRows ?? []).reduce((s, r) => s + Number(r.total || 0), 0);
-      const bnplOutstanding = (bnplData ?? []).reduce((s, r) => s + Number(r.outstanding || 0), 0);
-      const totalCreditIssued = (bnplData ?? []).reduce((s, r) => s + Number(r.credit_limit || 0), 0);
-      const totalRepaid = (repaidData ?? []).reduce((s, r) => s + Number(r.amount || 0), 0);
-      const activeMerchantIds = new Set((activeMerchantRows ?? []).map((r) => r.owner_id));
-      const overdueAccountIds = new Set((overdueRows ?? []).map((r) => r.credit_account_id));
-      const overdueCount = overdueAccountIds.size;
-
-      // Populate user names for audit logs safely
-      const changedByUsers = Array.from(new Set((activityRows ?? []).map((r) => r.changed_by).filter(Boolean))) as string[];
-      let userNameMap = new Map<string, string>();
-      if (changedByUsers.length > 0) {
-        const { data: userProfiles } = await safeQuery<DataResult<{ id: string; full_name: string }>>(
-          admin.from('profiles').select('id, full_name').in('id', changedByUsers),
-          { data: [] }
-        );
-        userNameMap = new Map((userProfiles ?? []).map((u) => [u.id, u.full_name]));
-      }
-
-      const recentActivity: ActivityEntry[] = (activityRows ?? []).map((r) => {
-        const userId = r.changed_by ?? undefined;
-        return {
-          id: r.id,
-          action: r.action,
-          entity_type: r.table_name,
-          entity_id: r.record_id ?? '',
-          user_name: (userId && userNameMap.get(userId)) || 'System',
-          created_at: r.created_at,
-        };
-      });
+      const recentActivity: ActivityEntry[] = (activityRes.rows || []).map((r: any) => ({
+        id: r.id,
+        action: r.action,
+        entity_type: r.table_name,
+        entity_id: r.record_id ?? '',
+        user_name: r.user_name || 'System',
+        created_at: r.created_at,
+      }));
 
       return {
-        total_users: totalUsers ?? 0,
-        total_students: totalStudents ?? 0,
-        total_merchants: totalMerchants ?? 0,
-        total_restaurants: totalRestaurants ?? 0,
-        total_orders: totalOrders ?? 0,
-        active_orders: (activeOrdersRows ?? []).length,
-        completed_orders: (completedOrdersRows ?? []).length,
-        cancelled_orders: (cancelledOrdersRows ?? []).length,
-        total_revenue: totalRevenue,
-        today_revenue: todayRevenue,
-        weekly_revenue: weeklyRevenue,
-        monthly_revenue: monthlyRevenue,
-        bnpl_outstanding: bnplOutstanding,
-        total_credit_issued: totalCreditIssued,
-        total_credit_repaid: totalRepaid,
-        total_overdue_accounts: overdueCount,
-        active_merchants: activeMerchantIds.size,
-        pending_merchant_approvals: pendingApprovals ?? 0,
+        total_users: s.total_users ?? 0,
+        total_students: s.total_students ?? 0,
+        total_merchants: s.total_merchants ?? 0,
+        total_restaurants: s.total_restaurants ?? 0,
+        total_orders: s.total_orders ?? 0,
+        active_orders: s.active_orders ?? 0,
+        completed_orders: s.completed_orders ?? 0,
+        cancelled_orders: s.cancelled_orders ?? 0,
+        total_revenue: Number(s.total_revenue || 0),
+        today_revenue: Number(s.today_revenue || 0),
+        weekly_revenue: Number(s.weekly_revenue || 0),
+        monthly_revenue: Number(s.monthly_revenue || 0),
+        bnpl_outstanding: Number(s.bnpl_outstanding || 0),
+        total_credit_issued: Number(s.total_credit_issued || 0),
+        total_credit_repaid: Number(s.total_credit_repaid || 0),
+        total_overdue_accounts: s.total_overdue_accounts ?? 0,
+        active_merchants: s.active_merchants ?? 0,
+        pending_merchant_approvals: s.pending_merchant_approvals ?? 0,
         recent_activity: recentActivity,
       };
     } catch (e) {
@@ -135,202 +84,228 @@ export class AdminRepository {
   }
 
   async getStudents(filter: AdminFilter = {}): Promise<PaginatedResponse<AdminStudent>> {
-    const admin = createAdminClient();
     const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc' } = filter;
-    let query = admin
-      .from('profiles')
-      .select('*, credit_account:credit_accounts(*)', { count: 'exact' })
-      .eq('role', 'student')
-      .is('deleted_at', null);
-    if (status === 'active') query = query.eq('is_active', true);
-    if (status === 'suspended') query = query.eq('is_active', false);
-    if (search && search.trim()) {
-      const clean = search.trim().replace(/[%,\(\)]/g, '');
-      if (clean) {
-        query = query.or(
-          `full_name.ilike.%${clean}%,email.ilike.%${clean}%,phone.ilike.%${clean}%`,
-        );
-      }
-    }
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, count } = await query.range(from, to);
-    const students = (data ?? []) as unknown as AdminStudent[];
-    if (students.length > 0) {
-      const userIds = students.map(s => s.id);
-      const { data: walletsData } = await admin.from('wallets').select('*').in('user_id', userIds);
-      if (walletsData) {
-        students.forEach(s => {
-          s.wallet = walletsData.find(w => w.user_id === s.id) || null;
-        });
-      }
+    
+    const whereClauses: string[] = ["u.deleted_at IS NULL", "u.role = 'student'"];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (status === 'active') {
+      whereClauses.push(`u.is_active = true`);
+    } else if (status === 'suspended') {
+      whereClauses.push(`u.is_active = false`);
     }
 
+    if (search && search.trim()) {
+      whereClauses.push(`(u.full_name ILIKE $${paramIdx} OR u.email ILIKE $${paramIdx} OR u.phone ILIKE $${paramIdx})`);
+      params.push(`%${search.trim()}%`);
+      paramIdx++;
+    }
+
+    const whereStr = `WHERE ${whereClauses.join(' AND ')}`;
+    const safeSort = ['created_at', 'full_name', 'email'].includes(sortBy) ? `u.${sortBy}` : 'u.created_at';
+    const safeOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    const countRes = await query(`
+      SELECT COUNT(*)::int AS total
+      FROM public.users u
+      ${whereStr}
+    `, params);
+    const total = countRes.rows[0]?.total ?? 0;
+
+    const offset = (page - 1) * pageSize;
+    const dataParams = [...params, pageSize, offset];
+    const dataRes = await query(`
+      SELECT 
+        u.*,
+        to_jsonb(ca.*) AS credit_account,
+        to_jsonb(w.*) AS wallet
+      FROM public.users u
+      LEFT JOIN public.credit_accounts ca ON ca.user_id = u.id
+      LEFT JOIN public.wallets w ON w.user_id = u.id
+      ${whereStr}
+      ORDER BY ${safeSort} ${safeOrder}
+      LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+    `, dataParams);
+
     return {
-      data: students,
-      total: count ?? 0,
+      data: dataRes.rows as unknown as AdminStudent[],
+      total,
       page,
       pageSize,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 
   async getUsers(filter: AdminFilter = {}): Promise<PaginatedResponse<AdminUser>> {
-    const admin = createAdminClient();
     const { search, status, role, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc' } = filter;
-    let query = admin
-      .from('profiles')
-      .select('id, email, full_name, phone, role, is_active, created_at', { count: 'exact' })
-      .is('deleted_at', null);
-    if (status === 'active') query = query.eq('is_active', true);
-    if (status === 'suspended') query = query.eq('is_active', false);
-    if (role && role !== 'all') query = query.eq('role', role);
-    if (search) {
-      query = query.or(
-        `full_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`,
-      );
+    
+    const whereClauses: string[] = ['deleted_at IS NULL'];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (status === 'active') {
+      whereClauses.push(`is_active = true`);
+    } else if (status === 'suspended') {
+      whereClauses.push(`is_active = false`);
     }
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, count } = await query.range(from, to);
+
+    if (role && role !== 'all') {
+      whereClauses.push(`role = $${paramIdx++}`);
+      params.push(role);
+    }
+
+    if (search && search.trim()) {
+      whereClauses.push(`(full_name ILIKE $${paramIdx} OR email ILIKE $${paramIdx} OR phone ILIKE $${paramIdx})`);
+      params.push(`%${search.trim()}%`);
+      paramIdx++;
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const safeSort = ['created_at', 'full_name', 'email', 'role'].includes(sortBy) ? sortBy : 'created_at';
+    const safeOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    const countRes = await query(`
+      SELECT COUNT(*)::int AS total
+      FROM public.users
+      ${whereStr}
+    `, params);
+    const total = countRes.rows[0]?.total ?? 0;
+
+    const offset = (page - 1) * pageSize;
+    const dataParams = [...params, pageSize, offset];
+    const dataRes = await query(`
+      SELECT id, email, full_name, phone, role, is_active, created_at
+      FROM public.users
+      ${whereStr}
+      ORDER BY ${safeSort} ${safeOrder}
+      LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+    `, dataParams);
+
     return {
-      data: (data ?? []) as unknown as AdminUser[],
-      total: count ?? 0,
+      data: dataRes.rows as unknown as AdminUser[],
+      total,
       page,
       pageSize,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 
   async getStudentById(id: string): Promise<AdminStudent | null> {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from('profiles')
-      .select('*, credit_account:credit_accounts(*)')
-      .eq('id', id)
-      .is('deleted_at', null)
-      .single();
-    
-    const student = data as unknown as AdminStudent | null;
-    if (student) {
-      const { data: walletData } = await admin.from('wallets').select('*').eq('user_id', id).maybeSingle();
-      student.wallet = (walletData as unknown as AdminStudent['wallet']) || null;
-    }
-
-    return student;
+    const res = await query(`
+      SELECT 
+        u.*,
+        to_jsonb(ca.*) AS credit_account,
+        to_jsonb(w.*) AS wallet
+      FROM public.users u
+      LEFT JOIN public.credit_accounts ca ON ca.user_id = u.id
+      LEFT JOIN public.wallets w ON w.user_id = u.id
+      WHERE u.id = $1 AND u.deleted_at IS NULL
+      LIMIT 1
+    `, [id]);
+    return (res.rows[0] as unknown as AdminStudent) ?? null;
   }
 
   async updateStudentStatus(id: string, isActive: boolean): Promise<void> {
-    const admin = createAdminClient();
-    const { error } = await admin
-      .from('profiles')
-      .update({ is_active: isActive })
-      .eq('id', id);
-    if (error) throw new Error(error.message);
+    await query(`UPDATE public.users SET is_active = $1, updated_at = NOW() WHERE id = $2`, [isActive, id]);
+    await query(`UPDATE public.profiles SET is_active = $1, updated_at = NOW() WHERE id = $2`, [isActive, id]);
   }
 
   async resetStudentVerification(id: string): Promise<void> {
-    const admin = createAdminClient();
-    const { error } = await admin
-      .from('credit_accounts')
-      .update({ verification_status: 'pending' })
-      .eq('user_id', id);
-    if (error) throw new Error(error.message);
+    await query(`UPDATE public.credit_accounts SET verification_status = 'pending', updated_at = NOW() WHERE user_id = $1`, [id]);
   }
 
   async getMerchants(filter: AdminFilter = {}): Promise<PaginatedResponse<AdminMerchant>> {
-    const admin = createAdminClient();
     const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc' } = filter;
-    let query = admin
-      .from('profiles')
-      .select('*, restaurant:restaurants(*)', { count: 'exact' })
-      .eq('role', 'merchant')
-      .is('deleted_at', null);
-    if (status === 'active') query = query.eq('is_active', true);
-    if (status === 'suspended') query = query.eq('is_active', false);
-    if (search && search.trim()) {
-      const clean = search.trim().replace(/[%,\(\)]/g, '');
-      if (clean) {
-        query = query.or(
-          `full_name.ilike.%${clean}%,email.ilike.%${clean}%,phone.ilike.%${clean}%`,
-        );
-      }
+    
+    const whereClauses: string[] = ["u.deleted_at IS NULL", "u.role = 'merchant'"];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (status === 'active') {
+      whereClauses.push(`u.is_active = true`);
+    } else if (status === 'suspended') {
+      whereClauses.push(`u.is_active = false`);
     }
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, count } = await query.range(from, to);
+
+    if (search && search.trim()) {
+      whereClauses.push(`(u.full_name ILIKE $${paramIdx} OR u.email ILIKE $${paramIdx} OR u.phone ILIKE $${paramIdx})`);
+      params.push(`%${search.trim()}%`);
+      paramIdx++;
+    }
+
+    const whereStr = `WHERE ${whereClauses.join(' AND ')}`;
+    const safeSort = ['created_at', 'full_name', 'email'].includes(sortBy) ? `u.${sortBy}` : 'u.created_at';
+    const safeOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    const countRes = await query(`
+      SELECT COUNT(*)::int AS total
+      FROM public.users u
+      ${whereStr}
+    `, params);
+    const total = countRes.rows[0]?.total ?? 0;
+
+    const offset = (page - 1) * pageSize;
+    const dataParams = [...params, pageSize, offset];
+    const dataRes = await query(`
+      SELECT 
+        u.*,
+        to_jsonb(r.*) AS restaurant
+      FROM public.users u
+      LEFT JOIN public.restaurants r ON r.owner_id = u.id
+      ${whereStr}
+      ORDER BY ${safeSort} ${safeOrder}
+      LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+    `, dataParams);
+
     return {
-      data: (data ?? []) as unknown as AdminMerchant[],
-      total: count ?? 0,
+      data: dataRes.rows as unknown as AdminMerchant[],
+      total,
       page,
       pageSize,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 
   async getMerchantById(id: string): Promise<AdminMerchant | null> {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from('profiles')
-      .select('*, restaurant:restaurants(*)')
-      .eq('id', id)
-      .is('deleted_at', null)
-      .single();
-    return data as unknown as AdminMerchant | null;
+    const res = await query(`
+      SELECT 
+        u.*,
+        to_jsonb(r.*) AS restaurant
+      FROM public.users u
+      LEFT JOIN public.restaurants r ON r.owner_id = u.id
+      WHERE u.id = $1 AND u.deleted_at IS NULL
+      LIMIT 1
+    `, [id]);
+    return (res.rows[0] as unknown as AdminMerchant) ?? null;
   }
 
   async approveMerchant(merchantId: string, restaurantId: string): Promise<void> {
-    const admin = createAdminClient();
-    const { error: rError } = await admin
-      .from('restaurants')
-      .update({ status: 'active' })
-      .eq('id', restaurantId);
-    if (rError) throw new Error(rError.message);
-    const { error: pError } = await admin
-      .from('profiles')
-      .update({ is_active: true })
-      .eq('id', merchantId);
-    if (pError) throw new Error(pError.message);
+    await query(`UPDATE public.restaurants SET status = 'active', updated_at = NOW() WHERE id = $1`, [restaurantId]);
+    await query(`UPDATE public.users SET is_active = true, updated_at = NOW() WHERE id = $1`, [merchantId]);
+    await query(`UPDATE public.profiles SET is_active = true, updated_at = NOW() WHERE id = $1`, [merchantId]);
   }
 
   async rejectMerchant(merchantId: string, restaurantId: string): Promise<void> {
-    const admin = createAdminClient();
-    const { error: rError } = await admin
-      .from('restaurants')
-      .update({ status: 'closed' })
-      .eq('id', restaurantId);
-    if (rError) throw new Error(rError.message);
-    const { error: pError } = await admin
-      .from('profiles')
-      .update({ is_active: false })
-      .eq('id', merchantId);
-    if (pError) throw new Error(pError.message);
+    await query(`UPDATE public.restaurants SET status = 'closed', updated_at = NOW() WHERE id = $1`, [restaurantId]);
+    await query(`UPDATE public.users SET is_active = false, updated_at = NOW() WHERE id = $1`, [merchantId]);
+    await query(`UPDATE public.profiles SET is_active = false, updated_at = NOW() WHERE id = $1`, [merchantId]);
   }
 
   async updateMerchantStatus(id: string, isActive: boolean): Promise<void> {
-    const admin = createAdminClient();
-    const { error } = await admin
-      .from('profiles')
-      .update({ is_active: isActive })
-      .eq('id', id);
-    if (error) throw new Error(error.message);
+    await query(`UPDATE public.users SET is_active = $1, updated_at = NOW() WHERE id = $2`, [isActive, id]);
+    await query(`UPDATE public.profiles SET is_active = $1, updated_at = NOW() WHERE id = $2`, [isActive, id]);
   }
 
   async updateCommission(merchantId: string, commissionRate: number): Promise<void> {
-    const admin = createAdminClient();
-    const { data: restaurants } = await admin
-      .from('restaurants')
-      .select('id')
-      .eq('owner_id', merchantId);
-    if (!restaurants || restaurants.length === 0) throw new Error('No restaurant found');
-    for (const r of restaurants) {
-      const { error } = await admin
-        .from('restaurant_settings')
-        .upsert({ restaurant_id: r.id, commission_rate: commissionRate }, { onConflict: 'restaurant_id' });
-      if (error) throw new Error(error.message);
+    const res = await query(`SELECT id FROM public.restaurants WHERE owner_id = $1`, [merchantId]);
+    if (res.rows.length === 0) throw new Error('No restaurant found');
+    for (const r of res.rows) {
+      await query(`
+        INSERT INTO public.restaurant_settings (restaurant_id, commission_rate)
+        VALUES ($1, $2)
+        ON CONFLICT (restaurant_id) DO UPDATE SET commission_rate = EXCLUDED.commission_rate, updated_at = NOW()
+      `, [r.id, commissionRate]);
     }
   }
 
@@ -438,46 +413,110 @@ export class AdminRepository {
   }
 
   async getOrders(filter: AdminFilter & { restaurantId?: string } = {}): Promise<PaginatedResponse<AdminOrder>> {
-    const admin = createAdminClient();
     const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc', fromDate, toDate, restaurantId } = filter;
-    let query = admin
-      .from('orders')
-      .select('*, order_items(*), user:profiles!user_id(full_name, email, phone), restaurant:restaurants!restaurant_id(name), delivery_partner:profiles!delivery_partner_id(full_name, phone)', { count: 'exact' })
-      .is('deleted_at', null);
-    if (status && status !== 'all') query = query.eq('status', status);
-    if (search) {
-      query = query.or(
-        `tracking_code.ilike.%${search}%,customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,customer_phone.ilike.%${search}%`,
-      );
+    
+    const whereClauses: string[] = ['o.deleted_at IS NULL'];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (status && status !== 'all') {
+      whereClauses.push(`o.status = $${paramIdx++}`);
+      params.push(status);
     }
-    if (fromDate) query = query.gte('created_at', fromDate);
-    if (toDate) query = query.lte('created_at', toDate);
-    if (restaurantId) query = query.eq('restaurant_id', restaurantId);
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, count } = await query.range(from, to);
+    if (search && search.trim()) {
+      whereClauses.push(`(o.tracking_code ILIKE $${paramIdx} OR u.full_name ILIKE $${paramIdx} OR u.email ILIKE $${paramIdx} OR u.phone ILIKE $${paramIdx})`);
+      params.push(`%${search.trim()}%`);
+      paramIdx++;
+    }
+    if (fromDate) {
+      whereClauses.push(`o.created_at >= $${paramIdx++}`);
+      params.push(fromDate);
+    }
+    if (toDate) {
+      whereClauses.push(`o.created_at <= $${paramIdx++}`);
+      params.push(toDate);
+    }
+    if (restaurantId) {
+      whereClauses.push(`o.restaurant_id = $${paramIdx++}`);
+      params.push(restaurantId);
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const safeSort = ['created_at', 'total_amount', 'status'].includes(sortBy) ? sortBy : 'created_at';
+    const safeOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    const countRes = await query(`
+      SELECT COUNT(*)::int AS total
+      FROM public.orders o
+      LEFT JOIN public.users u ON o.user_id = u.id
+      ${whereStr}
+    `, params);
+    const total = countRes.rows[0]?.total ?? 0;
+
+    const offset = (page - 1) * pageSize;
+    const dataParams = [...params, pageSize, offset];
+    const dataRes = await query(`
+      SELECT 
+        o.*,
+        COALESCE(o.total_amount, 0) AS total,
+        json_build_object('full_name', u.full_name, 'email', u.email, 'phone', u.phone) as user,
+        json_build_object('name', r.name) as restaurant,
+        json_build_object('full_name', dp.full_name, 'phone', dp.phone) as delivery_partner,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'id', oi.id,
+            'product_name', oi.product_name,
+            'quantity', oi.quantity,
+            'unit_price', oi.product_price,
+            'subtotal', oi.item_total
+          )) FROM public.order_items oi WHERE oi.order_id = o.id), '[]'::json
+        ) as order_items
+      FROM public.orders o
+      LEFT JOIN public.users u ON o.user_id = u.id
+      LEFT JOIN public.restaurants r ON o.restaurant_id = r.id
+      LEFT JOIN public.users dp ON o.delivery_partner_id = dp.id
+      ${whereStr}
+      ORDER BY o.${safeSort} ${safeOrder}
+      LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+    `, dataParams);
+
     return {
-      data: (data ?? []) as unknown as AdminOrder[],
-      total: count ?? 0,
+      data: dataRes.rows as unknown as AdminOrder[],
+      total,
       page,
       pageSize,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 
   async getOrderById(id: string): Promise<AdminOrder | null> {
-    const admin = createAdminClient();
-    const { data } = await admin
-      .from('orders')
-      .select('*, order_items(*), user:profiles!user_id(full_name, email, phone), restaurant:restaurants!restaurant_id(name), delivery_partner:profiles!delivery_partner_id(full_name, phone)')
-      .eq('id', id)
-      .single();
-    return data as unknown as AdminOrder | null;
+    const res = await query(`
+      SELECT 
+        o.*,
+        COALESCE(o.total_amount, 0) AS total,
+        json_build_object('full_name', u.full_name, 'email', u.email, 'phone', u.phone) as user,
+        json_build_object('name', r.name) as restaurant,
+        json_build_object('full_name', dp.full_name, 'phone', dp.phone) as delivery_partner,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'id', oi.id,
+            'product_name', oi.product_name,
+            'quantity', oi.quantity,
+            'unit_price', oi.product_price,
+            'subtotal', oi.item_total
+          )) FROM public.order_items oi WHERE oi.order_id = o.id), '[]'::json
+        ) as order_items
+      FROM public.orders o
+      LEFT JOIN public.users u ON o.user_id = u.id
+      LEFT JOIN public.restaurants r ON o.restaurant_id = r.id
+      LEFT JOIN public.users dp ON o.delivery_partner_id = dp.id
+      WHERE o.id = $1
+      LIMIT 1
+    `, [id]);
+    return (res.rows[0] as unknown as AdminOrder) ?? null;
   }
 
   async updateOrderStatus(orderId: string, status: string, reason?: string): Promise<void> {
-    const admin = createAdminClient();
     const order = await this.getOrderById(orderId);
     if (!order) throw new Error('Order not found');
     const historyEntry = {
@@ -488,34 +527,17 @@ export class AdminRepository {
     };
     const existingHistory = (order.status_history ?? []) as Array<Record<string, unknown>>;
     const statusHistory = [...existingHistory, historyEntry];
-    const updateData: Record<string, unknown> = {
-      status,
-      status_history: statusHistory,
-    };
-    if (reason && (status === 'cancelled' || status === 'declined')) {
-      updateData.cancellation_reason = reason;
-    }
-    if (status === 'accepted') updateData.accepted_at = new Date().toISOString();
-    if (status === 'preparing') updateData.prepared_at = new Date().toISOString();
-    if (status === 'ready') updateData.prepared_at = order.prepared_at ?? new Date().toISOString();
-    if (status === 'completed' || status === 'delivered') {
-      updateData.delivered_at = new Date().toISOString();
-      updateData.payment_status = 'confirmed';
-    }
-    if (status === 'cancelled' || status === 'declined') {
-      updateData.cancelled_at = new Date().toISOString();
-      if (order.payment_method === 'cod') {
-        updateData.payment_status = 'failed';
-      } else if (order.payment_status === 'confirmed') {
-        const { processOrderRefundIfEligible } = await import('@/features/orders/actions/customer');
-        const refundRes = await processOrderRefundIfEligible(order, reason || 'Cancelled by store admin');
-        if (refundRes.refunded) {
-          updateData.payment_status = 'refunded';
-        }
-      }
-    }
-    const { error } = await admin.from('orders').update(updateData).eq('id', orderId);
-    if (error) throw new Error(error.message);
+
+    await query(`
+      UPDATE public.orders
+      SET status = $1,
+          status_history = $2,
+          cancellation_reason = CASE WHEN $3::text IS NOT NULL THEN $3 ELSE cancellation_reason END,
+          delivered_at = CASE WHEN $1 IN ('completed', 'delivered') THEN NOW() ELSE delivered_at END,
+          cancelled_at = CASE WHEN $1 IN ('cancelled', 'declined') THEN NOW() ELSE cancelled_at END,
+          updated_at = NOW()
+      WHERE id = $4
+    `, [status, JSON.stringify(statusHistory), reason || null, orderId]);
 
     // Dispatch Native Web Push to customer
     if (order.user_id) {
@@ -541,24 +563,25 @@ export class AdminRepository {
     // Also update delivery assignments if transitioning to a terminal status
     if (status === 'completed' || status === 'delivered' || status === 'cancelled' || status === 'declined') {
       const assignmentStatus = (status === 'delivered' || status === 'completed') ? 'delivered' : 'failed';
-      // Find the assignment if any
-      const { data: assignment } = await admin
-        .from('delivery_assignments')
-        .select('id, delivery_partner_id')
-        .eq('order_id', orderId)
-        .maybeSingle();
+      try {
+        const assignRes = await query(
+          `SELECT id, delivery_partner_id FROM public.delivery_assignments WHERE order_id = $1 LIMIT 1`,
+          [orderId]
+        );
+        const assignment = assignRes.rows[0];
 
-      if (assignment) {
-        await admin
-          .from('delivery_assignments')
-          .update({ status: assignmentStatus, delivered_at: new Date().toISOString() })
-          .eq('id', assignment.id);
-        
-        await admin
-          .from('delivery_partners')
-          .update({ is_available: true })
-          .eq('id', assignment.delivery_partner_id);
-      }
+        if (assignment) {
+          await query(
+            `UPDATE public.delivery_assignments SET status = $1, delivered_at = NOW() WHERE id = $2`,
+            [assignmentStatus, assignment.id]
+          );
+          
+          await query(
+            `UPDATE public.delivery_partners SET is_available = true WHERE id = $1`,
+            [assignment.delivery_partner_id]
+          );
+        }
+      } catch {}
     }
   }
 
@@ -675,7 +698,7 @@ export class AdminRepository {
     const { data, count } = await query.range(from, to);
 
     // Fetch user profiles & credit account references for payments that have user_id
-    const userIds = Array.from(new Set((data ?? []).map((p) => p.user_id || p.order?.user_id).filter(Boolean))) as string[];
+    const userIds = Array.from(new Set((data ?? []).map((p: any) => p.user_id || p.order?.user_id).filter(Boolean))) as string[];
     let userMap = new Map<string, { full_name: string; email: string; phone: string | null }>();
     let creditMap = new Map<string, { available_credit: number; credit_limit: number }>();
 
@@ -686,14 +709,14 @@ export class AdminRepository {
       ]);
 
       if (profiles) {
-        userMap = new Map(profiles.map((u) => [u.id, { full_name: u.full_name, email: u.email, phone: u.phone ?? null }]));
+        userMap = new Map(profiles.map((u: any) => [u.id, { full_name: u.full_name, email: u.email, phone: u.phone ?? null }]));
       }
       if (credits) {
-        creditMap = new Map(credits.map((c) => [c.user_id, { available_credit: Number(c.available_credit), credit_limit: Number(c.credit_limit) }]));
+        creditMap = new Map(credits.map((c: any) => [c.user_id, { available_credit: Number(c.available_credit), credit_limit: Number(c.credit_limit) }]));
       }
     }
 
-    const paymentsWithDetails = (data ?? []).map((p) => {
+    const paymentsWithDetails = (data ?? []).map((p: any) => {
       const uid = p.user_id || p.order?.user_id;
       const userProfile = uid ? userMap.get(uid) : undefined;
       const creditAcc = uid ? creditMap.get(uid) : undefined;
@@ -710,7 +733,7 @@ export class AdminRepository {
       };
     });
 
-    const validPayments = paymentsWithDetails.filter((p) => {
+    const validPayments = paymentsWithDetails.filter((p: any) => {
       const isCod = ['cod', 'cash', 'collected'].includes(p.payment_method);
       if (isCod) {
         return p.order?.status === 'delivered' || p.order?.status === 'completed';
@@ -778,73 +801,87 @@ export class AdminRepository {
   }
 
   async getAuditLogs(filter: AdminFilter & { tableName?: string } = {}): Promise<PaginatedResponse<AuditEntry>> {
-    const admin = createAdminClient();
     const { search, page = 1, pageSize = 50, sortBy = 'created_at', sortOrder = 'desc', fromDate, toDate, tableName } = filter;
-    let query = admin
-      .from('audit_logs')
-      .select('*, profile:profiles!changed_by(full_name)', { count: 'exact' });
-    if (tableName) query = query.eq('table_name', tableName);
-    if (search) {
-      query = query.or(
-        `table_name.ilike.%${search}%,action.ilike.%${search}%,record_id::text.ilike.%${search}%`,
-      );
+    
+    const whereClauses: string[] = [];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (tableName) {
+      whereClauses.push(`a.table_name = $${paramIdx++}`);
+      params.push(tableName);
     }
-    if (fromDate) query = query.gte('created_at', fromDate);
-    if (toDate) query = query.lte('created_at', toDate);
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, count } = await query.range(from, to);
-    const rawEntries = (data ?? []) as unknown as AuditEntry[];
-    const entries = rawEntries.map((e) => {
-      const entry = e as unknown as Record<string, unknown>;
-      const profile = entry.profile as Record<string, unknown> | undefined;
-      return { ...e, changed_by_name: (profile?.full_name as string) ?? null };
-    });
+    if (fromDate) {
+      whereClauses.push(`a.created_at >= $${paramIdx++}`);
+      params.push(fromDate);
+    }
+    if (toDate) {
+      whereClauses.push(`a.created_at <= $${paramIdx++}`);
+      params.push(toDate);
+    }
+    if (search && search.trim()) {
+      whereClauses.push(`(a.table_name ILIKE $${paramIdx} OR a.action ILIKE $${paramIdx} OR a.record_id ILIKE $${paramIdx})`);
+      params.push(`%${search.trim()}%`);
+      paramIdx++;
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const safeSort = ['created_at', 'action', 'table_name'].includes(sortBy) ? `a.${sortBy}` : 'a.created_at';
+    const safeOrder = sortOrder === 'asc' ? 'ASC' : 'DESC';
+
+    const countRes = await query(`
+      SELECT COUNT(*)::int AS total
+      FROM public.audit_logs a
+      ${whereStr}
+    `, params);
+    const total = countRes.rows[0]?.total ?? 0;
+
+    const offset = (page - 1) * pageSize;
+    const dataParams = [...params, pageSize, offset];
+    const dataRes = await query(`
+      SELECT 
+        a.id,
+        a.user_id,
+        a.action,
+        a.table_name,
+        a.record_id,
+        a.old_data,
+        a.new_data,
+        a.ip_address,
+        a.created_at,
+        a.user_id AS changed_by,
+        u.full_name AS changed_by_name
+      FROM public.audit_logs a
+      LEFT JOIN public.users u ON a.user_id = u.id
+      ${whereStr}
+      ORDER BY ${safeSort} ${safeOrder}
+      LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+    `, dataParams);
+
     return {
-      data: entries,
-      total: count ?? 0,
+      data: dataRes.rows as unknown as AuditEntry[],
+      total,
       page,
       pageSize,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
+      totalPages: Math.ceil(total / pageSize),
     };
   }
 
   async getSystemSettings(): Promise<SystemSetting[]> {
-    const admin = createAdminClient();
-    const fullSelect = 'id, key, value, type, is_secret, description, updated_by, created_at, updated_at';
-    const baseSelect = 'id, key, value, type, description, updated_by, created_at, updated_at';
-
-    // Try the full select first (is_secret exists after 20260811120000).
-    const { data, error } = await admin
-      .from('system_settings')
-      .select(fullSelect)
-      .order('key', { ascending: true });
-
-    if (error && String(error.message).toLowerCase().includes('is_secret')) {
-      // Fresh/legacy DB without is_secret column (migration not applied).
-      // Fall back to the base columns and synthesize is_secret=false so the
-      // settings page still renders and remains editable.
-      const { data: fallback } = await admin
-        .from('system_settings')
-        .select(baseSelect)
-        .order('key', { ascending: true });
-      return ((fallback ?? []) as Array<Record<string, unknown>>).map((r) => ({
-        ...r,
-        is_secret: false,
-      })) as unknown as SystemSetting[];
-    }
-
-    return (data ?? []) as SystemSetting[];
+    const res = await query(`
+      SELECT id, key, value, type, is_secret, description, updated_by, created_at, updated_at
+      FROM public.system_settings
+      ORDER BY key ASC
+    `);
+    return res.rows as SystemSetting[];
   }
 
   async updateSystemSetting(id: string, value: string, updatedBy: string): Promise<void> {
-    const admin = createAdminClient();
-    const { error } = await admin
-      .from('system_settings')
-      .update({ value, updated_by: updatedBy, updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) throw new Error(error.message);
+    await query(`
+      UPDATE public.system_settings
+      SET value = $1, updated_by = $2, updated_at = NOW()
+      WHERE id = $3 OR key = $3
+    `, [value, updatedBy, id]);
   }
 
   async createAuditLog(entry: {
@@ -855,15 +892,21 @@ export class AdminRepository {
     new_data?: Record<string, unknown> | null;
     changed_by?: string | null;
   }): Promise<void> {
-    const admin = createAdminClient();
-    await admin.from('audit_logs').insert({
-      table_name: entry.table_name,
-      record_id: entry.record_id,
-      action: entry.action,
-      old_data: entry.old_data ?? null,
-      new_data: entry.new_data ?? null,
-      changed_by: entry.changed_by,
-    });
+    try {
+      await query(`
+        INSERT INTO public.audit_logs (table_name, record_id, action, old_data, new_data, user_id, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      `, [
+        entry.table_name,
+        entry.record_id ?? null,
+        entry.action,
+        entry.old_data ? JSON.stringify(entry.old_data) : null,
+        entry.new_data ? JSON.stringify(entry.new_data) : null,
+        entry.changed_by ?? null,
+      ]);
+    } catch (e) {
+      console.warn('createAuditLog failed:', e);
+    }
   }
 
   async getUserOrderHistory(userId: string, page = 1, pageSize = 20): Promise<PaginatedResponse<AdminOrder>> {

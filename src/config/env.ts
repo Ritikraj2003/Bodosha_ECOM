@@ -35,6 +35,7 @@ export const env = {
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     isConfigured: !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
   },
+  databaseUrl: process.env.DATABASE_URL,
   app: {
     url: process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
     name: process.env.NEXT_PUBLIC_APP_NAME ?? 'Dilip Da',

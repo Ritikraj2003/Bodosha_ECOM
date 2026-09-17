@@ -15,16 +15,22 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     fetchData();
-    const supabase = createClient();
-    const channel = supabase
-      .channel('admin-dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-        fetchData();
-      })
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    try {
+      const supabase = createClient();
+      if (supabase) {
+        const channel = supabase
+          .channel('admin-dashboard-realtime')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+            fetchData();
+          })
+          .subscribe();
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      }
+    } catch {
+      // Supabase realtime optional fallback
+    }
   }, []);
 
   async function fetchData() {

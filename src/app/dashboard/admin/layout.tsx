@@ -6,9 +6,11 @@ import Link from 'next/link';
 import {
   LayoutDashboard, Users, ShoppingBag, Banknote,
   LogOut, Menu, X, Bell, FolderTree, UtensilsCrossed,
-  ClipboardList, Settings, Megaphone, Store, ShieldCheck, WalletCards
+  ClipboardList, Settings, Megaphone, Store, ShieldCheck, WalletCards,
+  UserCog, KeyRound, ShieldAlert, ArrowRight
 } from 'lucide-react';
-import { getServerSession, isOwnerSession } from '@/features/auth/actions';
+import { getServerSession } from '@/features/auth/actions';
+import { canAccessAdminPage, getFirstAllowedAdminPage } from '@/lib/permissions';
 
 interface SidebarItem {
   label: string;
@@ -19,6 +21,8 @@ interface SidebarItem {
 
 const sidebarItems: SidebarItem[] = [
   { label: 'Dashboard', href: '/dashboard/admin', icon: LayoutDashboard },
+  { label: 'All Users', href: '/dashboard/admin/users', icon: UserCog },
+  { label: 'Roles & Permissions', href: '/dashboard/admin/roles', icon: KeyRound },
   { label: 'In Store', href: '/dashboard/admin/in-store', icon: Store },
   { label: 'Categories', href: '/dashboard/admin/categories', icon: FolderTree },
   { label: 'Products', href: '/dashboard/admin/products', icon: UtensilsCrossed },
@@ -38,22 +42,40 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [adminName, setAdminName] = useState('Admin');
   const [adminRole, setAdminRole] = useState('');
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     (async () => {
       try {
+        const res = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user && mounted) {
+            setAdminName(data.user.fullName || 'Admin');
+            const role = data.user.role || '';
+            setAdminRole(role);
+            setPermissions(data.user.permissions || []);
+            setIsLoaded(true);
+            return;
+          }
+        }
+
         const { user } = await getServerSession();
-        if (user) {
+        if (user && mounted) {
           setAdminName(user.fullName);
-          setAdminRole(user.role ?? '');
-          // The store owner (Dilip Da) is view-only — never serve the admin
-          // console to them, even if their role looks like admin.
-          const owner = await isOwnerSession();
-          if (owner) router.replace('/dashboard/owner');
+          const role = user.role ?? '';
+          setAdminRole(role);
+          setPermissions((user as any).permissions || []);
         }
       } catch {}
+      if (mounted) setIsLoaded(true);
     })();
-  }, [router]);
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const isActive = useCallback((href: string) => {
     if (href === '/dashboard/admin') return pathname === '/dashboard/admin';
@@ -61,11 +83,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [pathname]);
 
   const handleSignOut = async () => {
-    const { createClient } = await import('@/infrastructure/supabase/client');
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      const { logoutAction } = await import('@/features/auth/actions/credentials');
+      await logoutAction();
+    } catch {}
     router.push('/auth/login');
   };
+
+  const visibleSidebarItems = sidebarItems.filter((item) =>
+    canAccessAdminPage(permissions, item.href, adminRole)
+  );
+
+  const isAllowed = !isLoaded || canAccessAdminPage(permissions, pathname, adminRole);
 
   return (
     <div className="min-h-screen bg-zgray flex flex-col lg:flex-row">
@@ -90,7 +119,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="p-3 space-y-0.5 overflow-y-auto max-h-[calc(100vh-4rem)]">
-          {sidebarItems.map((item) => (
+          {visibleSidebarItems.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -133,7 +162,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </button>
 
             <div className="hidden lg:flex items-center gap-2">
-              <span className="text-xs text-ztext-muted">Super Admin</span>
+              <span className="text-xs text-ztext-muted capitalize">
+                {adminRole ? adminRole.replace(/_/g, ' ') : 'Admin'}
+              </span>
             </div>
 
             <div className="flex items-center gap-3">
@@ -147,7 +178,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 </div>
                 <div className="hidden sm:block">
                   <p className="text-sm font-medium text-ztext leading-tight">{adminName}</p>
-                  <p className="text-[11px] text-ztext-lighter leading-tight capitalize">{adminRole.replace('_', ' ')}</p>
+                  <p className="text-[11px] text-ztext-lighter leading-tight capitalize">{adminRole ? adminRole.replace(/_/g, ' ') : 'Staff'}</p>
                 </div>
               </div>
             </div>
@@ -156,7 +187,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Page content */}
         <main className="p-4 lg:p-6">
-          {children}
+          {isAllowed ? (
+            children
+          ) : (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-zcard rounded-2xl border border-zborder max-w-md mx-auto mt-12 shadow-z">
+              <div className="w-16 h-16 rounded-2xl bg-zred/10 text-zred flex items-center justify-center mb-4">
+                <ShieldAlert size={32} />
+              </div>
+              <h2 className="text-xl font-bold text-ztext mb-2">Access Denied</h2>
+              <p className="text-sm text-ztext-light mb-6">
+                You do not have permission to access this page. If you need access, please contact your Super Admin.
+              </p>
+              <Link
+                href={getFirstAllowedAdminPage(permissions, adminRole)}
+                className="button-z button-z-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm"
+              >
+                <span>Go to Allowed Page</span>
+                <ArrowRight size={16} />
+              </Link>
+            </div>
+          )}
         </main>
       </div>
     </div>

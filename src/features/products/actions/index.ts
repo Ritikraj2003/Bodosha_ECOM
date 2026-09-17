@@ -1,8 +1,7 @@
 'use server';
 
 import { getServerSession } from '@/features/auth/actions';
-import { restaurantRepository } from '@/features/restaurants/repositories';
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 import { productRepository, categoryRepository } from '../repositories';
 import type { Product, ProductFormData, Category, CategoryFormData, ProductsFilter } from '../types';
 import { revalidatePath } from 'next/cache';
@@ -27,47 +26,55 @@ interface ApiResponse<T> {
 }
 
 async function getMerchantRestaurantId(): Promise<string | null> {
-  const supabase = createServiceClient();
-  const { user } = await getServerSession();
+  try {
+    const { user } = await getServerSession();
 
-  // 1. Try finding restaurant by user ID if logged in
-  if (user?.id) {
-    const restaurant = await restaurantRepository.findByOwnerId(user.id);
-    if (restaurant?.id) return restaurant.id;
+    // 1. Try finding restaurant by user ID if logged in
+    if (user?.id) {
+      const owned = await query(
+        'SELECT id FROM public.restaurants WHERE owner_id = $1 AND deleted_at IS NULL LIMIT 1',
+        [user.id]
+      );
+      if (owned.rows[0]?.id) return owned.rows[0].id;
+    }
+
+    // 2. Query first active restaurant in DB
+    const firstActive = await query(
+      'SELECT id FROM public.restaurants WHERE is_active = true AND deleted_at IS NULL ORDER BY created_at ASC LIMIT 1'
+    );
+    if (firstActive.rows[0]?.id) return firstActive.rows[0].id;
+
+    // 3. Fallback: Any restaurant in DB
+    const anyRest = await query(
+      'SELECT id FROM public.restaurants WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1'
+    );
+    if (anyRest.rows[0]?.id) return anyRest.rows[0].id;
+
+    // 4. Fallback: Ensure default restaurant exists
+    const ownerId = user?.id || '5c262804-b3d8-4815-a41f-2ce1cab12fa1';
+    const newRest = await query(`
+      INSERT INTO public.restaurants (
+        id, owner_id, name, slug, address_line1, city, state, postal_code, is_active, is_open
+      ) VALUES (
+        'd1111111-1111-1111-1111-111111111111',
+        $1,
+        'Dilip Da Main Store',
+        'dilip-da-main',
+        'Near CIT Kokrajhar Campus',
+        'Kokrajhar',
+        'Assam',
+        '783370',
+        true,
+        true
+      )
+      ON CONFLICT (id) DO UPDATE SET is_active = true, deleted_at = NULL
+      RETURNING id;
+    `, [ownerId]);
+    return newRest.rows[0]?.id ?? null;
+  } catch (e) {
+    console.error('getMerchantRestaurantId error:', e);
+    return null;
   }
-
-  // 2. Fallback: Query first active restaurant in DB using service client (bypasses RLS)
-  if (supabase) {
-    const { data } = await supabase.from('restaurants').select('id').is('deleted_at', null).limit(1).maybeSingle();
-    if (data?.id) return data.id;
-  }
-
-  // 3. Fallback: If DB has 0 restaurants, create a default restaurant using service client
-  const fallbackSupabase = supabase ?? (await (await import('@/infrastructure/supabase/server')).createServerSupabaseClient());
-  if (!fallbackSupabase) return null;
-
-  const ownerId = user?.id || '00000000-0000-0000-0000-000000000000';
-  const { data: newRest, error: createErr } = await fallbackSupabase.from('restaurants').insert({
-    owner_id: ownerId,
-    name: 'Dilip Da Main',
-    slug: `dilip-da-main-${Date.now().toString(36)}`,
-    address_line1: 'Near CIT Kokrajhar',
-    city: 'Kokrajhar',
-    state: 'Assam',
-    postal_code: '783370',
-    opening_time: '08:00',
-    closing_time: '22:00',
-    delivery_fee: 20,
-    min_order_amount: 50,
-    is_active: true,
-    is_open: true,
-    status: 'active'
-  }).select('id').single();
-
-  if (createErr) {
-    console.error('Failed to create default restaurant:', createErr);
-  }
-  return newRest?.id ?? null;
 }
 
 export async function getProducts(filter: ProductsFilter = {}): Promise<ApiResponse<Product[]>> {

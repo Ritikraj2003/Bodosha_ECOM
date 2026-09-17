@@ -1,40 +1,32 @@
 'use server';
 
-import { createServiceClient } from '@/infrastructure/supabase/service';
 import { getServerSession } from '@/features/auth/actions';
+import { query } from '@/infrastructure/db';
 import { getAdminEmails } from '@/lib/settings';
 import { isAdminEmail } from '@/config/auth-access';
 import type { Wallet, WalletTransaction, WalletSummary } from '../types';
 import { notifyBnplFinePush } from '@/lib/push';
 
 async function checkAdminAuth() {
-  const supabase = createServiceClient();
-  if (!supabase) return { authorized: false, error: 'Database service unavailable', admin: null, supabase: null };
-
   const { user: admin } = await getServerSession();
-  if (!admin) return { authorized: false, error: 'Not authenticated', admin: null, supabase: null };
+  if (!admin) return { authorized: false, error: 'Not authenticated', admin: null };
 
   const adminEmails = await getAdminEmails();
   const isAdminByEmail = isAdminEmail(admin.email, adminEmails);
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', admin.id).maybeSingle();
-  const isAuthorized = ['admin', 'super_admin'].includes(profile?.role || admin.role || '') || isAdminByEmail;
+
+  const roleRes = await query<{ role: string }>(
+    `SELECT role FROM public.users WHERE id = $1 LIMIT 1`,
+    [admin.id]
+  );
+  const userRole = roleRes.rows[0]?.role || admin.role || '';
+  const isAuthorized = ['admin', 'super_admin', 'owner'].includes(userRole) || isAdminByEmail;
 
   if (!isAuthorized) {
-    return { authorized: false, error: 'Forbidden. Admin access required.', admin: null, supabase: null };
+    return { authorized: false, error: 'Forbidden. Admin access required.', admin: null };
   }
 
-  return { authorized: true, admin, profile, supabase };
+  return { authorized: true, admin, userRole };
 }
-
-/* 
-// Legacy Global Limit Logic - Kept for reference
-const DEFAULT_CREDIT_LIMIT = 500;
-async function getCreditLimit(): Promise<number> {
-  return getNumericSetting('wallet_credit_limit', DEFAULT_CREDIT_LIMIT);
-}
-*/
-
-
 
 /**
  * Fetch full wallet details for current authenticated user
@@ -44,66 +36,58 @@ export async function getWalletDetails(): Promise<{
   error?: string;
   data?: WalletSummary;
 }> {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Database service unavailable' };
-
-  const { user } = await getServerSession();
-  if (!user) return { success: false, error: 'Not authenticated' };
-
   try {
-    // 1. Fetch user's profile wallet balance
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('wallet_balance')
-      .eq('id', user.id)
-      .maybeSingle();
+    const { user } = await getServerSession();
+    if (!user) return { success: false, error: 'Not authenticated' };
 
-    const profileBalance = Number(profile?.wallet_balance) || 0;
+    // 1. Fetch user profile balance
+    const profileRes = await query<{ wallet_balance: number }>(
+      'SELECT wallet_balance FROM public.profiles WHERE id = $1 LIMIT 1',
+      [user.id]
+    );
+    const profileBalance = Number(profileRes.rows[0]?.wallet_balance) || 0;
 
-    // 2. Fetch record in `wallets` table
+    // 2. Fetch or auto-create unverified wallet in wallets table
     let walletRecord: Wallet | null = null;
-    try {
-      const { data: walletData, error: walletErr } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    const walletRes = await query<Wallet>(
+      'SELECT * FROM public.wallets WHERE user_id = $1 LIMIT 1',
+      [user.id]
+    );
 
-      if (walletErr) {
-        console.error('getWalletDetails error fetching wallets:', walletErr);
-      } else if (walletData) {
-        walletRecord = walletData as Wallet;
-      }
-    } catch (wErr) {
-      console.error('getWalletDetails wallets table error:', wErr);
+    if (walletRes.rows.length > 0) {
+      walletRecord = walletRes.rows[0];
+    } else {
+      // Auto-create wallet row for the user with status 'unverified'
+      const newWallet = await query<Wallet>(`
+        INSERT INTO public.wallets (user_id, balance, status, created_at, updated_at)
+        VALUES ($1, $2, 'unverified', NOW(), NOW())
+        ON CONFLICT (user_id) DO UPDATE SET updated_at = NOW()
+        RETURNING *;
+      `, [user.id, profileBalance]);
+      walletRecord = newWallet.rows[0] || null;
     }
 
     // 3. Fetch transaction history
-    type RawTransaction = Omit<WalletTransaction, 'amount'> & { amount?: number | string | null; reference_id?: string | null };
-    let rawTransactions: RawTransaction[] = [];
-    try {
-      const { data: txData } = await supabase
-        .from('wallet_transactions')
-        .select('*')
-        .eq('wallet_id', walletRecord?.id || '00000000-0000-0000-0000-000000000000')
-        .order('created_at', { ascending: false });
+    const txRes = await query(`
+      SELECT * FROM public.wallet_transactions
+      WHERE wallet_id = $1
+      ORDER BY created_at DESC
+      LIMIT 50;
+    `, [walletRecord?.id || '00000000-0000-0000-0000-000000000000']);
 
-      if (txData) rawTransactions = txData;
-    } catch {
-      // Table wallet_transactions issue
-    }
+    const rawTransactions = txRes.rows;
 
     // Normalize transaction list
-    const transactions: WalletTransaction[] = rawTransactions.map((tx) => {
+    const transactions: WalletTransaction[] = rawTransactions.map((tx: any) => {
       const isCreditType = tx.type === 'debit' ? false : (['credit', 'topup'].includes(tx.type) || Number(tx.amount) > 0);
       return {
         id: tx.id,
         restaurant_id: tx.restaurant_id ?? null,
         wallet_id: tx.wallet_id ?? walletRecord?.id ?? null,
-        user_id: user.id, // User id is derived
+        user_id: user.id,
         type: isCreditType ? 'credit' : 'debit',
         amount: Math.abs(Number(tx.amount) || 0),
-        balance_before: 0, // No longer stored
+        balance_before: 0,
         balance_after: Number(tx.balance_after) || 0,
         order_id: tx.reference_id?.startsWith('ORD') ? tx.reference_id : null,
         payment_reference: tx.reference_id ?? null,
@@ -114,7 +98,6 @@ export async function getWalletDetails(): Promise<{
       };
     });
 
-    // Calculate sum of total credits and debits from transactions
     const creditSum = transactions
       .filter((t) => t.type === 'credit')
       .reduce((sum, t) => sum + t.amount, 0);
@@ -151,9 +134,6 @@ export async function topupWallet(
   amount: number,
   paymentReference = 'Instant UPI / GPay'
 ): Promise<{ success: boolean; error?: string; newBalance?: number }> {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
   const { user } = await getServerSession();
   if (!user) return { success: false, error: 'Not authenticated' };
 
@@ -162,22 +142,16 @@ export async function topupWallet(
   }
 
   try {
-    // 1. Fetch record in `wallets` table as Single Source of Truth
-    const { data: existingWallet, error: walletFetchErr } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('user_id', user.id)
-      .maybeSingle();
+    const existingRes = await query<Wallet>(
+      'SELECT * FROM public.wallets WHERE user_id = $1 LIMIT 1',
+      [user.id]
+    );
+    const existingWallet = existingRes.rows[0];
 
-    if (walletFetchErr || !existingWallet) {
+    if (!existingWallet || existingWallet.status !== 'active') {
       return { success: false, error: 'Your wallet is not active. Please complete KYC.' };
     }
 
-    if (existingWallet.status !== 'active') {
-      return { success: false, error: 'Your wallet is not active. Please complete KYC.' };
-    }
-
-    // If user has an unpaid late fine, they must top up at least the outstanding debt amount
     if (Number(existingWallet.balance) < 0 && Number(existingWallet.total_penalties) > 0) {
       const minRequired = Math.ceil(Math.abs(Number(existingWallet.balance)));
       if (amount < minRequired) {
@@ -193,59 +167,33 @@ export async function topupWallet(
     const balanceAfter = balanceBefore + amount;
     const updatedTotalCredit = (Number(existingWallet.total_credit) || 0) + amount;
 
-    // Retain credit timer if still in overdraft debt, only clear once balance >= 0
     let creditUsedAt = existingWallet.credit_used_at;
     let totalPenalties = Number(existingWallet.total_penalties) || 0;
     if (balanceAfter >= 0) {
       creditUsedAt = null;
-      totalPenalties = 0; // Clear fine because the student has fully repaid debt & penalty
+      totalPenalties = 0;
     }
 
-    // 2. Update `wallets` table
-    const { error: walletUpdateErr } = await supabase
-      .from('wallets')
-      .update({
-        balance: balanceAfter,
-        total_credit: updatedTotalCredit,
-        credit_used_at: creditUsedAt,
-        total_penalties: totalPenalties,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', existingWallet.id);
+    await query(
+      `UPDATE public.wallets 
+       SET balance = $1, total_credit = $2, credit_used_at = $3, total_penalties = $4, updated_at = NOW()
+       WHERE id = $5`,
+      [balanceAfter, updatedTotalCredit, creditUsedAt, totalPenalties, walletId]
+    );
 
-    if (walletUpdateErr) {
-      console.error('Failed updating wallets table:', walletUpdateErr);
-      return { success: false, error: 'Failed to update wallet balance' };
-    }
+    await query(
+      `UPDATE public.profiles SET wallet_balance = $1 WHERE id = $2`,
+      [balanceAfter, user.id]
+    );
 
-    // 3. Keep `profiles` table in sync
-    const { error: profileErr } = await supabase
-      .from('profiles')
-      .update({ wallet_balance: balanceAfter })
-      .eq('id', user.id);
-
-    if (profileErr) {
-      console.error('Failed updating profile wallet balance:', profileErr);
-    }
-
-    // 3. Insert transaction record into `wallet_transactions`
     const txnRef = `TOPUP-${Date.now()}`;
     const descText = `Wallet Top Up (${paymentReference})`;
 
-    if (walletId) {
-      const { error: insertErr } = await supabase.from('wallet_transactions').insert({
-        wallet_id: walletId,
-        type: 'credit',
-        amount: amount,
-        balance_after: balanceAfter,
-        description: descText,
-        reference_id: txnRef,
-      });
-
-      if (insertErr) {
-        console.error('Wallet transaction insert failed:', insertErr);
-      }
-    }
+    await query(
+      `INSERT INTO public.wallet_transactions (wallet_id, type, amount, balance_after, description, reference_id, created_at)
+       VALUES ($1, 'credit', $2, $3, $4, $5, NOW())`,
+      [walletId, amount, balanceAfter, descText, txnRef]
+    );
 
     return { success: true, newBalance: balanceAfter };
   } catch (err: unknown) {
@@ -290,7 +238,6 @@ export async function verifyAndTopupWalletWithRazorpay({
   return topupWallet(amount, paymentRef);
 }
 
-
 /**
  * Deduct wallet balance (e.g. for order checkout)
  */
@@ -299,99 +246,70 @@ export async function deductWalletBalance(
   orderId: string,
   description = 'Order Payment'
 ): Promise<{ success: boolean; error?: string; newBalance?: number }> {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
   const { user } = await getServerSession();
   if (!user) return { success: false, error: 'Not authenticated' };
 
   if (!amount || amount <= 0) return { success: false, error: 'Invalid amount' };
 
   try {
-    let walletId: string | null = null;
-    let userCreditLimit = 0;
-    let finalBalance = 0;
-    
-    try {
-      const { data: existingWallet } = await supabase
-        .from('wallets')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    const existingRes = await query<Wallet>(
+      'SELECT * FROM public.wallets WHERE user_id = $1 LIMIT 1',
+      [user.id]
+    );
+    const existingWallet = existingRes.rows[0];
 
-      if (existingWallet) {
-        if (existingWallet.status !== 'active') {
-          return { success: false, error: 'Your wallet is not active.' };
-        }
-
-        // Block wallet usage if user has an unpaid late repayment penalty
-        if (Number(existingWallet.balance) < 0 && Number(existingWallet.total_penalties) > 0) {
-          return {
-            success: false,
-            error: `You have an unpaid Late Repayment Penalty of ₹${Number(existingWallet.total_penalties).toLocaleString('en-IN')}. Please top up your wallet to clear pending dues before placing an order.`,
-          };
-        }
-
-        walletId = existingWallet.id;
-        userCreditLimit = Number(existingWallet.credit_limit) || 0;
-        
-        const balanceBeforeWallet = Number(existingWallet.balance) || 0;
-        if (balanceBeforeWallet - amount < -userCreditLimit) {
-          return { success: false, error: `Credit limit reached (Max Overdraft: -₹${userCreditLimit}). Available balance: ₹${balanceBeforeWallet.toLocaleString('en-IN')}` };
-        }
-
-        const balanceAfterWallet = balanceBeforeWallet - amount;
-        finalBalance = balanceAfterWallet;
-        
-        // Track credit_used_at when balance goes negative for the first time
-        let creditUsedAt = existingWallet.credit_used_at;
-        if (balanceAfterWallet < 0 && !creditUsedAt) {
-           creditUsedAt = new Date().toISOString();
-        }
-
-        const updatedTotalDebit = (Number(existingWallet.total_debit) || 0) + amount;
-        await supabase
-          .from('wallets')
-          .update({
-            balance: balanceAfterWallet,
-            total_debit: updatedTotalDebit,
-            credit_used_at: creditUsedAt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingWallet.id);
-          
-        // 1. Sync profiles table
-        await supabase
-          .from('profiles')
-          .update({ wallet_balance: balanceAfterWallet })
-          .eq('id', user.id);
-      } else {
-        return { success: false, error: 'Wallet not found. Please activate your wallet.' };
-      }
-    } catch (e) {
-      console.error('Error in wallet deduction:', e);
-      return { success: false, error: 'Failed to deduct wallet balance.' };
+    if (!existingWallet) {
+      return { success: false, error: 'Wallet not found. Please activate your wallet.' };
     }
 
-    // 3. Insert transaction record
+    if (existingWallet.status !== 'active') {
+      return { success: false, error: 'Your wallet is not active.' };
+    }
+
+    if (Number(existingWallet.balance) < 0 && Number(existingWallet.total_penalties) > 0) {
+      return {
+        success: false,
+        error: `You have an unpaid Late Repayment Penalty of ₹${Number(existingWallet.total_penalties).toLocaleString('en-IN')}. Please top up your wallet to clear pending dues before placing an order.`,
+      };
+    }
+
+    const walletId = existingWallet.id;
+    const userCreditLimit = Number(existingWallet.credit_limit) || 0;
+    const balanceBeforeWallet = Number(existingWallet.balance) || 0;
+    if (balanceBeforeWallet - amount < -userCreditLimit) {
+      return {
+        success: false,
+        error: `Credit limit reached (Max Overdraft: -₹${userCreditLimit}). Available balance: ₹${balanceBeforeWallet.toLocaleString('en-IN')}`,
+      };
+    }
+
+    const balanceAfterWallet = balanceBeforeWallet - amount;
+    let creditUsedAt = existingWallet.credit_used_at;
+    if (balanceAfterWallet < 0 && !creditUsedAt) {
+      creditUsedAt = new Date().toISOString();
+    }
+
+    const updatedTotalDebit = (Number(existingWallet.total_debit) || 0) + amount;
+    await query(
+      `UPDATE public.wallets 
+       SET balance = $1, total_debit = $2, credit_used_at = $3, updated_at = NOW()
+       WHERE id = $4`,
+      [balanceAfterWallet, updatedTotalDebit, creditUsedAt, walletId]
+    );
+
+    await query(
+      `UPDATE public.profiles SET wallet_balance = $1 WHERE id = $2`,
+      [balanceAfterWallet, user.id]
+    );
+
     const descText = description || `Payment for order ${orderId}`;
+    await query(
+      `INSERT INTO public.wallet_transactions (wallet_id, type, amount, balance_after, description, reference_id, created_at)
+       VALUES ($1, 'debit', $2, $3, $4, $5, NOW())`,
+      [walletId, amount, balanceAfterWallet, descText, orderId]
+    );
 
-    if (walletId) {
-      const { error: insertErr } = await supabase.from('wallet_transactions').insert({
-        wallet_id: walletId,
-        type: 'debit',
-        amount: amount,
-        balance_after: finalBalance,
-        description: descText,
-        reference_id: orderId,
-      });
-
-      if (insertErr) {
-        console.error('Wallet transaction insert failed:', insertErr);
-      }
-    }
-
-    return { success: true, newBalance: finalBalance };
+    return { success: true, newBalance: balanceAfterWallet };
   } catch (err: unknown) {
     console.error('deductWalletBalance error:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Failed to deduct wallet balance' };
@@ -407,46 +325,38 @@ export async function refundWalletOrder(
   orderTrackingCode: string,
   reason = 'Order cancelled'
 ): Promise<{ success: boolean; error?: string; newBalance?: number }> {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
   if (!amount || amount <= 0) return { success: false, error: 'Invalid refund amount' };
 
   try {
-    const { data: existingWallet } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (!existingWallet) {
-      return { success: false, error: 'Wallet not found' };
-    }
+    const existingRes = await query<Wallet>(
+      'SELECT * FROM public.wallets WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
+    const existingWallet = existingRes.rows[0];
+    if (!existingWallet) return { success: false, error: 'Wallet not found' };
 
     const balanceBefore = Number(existingWallet.balance) || 0;
     const balanceAfter = balanceBefore + amount;
 
-    await supabase
-      .from('wallets')
-      .update({
-        balance: balanceAfter,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', existingWallet.id);
-
-    await supabase
-      .from('profiles')
-      .update({ wallet_balance: balanceAfter })
-      .eq('id', userId);
-
-    await supabase.from('wallet_transactions').insert({
-      wallet_id: existingWallet.id,
-      type: 'credit',
-      amount: amount,
-      balance_after: balanceAfter,
-      description: `Refund for order #${orderTrackingCode}: ${reason}`,
-      reference_id: `REFUND-${orderTrackingCode}-${Date.now()}`,
-    });
+    await query(
+      `UPDATE public.wallets SET balance = $1, updated_at = NOW() WHERE id = $2`,
+      [balanceAfter, existingWallet.id]
+    );
+    await query(
+      `UPDATE public.profiles SET wallet_balance = $1 WHERE id = $2`,
+      [balanceAfter, userId]
+    );
+    await query(
+      `INSERT INTO public.wallet_transactions (wallet_id, type, amount, balance_after, description, reference_id, created_at)
+       VALUES ($1, 'credit', $2, $3, $4, $5, NOW())`,
+      [
+        existingWallet.id,
+        amount,
+        balanceAfter,
+        `Refund for order #${orderTrackingCode}: ${reason}`,
+        `REFUND-${orderTrackingCode}-${Date.now()}`,
+      ]
+    );
 
     return { success: true, newBalance: balanceAfter };
   } catch (err: unknown) {
@@ -473,104 +383,75 @@ export async function getWalletTransactions() {
 }
 
 export async function adminCreditWallet(userId: string, amount: number, note: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
-  const { user: admin } = await getServerSession();
-  if (!admin) return { success: false, error: 'Not authenticated' };
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', admin.id)
-    .maybeSingle();
-
-  if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
-    return { success: false, error: 'Forbidden' };
-  }
+  const auth = await checkAdminAuth();
+  if (!auth.authorized) return { success: false, error: auth.error || 'Forbidden' };
 
   if (amount <= 0) return { success: false, error: 'Amount must be positive' };
 
-  const { data: userProfile } = await supabase
-    .from('profiles')
-    .select('wallet_balance')
-    .eq('id', userId)
-    .maybeSingle();
-
-  const { data: w } = await supabase.from('wallets').select('id, balance, total_credit').eq('user_id', userId).maybeSingle();
-  
-  const balanceBefore = w ? (Number(w.balance) || 0) : (Number(userProfile?.wallet_balance) || 0);
-  const balanceAfter = balanceBefore + amount;
-
-  await supabase.from('profiles').update({ wallet_balance: balanceAfter }).eq('id', userId);
-
-  let walletId: string | null = null;
   try {
+    const userProfileRes = await query<{ wallet_balance: number }>(
+      'SELECT wallet_balance FROM public.profiles WHERE id = $1 LIMIT 1',
+      [userId]
+    );
+    const wRes = await query<Wallet>(
+      'SELECT id, balance, total_credit FROM public.wallets WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
+    const w = wRes.rows[0];
+
+    const balanceBefore = w ? (Number(w.balance) || 0) : (Number(userProfileRes.rows[0]?.wallet_balance) || 0);
+    const balanceAfter = balanceBefore + amount;
+
+    await query('UPDATE public.profiles SET wallet_balance = $1 WHERE id = $2', [balanceAfter, userId]);
+
+    let walletId: string | null = null;
     if (w) {
       walletId = w.id;
-      await supabase.from('wallets').update({
-        balance: balanceAfter,
-        total_credit: (Number(w.total_credit) || 0) + amount,
-        updated_at: new Date().toISOString(),
-      }).eq('id', w.id);
+      await query(
+        `UPDATE public.wallets SET balance = $1, total_credit = (COALESCE(total_credit, 0) + $2), updated_at = NOW() WHERE id = $3`,
+        [balanceAfter, amount, w.id]
+      );
     } else {
-      // Create a wallet so transactions have a valid wallet_id
-      const { data: newW, error: createErr } = await supabase.from('wallets').insert({
-        user_id: userId,
-        balance: balanceAfter,
-        total_credit: amount,
-        total_debit: 0,
-        status: 'active'
-      }).select('id').single();
-      
-      if (!createErr && newW) {
-        walletId = newW.id;
-      }
+      const insRes = await query<{ id: string }>(
+        `INSERT INTO public.wallets (user_id, balance, total_credit, total_debit, status, created_at, updated_at)
+         VALUES ($1, $2, $3, 0, 'active', NOW(), NOW())
+         RETURNING id`,
+        [userId, balanceAfter, amount]
+      );
+      walletId = insRes.rows[0]?.id || null;
     }
-  } catch (err) {
-    console.error('Wallet update/create error:', err);
+
+    const txnRef = `admin:${auth.admin?.id || 'admin'}`;
+    const noteText = note ? `Bonus: ${note}` : 'Bonus credited by admin';
+
+    if (walletId) {
+      await query(
+        `INSERT INTO public.wallet_transactions (wallet_id, amount, type, balance_after, description, reference_id, created_at)
+         VALUES ($1, $2, 'credit', $3, $4, $5, NOW())`,
+        [walletId, amount, balanceAfter, noteText, txnRef]
+      );
+    }
+
+    return { success: true, balance: balanceAfter };
+  } catch (err: unknown) {
+    console.error('adminCreditWallet error:', err);
+    return { success: false, error: err instanceof Error ? err.message : 'Failed to credit wallet' };
   }
-
-  const txnRef = `admin:${admin.id}`;
-  const noteText = note ? `Bonus: ${note}` : 'Bonus credited by admin';
-
-  const { error: fullInsertErr } = await supabase.from('wallet_transactions').insert({
-    wallet_id: walletId,
-    amount,
-    type: 'credit',
-    balance_after: balanceAfter,
-    description: noteText,
-    reference_id: txnRef,
-  });
-
-  if (fullInsertErr) {
-    console.error('Failed full insert:', fullInsertErr);
-    return { success: false, error: 'Failed to record transaction: ' + fullInsertErr.message };
-  }
-
-  return { success: true, balance: balanceAfter };
 }
 
 export async function getAdminUserWalletBalance(userId: string): Promise<{ success: boolean; balance?: number; status?: string; error?: string }> {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
-  const { user: admin } = await getServerSession();
-  if (!admin) return { success: false, error: 'Not authenticated' };
+  const auth = await checkAdminAuth();
+  if (!auth.authorized) return { success: false, error: auth.error || 'Forbidden' };
 
   try {
-    const { data: profile } = await supabase.from('profiles').select('role').eq('id', admin.id).maybeSingle();
-    if (!profile || !['admin', 'super_admin'].includes(profile.role)) {
-      return { success: false, error: 'Forbidden' };
-    }
-
-    const { data: wallet } = await supabase.from('wallets').select('balance, status').eq('user_id', userId).maybeSingle();
-    
-    if (!wallet) {
+    const res = await query<{ balance: number; status: string }>(
+      'SELECT balance, status FROM public.wallets WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
+    if (res.rows.length === 0) {
       return { success: true, balance: 0, status: 'unverified' };
     }
-
-    return { success: true, balance: Number(wallet.balance) || 0, status: wallet.status };
+    return { success: true, balance: Number(res.rows[0].balance) || 0, status: res.rows[0].status };
   } catch (err: unknown) {
     console.error('getAdminUserWalletBalance error:', err);
     return { success: false, error: 'Failed to fetch balance' };
@@ -587,68 +468,36 @@ export async function submitWalletKyc(data: {
   kycPhotoUrl: string;
   panCardUrl: string;
 }): Promise<{ success: boolean; error?: string }> {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Database service unavailable' };
-
   const { user } = await getServerSession();
   if (!user) return { success: false, error: 'Not authenticated' };
 
   try {
-    const { data: existingWallet, error: fetchErr } = await supabase
-      .from('wallets')
-      .select('id, status')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (fetchErr) {
-      console.error('submitWalletKyc fetch error:', fetchErr);
-    }
+    const existingRes = await query<{ id: string; status: string }>(
+      'SELECT id, status FROM public.wallets WHERE user_id = $1 LIMIT 1',
+      [user.id]
+    );
+    const existingWallet = existingRes.rows[0];
 
     if (existingWallet && existingWallet.status === 'active') {
       return { success: false, error: 'Wallet is already active' };
     }
 
-    const now = new Date().toISOString();
-
     if (existingWallet) {
-      const { error: updateErr } = await supabase
-        .from('wallets')
-        .update({
-          kyc_name: data.kycName,
-          kyc_email: data.kycEmail,
-          document_type: data.documentType,
-          kyc_photo_url: data.kycPhotoUrl,
-          pan_card_url: data.panCardUrl,
-          status: 'pending',
-          kyc_submitted_at: now,
-          updated_at: now,
-        })
-        .eq('id', existingWallet.id);
-
-      if (updateErr) {
-        console.error('submitWalletKyc update error:', updateErr);
-        return { success: false, error: updateErr.message || 'Failed to update KYC request' };
-      }
+      await query(
+        `UPDATE public.wallets
+         SET kyc_name = $1, kyc_email = $2, document_type = $3, kyc_photo_url = $4, pan_card_url = $5,
+             status = 'pending', kyc_submitted_at = NOW(), updated_at = NOW()
+         WHERE id = $6`,
+        [data.kycName, data.kycEmail, data.documentType, data.kycPhotoUrl, data.panCardUrl, existingWallet.id]
+      );
     } else {
-      const { error: insertErr } = await supabase.from('wallets').insert({
-        user_id: user.id,
-        balance: 0,
-        total_credit: 0,
-        total_debit: 0,
-        credit_limit: 0,
-        status: 'pending',
-        kyc_name: data.kycName,
-        kyc_email: data.kycEmail,
-        document_type: data.documentType,
-        kyc_photo_url: data.kycPhotoUrl,
-        pan_card_url: data.panCardUrl,
-        kyc_submitted_at: now,
-      });
-
-      if (insertErr) {
-        console.error('submitWalletKyc insert error:', insertErr);
-        return { success: false, error: insertErr.message || 'Failed to submit KYC request' };
-      }
+      await query(
+        `INSERT INTO public.wallets (
+           user_id, balance, total_credit, total_debit, credit_limit, status,
+           kyc_name, kyc_email, document_type, kyc_photo_url, pan_card_url, kyc_submitted_at, created_at, updated_at
+         ) VALUES ($1, 0, 0, 0, 0, 'pending', $2, $3, $4, $5, $6, NOW(), NOW(), NOW())`,
+        [user.id, data.kycName, data.kycEmail, data.documentType, data.kycPhotoUrl, data.panCardUrl]
+      );
     }
 
     return { success: true };
@@ -663,19 +512,13 @@ export async function submitWalletKyc(data: {
 
 export async function getPendingWalletKycs(): Promise<{ success: boolean; data?: Wallet[]; error?: string }> {
   const auth = await checkAdminAuth();
-  if (!auth.authorized || !auth.supabase) return { success: false, error: auth.error };
-  const { supabase } = auth;
+  if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    const { data: kycs, error } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('status', 'pending')
-      .order('kyc_submitted_at', { ascending: false });
-
-    if (error) throw error;
-
-    return { success: true, data: kycs as Wallet[] };
+    const res = await query<Wallet>(
+      `SELECT * FROM public.wallets WHERE status = 'pending' ORDER BY kyc_submitted_at DESC NULLS LAST`
+    );
+    return { success: true, data: res.rows };
   } catch (err: unknown) {
     console.error('getPendingWalletKycs error:', err);
     return { success: false, error: err instanceof Error ? err.message : 'Failed to fetch pending KYCs' };
@@ -684,48 +527,29 @@ export async function getPendingWalletKycs(): Promise<{ success: boolean; data?:
 
 export async function approveWalletKyc(walletId: string, creditLimit: number = 0): Promise<{ success: boolean; error?: string }> {
   const auth = await checkAdminAuth();
-  if (!auth.authorized || !auth.supabase) return { success: false, error: auth.error };
-  const { supabase } = auth;
+  if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    const { data: existing } = await supabase
-      .from('wallets')
-      .select('id, user_id')
-      .or(`id.eq.${walletId},user_id.eq.${walletId}`)
-      .maybeSingle();
+    const res = await query(
+      `UPDATE public.wallets
+       SET status = 'active', credit_limit = $2, kyc_approved_at = NOW(), updated_at = NOW()
+       WHERE id = $1 OR user_id = $1`,
+      [walletId, creditLimit]
+    );
 
-    if (existing) {
-      const { error: updateErr } = await supabase
-        .from('wallets')
-        .update({
-          status: 'active',
-          credit_limit: creditLimit,
-          kyc_approved_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-
-      if (updateErr) throw updateErr;
-    } else {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .eq('id', walletId)
-        .maybeSingle();
-
-      const { error: insertErr } = await supabase.from('wallets').insert({
-        user_id: walletId,
-        balance: 0,
-        total_credit: 0,
-        total_debit: 0,
-        credit_limit: creditLimit,
-        status: 'active',
-        kyc_name: profile?.full_name || 'Student',
-        kyc_email: profile?.email || '',
-        kyc_approved_at: new Date().toISOString(),
-      });
-
-      if (insertErr) throw insertErr;
+    if (res.rowCount === 0) {
+      const pRes = await query<{ email: string; full_name: string }>(
+        'SELECT email, full_name FROM public.profiles WHERE id = $1 LIMIT 1',
+        [walletId]
+      );
+      const profile = pRes.rows[0];
+      await query(
+        `INSERT INTO public.wallets (
+           user_id, balance, total_credit, total_debit, credit_limit, status,
+           kyc_name, kyc_email, kyc_approved_at, created_at, updated_at
+         ) VALUES ($1, 0, 0, 0, $2, 'active', $3, $4, NOW(), NOW(), NOW())`,
+        [walletId, creditLimit, profile?.full_name || 'Student', profile?.email || '']
+      );
     }
 
     return { success: true };
@@ -737,47 +561,13 @@ export async function approveWalletKyc(walletId: string, creditLimit: number = 0
 
 export async function updateWalletCreditLimit(walletId: string, creditLimit: number): Promise<{ success: boolean; error?: string }> {
   const auth = await checkAdminAuth();
-  if (!auth.authorized || !auth.supabase) return { success: false, error: auth.error };
-  const { supabase } = auth;
+  if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    const { data: existing } = await supabase
-      .from('wallets')
-      .select('id, user_id')
-      .or(`id.eq.${walletId},user_id.eq.${walletId}`)
-      .maybeSingle();
-
-    if (existing) {
-      const { error: updateErr } = await supabase
-        .from('wallets')
-        .update({
-          credit_limit: creditLimit,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-
-      if (updateErr) throw updateErr;
-    } else {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .eq('id', walletId)
-        .maybeSingle();
-
-      const { error: insertErr } = await supabase.from('wallets').insert({
-        user_id: walletId,
-        balance: 0,
-        total_credit: 0,
-        total_debit: 0,
-        credit_limit: creditLimit,
-        status: 'active',
-        kyc_name: profile?.full_name || 'Student',
-        kyc_email: profile?.email || '',
-      });
-
-      if (insertErr) throw insertErr;
-    }
-
+    await query(
+      `UPDATE public.wallets SET credit_limit = $2, updated_at = NOW() WHERE id = $1 OR user_id = $1`,
+      [walletId, creditLimit]
+    );
     return { success: true };
   } catch (err: unknown) {
     console.error('updateWalletCreditLimit error:', err);
@@ -787,49 +577,13 @@ export async function updateWalletCreditLimit(walletId: string, creditLimit: num
 
 export async function rejectWalletKyc(walletId: string, reason: string): Promise<{ success: boolean; error?: string }> {
   const auth = await checkAdminAuth();
-  if (!auth.authorized || !auth.supabase) return { success: false, error: auth.error };
-  const { supabase } = auth;
+  if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    const { data: existing } = await supabase
-      .from('wallets')
-      .select('id, user_id')
-      .or(`id.eq.${walletId},user_id.eq.${walletId}`)
-      .maybeSingle();
-
-    if (existing) {
-      const { error: updateErr } = await supabase
-        .from('wallets')
-        .update({
-          status: 'rejected',
-          kyc_rejection_reason: reason,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-
-      if (updateErr) throw updateErr;
-    } else {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .eq('id', walletId)
-        .maybeSingle();
-
-      const { error: insertErr } = await supabase.from('wallets').insert({
-        user_id: walletId,
-        balance: 0,
-        total_credit: 0,
-        total_debit: 0,
-        credit_limit: 0,
-        status: 'rejected',
-        kyc_rejection_reason: reason,
-        kyc_name: profile?.full_name || 'Student',
-        kyc_email: profile?.email || '',
-      });
-
-      if (insertErr) throw insertErr;
-    }
-
+    await query(
+      `UPDATE public.wallets SET status = 'rejected', kyc_rejection_reason = $2, updated_at = NOW() WHERE id = $1 OR user_id = $1`,
+      [walletId, reason]
+    );
     return { success: true };
   } catch (err: unknown) {
     console.error('rejectWalletKyc error:', err);
@@ -838,24 +592,14 @@ export async function rejectWalletKyc(walletId: string, reason: string): Promise
 }
 
 export async function processBnplPenalties(): Promise<{ success: boolean; processedCount?: number; error?: string }> {
-  // This function should be called by a secure Cron endpoint.
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
   try {
-    // 1. Fetch all wallets that have a negative balance and a credit_used_at timestamp.
-    // We only care about wallets that are currently in overdraft.
-    const { data: overdueWallets, error: fetchErr } = await supabase
-      .from('wallets')
-      .select('id, user_id, balance, credit_used_at, total_debit, total_penalties')
-      .lt('balance', 0)
-      .not('credit_used_at', 'is', null);
+    const overdueRes = await query<any>(`
+      SELECT id, user_id, balance, credit_used_at, total_debit, total_penalties
+      FROM public.wallets
+      WHERE balance < 0 AND credit_used_at IS NOT NULL
+    `);
 
-    if (fetchErr) {
-      console.error('Error fetching overdue wallets:', fetchErr);
-      return { success: false, error: fetchErr.message };
-    }
-
+    const overdueWallets = overdueRes.rows;
     if (!overdueWallets || overdueWallets.length === 0) {
       return { success: true, processedCount: 0 };
     }
@@ -867,31 +611,19 @@ export async function processBnplPenalties(): Promise<{ success: boolean; proces
 
     for (const wallet of overdueWallets) {
       if (!wallet.credit_used_at) continue;
-
       const creditUsedDate = new Date(wallet.credit_used_at);
       const diffTime = Math.abs(now.getTime() - creditUsedDate.getTime());
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-      // How many 30-day periods have passed?
       const expectedPenaltyCount = Math.floor(diffDays / PENALTY_PERIOD_DAYS);
 
       if (expectedPenaltyCount > 0) {
-        // Sum total penalty amount ALREADY applied in this specific debt cycle
-        const { data: existingPenaltyTxs, error: txErr } = await supabase
-          .from('wallet_transactions')
-          .select('amount')
-          .eq('wallet_id', wallet.id)
-          .eq('type', 'debit')
-          .ilike('description', 'Late Repayment Penalty%')
-          .gte('created_at', wallet.credit_used_at);
+        const existingTxRes = await query<{ amount: number }>(`
+          SELECT amount FROM public.wallet_transactions
+          WHERE wallet_id = $1 AND type = 'debit' AND description ILIKE 'Late Repayment Penalty%' AND created_at >= $2
+        `, [wallet.id, wallet.credit_used_at]);
 
-        if (txErr) {
-          console.error(`Error checking transactions for wallet ${wallet.id}:`, txErr);
-          continue;
-        }
-
-        const totalPenaltyAppliedAmount = (existingPenaltyTxs || []).reduce(
-          (sum, tx) => sum + (Number(tx.amount) || 0),
+        const totalPenaltyAppliedAmount = existingTxRes.rows.reduce(
+          (sum: number, tx: any) => sum + (Number(tx.amount) || 0),
           0
         );
         const appliedPenaltiesCount = Math.floor(totalPenaltyAppliedAmount / PENALTY_AMOUNT);
@@ -899,51 +631,34 @@ export async function processBnplPenalties(): Promise<{ success: boolean; proces
 
         if (penaltiesToApply > 0) {
           const totalFine = penaltiesToApply * PENALTY_AMOUNT;
-
-          // Update Wallet Balance
           const newBalance = Number(wallet.balance) - totalFine;
           const newTotalDebit = (Number(wallet.total_debit) || 0) + totalFine;
           const newTotalPenalties = (Number(wallet.total_penalties) || 0) + totalFine;
 
-          const { error: updateErr } = await supabase
-            .from('wallets')
-            .update({
-              balance: newBalance,
-              total_debit: newTotalDebit,
-              total_penalties: newTotalPenalties,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', wallet.id);
+          await query(`
+            UPDATE public.wallets
+            SET balance = $1, total_debit = $2, total_penalties = $3, updated_at = NOW()
+            WHERE id = $4
+          `, [newBalance, newTotalDebit, newTotalPenalties, wallet.id]);
 
-          if (!updateErr) {
-            // Also sync profiles table
-            if (wallet.user_id) {
-              await supabase
-                .from('profiles')
-                .update({ wallet_balance: newBalance })
-                .eq('id', wallet.user_id);
-            }
-
-            // Insert Wallet Transaction
-            await supabase.from('wallet_transactions').insert({
-              wallet_id: wallet.id,
-              type: 'debit',
-              amount: totalFine,
-              balance_after: newBalance,
-              description: `Late Repayment Penalty (${penaltiesToApply}x period)`,
-            });
-            
-            // Dispatch native Web Push to student's registered devices
-            if (wallet.user_id) {
-              notifyBnplFinePush({
-                userId: wallet.user_id,
-                amount: totalFine,
-                newBalance,
-              }).catch((err) => console.error('BNPL fine push error:', err));
-            }
-
-            processedCount++;
+          if (wallet.user_id) {
+            await query(`UPDATE public.profiles SET wallet_balance = $1 WHERE id = $2`, [newBalance, wallet.user_id]);
           }
+
+          await query(`
+            INSERT INTO public.wallet_transactions (wallet_id, type, amount, balance_after, description, created_at)
+            VALUES ($1, 'debit', $2, $3, $4, NOW())
+          `, [wallet.id, totalFine, newBalance, `Late Repayment Penalty (${penaltiesToApply}x period)`]);
+
+          if (wallet.user_id) {
+            notifyBnplFinePush({
+              userId: wallet.user_id,
+              amount: totalFine,
+              newBalance,
+            }).catch((err) => console.error('BNPL fine push error:', err));
+          }
+
+          processedCount++;
         }
       }
     }
@@ -957,60 +672,31 @@ export async function processBnplPenalties(): Promise<{ success: boolean; proces
 
 export async function getAllWallets(): Promise<{ success: boolean; data?: Wallet[]; error?: string }> {
   const auth = await checkAdminAuth();
-  if (!auth.authorized || !auth.supabase) return { success: false, error: auth.error };
-  const { supabase } = auth;
+  if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    // 1. Fetch only wallets with a submitted KYC / wallet request
-    const { data: wallets, error: walletsErr } = await supabase
-      .from('wallets')
-      .select('*')
-      .or('kyc_submitted_at.not.is.null,status.in.(pending,active,rejected)')
-      .order('kyc_submitted_at', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false });
+    const walletsRes = await query<any>(`
+      SELECT 
+        w.*,
+        COALESCE(w.kyc_name, p.full_name, u.full_name, 'Student') AS kyc_name,
+        COALESCE(w.kyc_email, p.email, u.email, '') AS kyc_email
+      FROM public.wallets w
+      LEFT JOIN public.profiles p ON p.id = w.user_id
+      LEFT JOIN public.users u ON u.id = w.user_id
+      WHERE w.kyc_submitted_at IS NOT NULL OR w.status IN ('pending', 'active', 'rejected')
+      ORDER BY w.kyc_submitted_at DESC NULLS LAST, w.created_at DESC;
+    `);
 
-    if (walletsErr) {
-      console.error('getAllWallets query error:', walletsErr);
-      throw new Error(walletsErr.message);
-    }
-
-    const submittedWallets = (wallets || []).filter((w) => {
-      // Only include students who have actually submitted a KYC wallet request
-      return Boolean(w.kyc_submitted_at || w.kyc_photo_url || w.pan_card_url || ['pending', 'active', 'rejected'].includes(w.status));
-    });
-
-    // 2. Fetch profiles only for user details enrichment of those submitted wallets
-    const userIds = submittedWallets.map((w) => w.user_id).filter(Boolean);
-    let profilesMap = new Map<string, { id: string; email?: string; full_name?: string }>();
-
-    if (userIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .in('id', userIds);
-
-      if (profiles) {
-        profilesMap = new Map(profiles.map((p) => [p.id, p]));
-      }
-    }
-
-    // Enrich submitted wallets with student name/email and clear legacy paid fines
-    const enrichedWallets: Wallet[] = [];
-    for (const w of submittedWallets) {
-      const p = profilesMap.get(w.user_id);
+    const enrichedWallets: Wallet[] = walletsRes.rows.map((w) => {
       let penalties = Number(w.total_penalties) || 0;
       if (Number(w.balance) >= 0 && penalties > 0) {
-        // Debt is already repaid; reset legacy fine to 0 in DB
         penalties = 0;
-        supabase.from('wallets').update({ total_penalties: 0 }).eq('id', w.id).then();
       }
-      enrichedWallets.push({
+      return {
         ...w,
         total_penalties: penalties,
-        kyc_name: w.kyc_name || p?.full_name || 'Student',
-        kyc_email: w.kyc_email || p?.email || '',
-      });
-    }
+      };
+    });
 
     return { success: true, data: enrichedWallets };
   } catch (err: unknown) {
@@ -1021,35 +707,24 @@ export async function getAllWallets(): Promise<{ success: boolean; data?: Wallet
 
 export async function getAdminWalletTransactions(walletId: string): Promise<{ success: boolean; data?: WalletTransaction[]; error?: string }> {
   const auth = await checkAdminAuth();
-  if (!auth.authorized || !auth.supabase) return { success: false, error: auth.error };
-  const { supabase } = auth;
+  if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    const { data: wallet } = await supabase
-      .from('wallets')
-      .select('id')
-      .or(`id.eq.${walletId},user_id.eq.${walletId}`)
-      .maybeSingle();
+    const txRes = await query(
+      `SELECT wt.* 
+       FROM public.wallet_transactions wt
+       JOIN public.wallets w ON wt.wallet_id = w.id
+       WHERE w.id = $1 OR w.user_id = $1
+       ORDER BY wt.created_at DESC`,
+      [walletId]
+    );
 
-    if (!wallet) {
-      return { success: true, data: [] };
-    }
-
-    const { data: txData, error } = await supabase
-      .from('wallet_transactions')
-      .select('*')
-      .eq('wallet_id', wallet.id)
-      .order('created_at', { ascending: false });
-
-    if (error) throw error;
-    
-    // Normalize transactions similar to getWalletDetails
-    const transactions = (txData || []).map(tx => {
+    const transactions = (txRes.rows || []).map((tx: any) => {
       const isCreditType = tx.type === 'debit' ? false : (['credit', 'topup'].includes(tx.type) || Number(tx.amount) > 0);
       return {
         ...tx,
         type: isCreditType ? 'credit' : 'debit',
-        amount: Math.abs(Number(tx.amount) || 0)
+        amount: Math.abs(Number(tx.amount) || 0),
       };
     }) as WalletTransaction[];
 
@@ -1062,48 +737,13 @@ export async function getAdminWalletTransactions(walletId: string): Promise<{ su
 
 export async function updateWalletStatus(walletId: string, status: Wallet['status']): Promise<{ success: boolean; error?: string }> {
   const auth = await checkAdminAuth();
-  if (!auth.authorized || !auth.supabase) return { success: false, error: auth.error };
-  const { supabase } = auth;
+  if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    const { data: existing } = await supabase
-      .from('wallets')
-      .select('id, user_id')
-      .or(`id.eq.${walletId},user_id.eq.${walletId}`)
-      .maybeSingle();
-
-    if (existing) {
-      const { error: updateErr } = await supabase
-        .from('wallets')
-        .update({
-          status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existing.id);
-
-      if (updateErr) throw updateErr;
-    } else {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, email, full_name')
-        .eq('id', walletId)
-        .maybeSingle();
-
-      const { error: insertErr } = await supabase.from('wallets').insert({
-        user_id: walletId,
-        balance: 0,
-        total_credit: 0,
-        total_debit: 0,
-        credit_limit: 0,
-        credit_used: 0,
-        status,
-        kyc_name: profile?.full_name || 'Student',
-        kyc_email: profile?.email || '',
-      });
-
-      if (insertErr) throw insertErr;
-    }
-
+    await query(
+      `UPDATE public.wallets SET status = $2, updated_at = NOW() WHERE id = $1 OR user_id = $1`,
+      [walletId, status]
+    );
     return { success: true };
   } catch (err: unknown) {
     console.error('updateWalletStatus error:', err);
