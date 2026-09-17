@@ -33,7 +33,8 @@ export class AdminRepository {
           (SELECT COALESCE(SUM(amount), 0) FROM public.credit_repayments WHERE status = 'paid')::numeric AS total_credit_repaid,
           (SELECT COUNT(*) FROM public.credit_repayments WHERE status = 'pending' AND due_date < $4)::int AS total_overdue_accounts,
           (SELECT COUNT(*) FROM public.restaurants WHERE is_active = true AND deleted_at IS NULL)::int AS active_merchants,
-          (SELECT COUNT(*) FROM public.restaurants WHERE is_active = false AND deleted_at IS NULL)::int AS pending_merchant_approvals;
+          (SELECT COUNT(*) FROM public.restaurants WHERE is_active = false AND deleted_at IS NULL)::int AS pending_merchant_approvals,
+          (SELECT COALESCE(SUM(amount), 0) FROM public.expense_transactions)::numeric AS total_expenses;
       `, [today, weekStart.toISOString(), monthStart.toISOString(), today]);
 
       const s = statsRes.rows[0] || {};
@@ -56,6 +57,75 @@ export class AdminRepository {
         created_at: r.created_at,
       }));
 
+      // Order type stats
+      const orderTypeRes = await query(`
+        SELECT COALESCE(order_type, 'room_delivery') AS type, COUNT(*)::int AS count
+        FROM public.orders
+        GROUP BY COALESCE(order_type, 'room_delivery')
+      `);
+
+      const orderTypeLabels: Record<string, string> = {
+        room_delivery: 'Hostel Delivery',
+        takeaway: 'Take Away',
+        in_store: 'In Store',
+        dine_in: 'Dine In',
+      };
+
+      const orderTypeCounts: Record<string, number> = {
+        room_delivery: 0,
+        takeaway: 0,
+        in_store: 0,
+        dine_in: 0,
+      };
+
+      for (const row of orderTypeRes.rows || []) {
+        const key = row.type || 'room_delivery';
+        orderTypeCounts[key] = (orderTypeCounts[key] || 0) + Number(row.count || 0);
+      }
+
+      const order_type_stats = Object.entries(orderTypeCounts).map(([type, count]) => ({
+        type,
+        label: orderTypeLabels[type] || type,
+        count,
+      }));
+
+      // Payment type stats
+      const paymentTypeRes = await query(`
+        SELECT COALESCE(payment_method, 'cash') AS method, COUNT(*)::int AS count
+        FROM public.orders
+        GROUP BY COALESCE(payment_method, 'cash')
+      `);
+
+      const paymentMethodLabels: Record<string, string> = {
+        cash: 'Cash / COD',
+        upi: 'UPI',
+        razorpay: 'Online',
+        wallet: 'Wallet',
+      };
+
+      const paymentMethodCounts: Record<string, number> = {
+        cash: 0,
+        upi: 0,
+        razorpay: 0,
+        wallet: 0,
+      };
+
+      for (const row of paymentTypeRes.rows || []) {
+        let m = row.method;
+        if (m === 'cod') m = 'cash';
+        if (m === 'online') m = 'razorpay';
+        if (paymentMethodCounts[m] !== undefined) {
+          paymentMethodCounts[m] += Number(row.count || 0);
+        } else {
+          paymentMethodCounts[m] = Number(row.count || 0);
+        }
+      }
+
+      const payment_type_stats = Object.entries(paymentMethodCounts).map(([method, count]) => ({
+        category: paymentMethodLabels[method] || method.toUpperCase(),
+        value: count,
+      }));
+
       return {
         total_users: s.total_users ?? 0,
         total_students: s.total_students ?? 0,
@@ -75,7 +145,10 @@ export class AdminRepository {
         total_overdue_accounts: s.total_overdue_accounts ?? 0,
         active_merchants: s.active_merchants ?? 0,
         pending_merchant_approvals: s.pending_merchant_approvals ?? 0,
+        total_expenses: Number(s.total_expenses || 0),
         recent_activity: recentActivity,
+        order_type_stats,
+        payment_type_stats,
       };
     } catch (e) {
       console.error('getDashboardStats error:', e);
@@ -879,8 +952,10 @@ export class AdminRepository {
   async updateSystemSetting(id: string, value: string, updatedBy: string): Promise<void> {
     await query(`
       UPDATE public.system_settings
-      SET value = $1, updated_by = $2, updated_at = NOW()
-      WHERE id = $3 OR key = $3
+      SET value = $1, 
+          updated_by = CASE WHEN ($2 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') THEN $2::uuid ELSE NULL END, 
+          updated_at = NOW()
+      WHERE id::text = $3 OR key = $3
     `, [value, updatedBy, id]);
   }
 
@@ -893,16 +968,19 @@ export class AdminRepository {
     changed_by?: string | null;
   }): Promise<void> {
     try {
+      const isUuid = (val?: string | null) =>
+        Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
       await query(`
         INSERT INTO public.audit_logs (table_name, record_id, action, old_data, new_data, user_id, created_at)
         VALUES ($1, $2, $3, $4, $5, $6, NOW())
       `, [
         entry.table_name,
-        entry.record_id ?? null,
+        isUuid(entry.record_id) ? entry.record_id : null,
         entry.action,
         entry.old_data ? JSON.stringify(entry.old_data) : null,
         entry.new_data ? JSON.stringify(entry.new_data) : null,
-        entry.changed_by ?? null,
+        isUuid(entry.changed_by) ? entry.changed_by : null,
       ]);
     } catch (e) {
       console.warn('createAuditLog failed:', e);

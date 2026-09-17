@@ -558,11 +558,78 @@ export async function processRefund(paymentId: string, amount: number, reason: s
 }
 
 const DEFAULT_SYSTEM_SETTINGS = [
-  { key: 'packaging_charge', value: '0', type: 'number', description: 'Packaging charge (₹) applied per customer order at checkout' },
-  { key: 'packaging_charge_enabled', value: 'true', type: 'boolean', description: 'Enable or disable dynamic packaging charge' },
-  { key: 'packaging_big_packet_price', value: '3', type: 'number', description: 'Price per big packaging unit (₹)' },
-  { key: 'packaging_small_packet_price', value: '2', type: 'number', description: 'Price per small packaging unit (₹)' },
-  { key: 'telegram_qr_expiry_minutes', value: '30', type: 'number', description: 'Expiry duration for the Telegram pickup QR in minutes' },
+  // Payment Methods
+  { key: 'payment_method_wallet_enabled', value: 'true', type: 'boolean', description: 'Allow Wallet payments at checkout' },
+  { key: 'payment_method_razorpay_enabled', value: 'true', type: 'boolean', description: 'Allow Razorpay payments at checkout' },
+  { key: 'payment_method_phonepe_enabled', value: 'false', type: 'boolean', description: 'Allow PhonePe payments at checkout' },
+  { key: 'payment_method_gpay_enabled', value: 'false', type: 'boolean', description: 'Allow Google Pay payments at checkout' },
+  { key: 'payment_method_cod_enabled', value: 'true', type: 'boolean', description: 'Allow Cash on Delivery at checkout' },
+  // Payment credentials
+  { key: 'razorpay_key_id', value: 'rzp_live_TPjId0t9vHIcIt', type: 'string', description: 'Razorpay Key ID (public)' },
+  { key: 'razorpay_key_secret', value: '86R3iHMLhSHdE95XKLMsSRCh', type: 'string', description: 'Razorpay Key Secret (confidential)' },
+  { key: 'phonepe_merchant_id', value: '', type: 'string', description: 'PhonePe merchant ID' },
+  { key: 'phonepe_salt_key', value: '', type: 'string', description: 'PhonePe salt key (confidential)' },
+  { key: 'phonepe_salt_index', value: '1', type: 'number', description: 'PhonePe salt index' },
+  { key: 'gpay_upi_id', value: '', type: 'string', description: 'Google Pay / UPI ID (name@bank)' },
+  { key: 'gpay_upi_name', value: '', type: 'string', description: 'Merchant name shown for Google Pay UPI' },
+  { key: 'store_upi_id', value: '', type: 'string', description: 'Direct UPI id for QR / intent payments' },
+  { key: 'store_upi_name', value: '', type: 'string', description: 'UPI payee name' },
+  // Contact
+  { key: 'contact_enabled', value: 'true', type: 'boolean', description: 'Links and details shown across the store (footer, contact, checkout).' },
+  { key: 'store_support_phone', value: '', type: 'string', description: 'Owner support phone shown across the store' },
+  { key: 'store_support_email', value: '', type: 'string', description: 'Owner support email' },
+  { key: 'notification_email', value: 'dilipda725@gmail.com', type: 'string', description: 'Email that receives order notifications (falls back to store support email / NOTIFICATION_EMAIL)' },
+  { key: 'store_address', value: 'CIT, gate number 2', type: 'string', description: 'Store address shown in footer / contact' },
+  { key: 'store_whatsapp', value: '', type: 'string', description: 'WhatsApp number or wa.me link' },
+  { key: 'store_instagram', value: '', type: 'string', description: 'Instagram profile URL' },
+  { key: 'store_facebook', value: '', type: 'string', description: 'Facebook page URL' },
+  { key: 'store_website', value: '', type: 'string', description: 'Store website URL' },
+  // Delivery
+  { key: 'delivery_available', value: 'true', type: 'boolean', description: 'Whether delivery is currently available (ON/OFF)' },
+  { key: 'delivery_unavailable_message', value: 'Delivery is temporarily unavailable because our delivery person is busy. Please try again later.', type: 'string', description: 'Message displayed on storefront when delivery is unavailable' },
+  { key: 'delivery_person_name', value: 'Dilip Da Delivery', type: 'string', description: 'Delivery person name' },
+  { key: 'delivery_person_phone', value: '6000212823', type: 'string', description: 'Delivery person phone number' },
+  { key: 'delivery_fixed_slots_enabled', value: 'true', type: 'boolean', description: 'Enable fixed delivery slots system (ON/OFF)' },
+  { key: 'delivery_slots', value: '[{"id":"slot-1","label":"Slot 1","delivery_time":"13:30","cutoff_time":"13:15","is_enabled":true},{"id":"slot-2","label":"Slot 2","delivery_time":"15:00","cutoff_time":"14:45","is_enabled":true}]', type: 'json', description: 'Fixed delivery slot configuration (JSON)' },
+  { key: 'delivery_custom_message_enabled', value: 'false', type: 'boolean', description: 'Enable custom delivery announcement message (ON/OFF)' },
+  { key: 'delivery_custom_message', value: 'Due to high demand, deliveries may take longer than usual today.', type: 'string', description: 'Custom delivery announcement message' },
+  { key: 'delivery_person_emails', value: '', type: 'string', description: 'Emails allowed to sign up as delivery partners. Separate multiple emails with commas or new lines.' },
+  // Admin / Owner
+  { key: 'admin_emails', value: 'lastw5232@gmail.com', type: 'string', description: 'Emails allowed to sign up as store administrators. Separate multiple emails with commas or new lines.' },
+  { key: 'dilip_da_email', value: 'dronsharma9435@gmail.com , s02556646@gmail.com ,', type: 'string', description: 'Store owner email (Dilip Da). Gets a read-only view of the dashboard.' },
+  // Telegram
+  { key: 'telegram_enabled', value: 'true', type: 'boolean', description: 'Order notifications delivered to the owner chat.' },
+  { key: 'telegram_bot_token', value: '8769690254:AAH7blyJZF1MuReE', type: 'string', description: 'Telegram bot token (confidential)' },
+  { key: 'telegram_chat_id', value: '8955185773', type: 'string', description: 'Telegram chat id to receive order updates' },
+  { key: 'telegram_show_qr', value: 'true', type: 'boolean', description: 'Send pickup QR image in Telegram order notifications' },
+  { key: 'telegram_qr_expiry_minutes', value: '15', type: 'number', description: 'Expiry duration for the Telegram pickup QR in minutes' },
+  // SMTP
+  { key: 'smtp_enabled', value: 'true', type: 'boolean', description: 'Used for OTP and order emails.' },
+  { key: 'smtp_host', value: 'smtp.gmail.com', type: 'string', description: 'SMTP host' },
+  { key: 'smtp_port', value: '587', type: 'number', description: 'SMTP port' },
+  { key: 'smtp_user', value: 'dilipda725@gmail.com', type: 'string', description: 'SMTP username (confidential)' },
+  { key: 'smtp_pass', value: 'khzg kwar otjw wigu', type: 'string', description: 'SMTP password (confidential)' },
+  { key: 'smtp_from', value: 'Dilip Da dilipda725@gmail.com', type: 'string', description: 'From address for outgoing mail' },
+  // Pricing
+  { key: 'pricing_enabled', value: 'true', type: 'boolean', description: 'Applied to cart at checkout and wallet overdraft.' },
+  { key: 'delivery_fee', value: '10', type: 'number', description: 'Flat delivery fee for hostel delivery' },
+  { key: 'maintenance_fee', value: '0', type: 'number', description: 'Flat maintenance fee charged per order' },
+  { key: 'wallet_credit_limit', value: '0', type: 'number', description: 'Wallet overdraft limit (how far a wallet balance can go negative)' },
+  // Packaging
+  { key: 'packaging_charge', value: '0', type: 'number', description: 'Packaging charge applied per order at checkout' },
+  { key: 'packaging_charge_enabled', value: 'true', type: 'boolean', description: 'Configure the cost per big and small packaging unit used per product.' },
+  { key: 'packaging_big_packet_price', value: '0', type: 'number', description: 'Price per big packaging unit (₹)' },
+  { key: 'packaging_small_packet_price', value: '0', type: 'number', description: 'Price per small packaging unit (₹)' },
+  // Store hours & other
+  { key: 'other_enabled', value: 'true', type: 'boolean', description: 'Storefront hours, delivery areas and platform rules.' },
+  { key: 'store_hours_open', value: '16:00', type: 'string', description: 'Store opening time' },
+  { key: 'store_hours_close', value: '21:30', type: 'string', description: 'Store closing time' },
+  { key: 'store_temp_close_until', value: '', type: 'string', description: 'Temporarily close today until this time (HH:MM). Leave empty to disable.' },
+  { key: 'store_order_cutoff_lunch', value: '', type: 'string', description: 'Order cutoff for lunch' },
+  { key: 'store_order_cutoff_dinner', value: '', type: 'string', description: 'Order cutoff for dinner' },
+  { key: 'store_delivery_locations', value: '["SNM, CIT Kokrajhar","SJ, CIT Kokrajhar","JD, CIT Kokrajhar","Staff Quarter, CIT Kokrajhar","Gambari Girls Hostel, CIT Kokrajhar","Mtech Quarter, CIT Kokrajhar"]', type: 'json', description: 'Delivery locations shown at checkout (JSON array)' },
+  { key: 'cancellation_window_minutes', value: '2', type: 'number', description: 'Minutes after placing an order during which the customer can cancel it' },
+  { key: 'maintenance_mode', value: 'false', type: 'boolean', description: 'Enable maintenance mode for the platform' },
 ];
 
 export async function getSystemSettings() {

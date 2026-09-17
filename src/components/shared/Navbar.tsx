@@ -108,7 +108,7 @@ export default function Navbar() {
               </span>
             )}
           </Link>
-          <Link href="/favorites" className="icon-button-z text-zred" aria-label="Favorites">
+          <Link href="/favorites" prefetch={false} className="icon-button-z text-zred" aria-label="Favorites">
             <Heart size={20} className="fill-zred/20" />
           </Link>
         </div>

@@ -283,21 +283,18 @@ interface CreateOrderParams {
 }
 
 export async function createOrder(params: CreateOrderParams) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured' };
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
   const { user } = await getServerSession();
   if (!user) return { success: false, error: 'Please sign in to place your order' };
 
   // Option 2 Enforcement: Check if user has an unpaid late fine
-  const { data: userWallet } = await supabase
-    .from('wallets')
-    .select('balance, total_penalties')
-    .eq('user_id', user.id)
-    .maybeSingle();
+  let userWallet: { balance: number; total_penalties: number } | null = null;
+  try {
+    const walletRes = await query<any>(
+      `SELECT balance, total_penalties FROM public.wallets WHERE user_id = $1 LIMIT 1`,
+      [user.id]
+    );
+    if (walletRes.rows.length > 0) userWallet = walletRes.rows[0];
+  } catch {}
 
   if (userWallet && Number(userWallet.balance) < 0 && Number(userWallet.total_penalties) > 0) {
     return {
@@ -334,45 +331,37 @@ export async function createOrder(params: CreateOrderParams) {
 
   let restaurantId: string;
   try {
-    const res = await fetch(`${url}/rest/v1/restaurants?select=id,is_open&deleted_at=is.null&limit=1`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` },
-      cache: 'no-store',
-    });
-    if (!res.ok) return { success: false, error: 'Restaurant not available' };
-    const rows = await res.json();
-    if (rows && rows.length > 0) {
-      if (rows[0].is_open === false) {
+    // Query restaurant directly via PostgreSQL (no Supabase credentials needed)
+    const restRes = await query<any>(
+      `SELECT id, is_open FROM public.restaurants WHERE deleted_at IS NULL ORDER BY is_active DESC, created_at ASC LIMIT 1`
+    );
+    if (restRes.rows.length > 0) {
+      if (restRes.rows[0].is_open === false) {
         return { success: false, error: 'The store is currently closed. Please try again later.' };
       }
-      restaurantId = rows[0].id;
+      restaurantId = restRes.rows[0].id;
     } else {
-      const { data: created, error: createErr } = await supabase
-        .from('restaurants')
-        .insert({
-          owner_id: user?.id ?? '00000000-0000-0000-0000-000000000000',
-          name: 'Dilip Da Main',
-          slug: `dilip-da-main-${Date.now().toString(36)}`,
-          address_line1: 'Near CIT Kokrajhar',
-          city: 'Kokrajhar',
-          state: 'Assam',
-          postal_code: '783370',
-          opening_time: '08:00',
-          closing_time: '22:00',
-          delivery_fee: 20,
-          min_order_amount: 50,
-          is_active: true,
-          is_open: true,
-          status: 'active',
-        })
-        .select('id')
-        .maybeSingle();
-      if (createErr || !created?.id) {
-        console.error('Failed to create default restaurant:', createErr);
+      // Create default restaurant if none exists
+      const slug = `dilip-da-main-${Date.now().toString(36)}`;
+      const ownerId = user?.id ?? '5c262804-b3d8-4815-a41f-2ce1cab12fa1';
+      const newRest = await query<any>(
+        `INSERT INTO public.restaurants (
+          id, owner_id, name, slug, address_line1, city, state, postal_code, is_active, is_open
+        ) VALUES (
+          'd1111111-1111-1111-1111-111111111111', $1, 'Dilip Da Main Store', $2,
+          'Near CIT Kokrajhar Campus', 'Kokrajhar', 'Assam', '783370', true, true
+        )
+        ON CONFLICT (id) DO UPDATE SET is_active = true, is_open = true, deleted_at = NULL
+        RETURNING id`,
+        [ownerId, slug]
+      );
+      if (!newRest.rows[0]?.id) {
         return { success: false, error: 'Restaurant not available' };
       }
-      restaurantId = created.id;
+      restaurantId = newRest.rows[0].id;
     }
-  } catch {
+  } catch (restErr) {
+    console.error('Restaurant lookup failed:', restErr);
     return { success: false, error: 'Restaurant not available' };
   }
 
@@ -469,62 +458,97 @@ export async function createOrder(params: CreateOrderParams) {
     }
   }
 
-  const orderPayload = {
-    user_id: user?.id ?? null,
-    restaurant_id: restaurantId,
-    status: 'pending',
-    payment_status: 'pending',
-    payment_method: paymentMethodDb,
-    subtotal: calculatedSubtotal,
-    delivery_fee: effectiveDeliveryFee,
-    tax_amount: effectiveMaintenanceFee + effectivePackagingCharge,
-    discount_amount: 0,
-    total: effectiveTotal,
-    customer_name: customerName || user?.fullName || null,
-    customer_email: customerEmail || user?.email || null,
-    customer_phone: customerPhone || null,
-    delivery_address: orderType === 'room_delivery' || !orderType
-      ? { address, city: params.city ?? '', pincode: params.pincode ?? '' }
-      : { address: 'Take away from restaurant' },
-    delivery_notes: notes ?? null,
-    order_type: orderType ?? null,
-    ...slotPayload,
-  };
+  const deliveryAddressJson = orderType === 'room_delivery' || !orderType
+    ? { address, city: params.city ?? '', pincode: params.pincode ?? '' }
+    : { address: 'Take away from restaurant' };
 
-  const { data: order, error: orderError } = await supabase
-    .from('orders')
-    .insert(orderPayload)
-    .select('id, tracking_code')
-    .single();
+  const trackingCode = `DD-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
 
-  if (orderError || !order) {
-    return { success: false, error: orderError?.message || 'Failed to create order' };
+  // Insert order via PostgreSQL directly
+  let order: { id: string; tracking_code: string };
+  try {
+    const orderInsert = await query<any>(`
+      INSERT INTO public.orders (
+        user_id, restaurant_id, tracking_code, status, order_type,
+        subtotal, tax_amount, delivery_fee, discount_amount, total_amount, total,
+        delivery_address, delivery_address_json, delivery_notes, special_instructions,
+        customer_name, customer_phone, customer_email,
+        payment_method, payment_status,
+        placed_at, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, 'placed', $4,
+        $5, $6, $7, $8, $9, $9,
+        $10, $10, $11, $11,
+        $12, $13, $14,
+        $15, 'pending',
+        NOW(), NOW(), NOW()
+      )
+      RETURNING id, tracking_code
+    `, [
+      user?.id ?? null,
+      restaurantId,
+      trackingCode,
+      orderType ?? null,
+      calculatedSubtotal,
+      effectiveMaintenanceFee + effectivePackagingCharge,
+      effectiveDeliveryFee,
+      0, // discount_amount
+      effectiveTotal,
+      JSON.stringify(deliveryAddressJson),
+      notes ?? null,
+      customerName || user?.fullName || null,
+      customerPhone || null,
+      customerEmail || user?.email || null,
+      paymentMethodDb,
+    ]);
+    if (!orderInsert.rows[0]) {
+      return { success: false, error: 'Failed to create order' };
+    }
+    order = orderInsert.rows[0];
+  } catch (orderErr: any) {
+    console.error('Order insert failed:', orderErr);
+    return { success: false, error: orderErr?.message || 'Failed to create order' };
   }
 
-  const orderItemsToInsert = priceResolution.lineItems.map((li) => ({
-    order_id: order.id,
-    product_id: li.product_id ?? null,
-    product_name: li.product_name,
-    product_price: li.product_price,
-    unit_price: li.unit_price,
-    quantity: li.quantity,
-    subtotal: li.subtotal,
-    special_instructions: li.special_instructions ?? null,
-  }));
-
-  let { error: itemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
-
-  // If FK fails due to any stale/static product_id, retry once with product_id set to null
-  if (itemsError && String(itemsError.message || '').toLowerCase().includes('foreign key')) {
-    const fallbackItems = orderItemsToInsert.map((it) => ({ ...it, product_id: null }));
-    const retry = await supabase.from('order_items').insert(fallbackItems);
-    itemsError = retry.error;
-  }
-
-  if (itemsError) {
-    console.error('Failed to save order items:', itemsError);
-    await supabase.from('orders').delete().eq('id', order.id);
-    return { success: false, error: 'Failed to save order items' };
+  // Insert order items
+  for (const li of priceResolution.lineItems) {
+    try {
+      await query(`
+        INSERT INTO public.order_items (
+          order_id, product_id, product_name, product_price, unit_price, quantity,
+          subtotal, item_total, notes, special_instructions, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8, NOW())
+      `, [
+        order.id,
+        li.product_id || null,
+        li.product_name,
+        li.product_price,
+        li.unit_price,
+        li.quantity,
+        li.subtotal,
+        li.special_instructions || null,
+      ]);
+    } catch (itemErr: any) {
+      // retry without product_id if FK violation
+      if (String(itemErr?.message || '').toLowerCase().includes('foreign key')) {
+        await query(`
+          INSERT INTO public.order_items (
+            order_id, product_id, product_name, product_price, unit_price, quantity,
+            subtotal, item_total, notes, special_instructions, created_at
+          ) VALUES ($1, NULL, $2, $3, $4, $5, $6, $6, $7, $7, NOW())
+        `, [
+          order.id,
+          li.product_name,
+          li.product_price,
+          li.unit_price,
+          li.quantity,
+          li.subtotal,
+          li.special_instructions || null,
+        ]);
+      } else {
+        console.error('Failed to insert order item:', itemErr);
+      }
+    }
   }
 
   // QR token is strictly for delivery orders (room_delivery). Takeaway and dine-in must NEVER generate delivery QR.
@@ -534,10 +558,12 @@ export async function createOrder(params: CreateOrderParams) {
       if (isQrConfigured()) {
         const qrExpiryMinutes = await getNumericSetting('telegram_qr_expiry_minutes', 30);
         qrToken = signQrToken(order.tracking_code, qrExpiryMinutes);
-        await supabase
-          .from('orders')
-          .update({ pickup_qr_token: qrToken })
-          .eq('id', order.id);
+        try {
+          await query(
+            `UPDATE public.orders SET pickup_qr_token = $1 WHERE id = $2`,
+            [qrToken, order.id]
+          );
+        } catch {}
       }
     } catch {}
   }

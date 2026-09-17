@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   CreditCard, Phone, Send, Mail, IndianRupee, SlidersHorizontal, Bike,
-  RefreshCw, Loader2, Save, Pencil, ShieldCheck, UserCog, Clock, Package,
+  RefreshCw, Loader2, Save, Pencil, Clock,
   type LucideIcon,
 } from 'lucide-react';
 import { PageHeader, ToastContainer, useToast, LoadingSkeleton } from '@/components/ui/data-table';
@@ -12,6 +12,7 @@ import { authService } from '@/features/auth/services/auth-service';
 import type { SystemSetting } from '@/features/admin/types';
 import DeliverySlotsManagerModal from '@/features/admin/components/DeliverySlotsManagerModal';
 import type { DeliverySlot } from '@/features/delivery/types/slots';
+import { invalidatePublicSettingsCache } from '@/hooks/usePublicSettings';
 
 const LABELS: Record<string, string> = {
   payment_method_wallet_enabled: 'Wallet',
@@ -119,6 +120,7 @@ export default function AdminSettingsPage() {
     }
     addToast(`Saved ${dirty.length} change${dirty.length > 1 ? 's' : ''}`, 'success');
     setEditing(false);
+    invalidatePublicSettingsCache();
     fetchSettings();
   };
 
@@ -389,27 +391,6 @@ export default function AdminSettingsPage() {
         })}
 
         {renderCard({
-          icon: Bike,
-          title: 'Delivery Personnel Emails',
-          subtitle: 'Emails allowed to sign up as delivery partners. Separate multiple emails with commas or new lines.',
-          keys: ['delivery_person_emails'],
-        })}
-
-        {renderCard({
-          icon: ShieldCheck,
-          title: 'Administrators',
-          subtitle: 'Emails allowed to sign up as store administrators. Separate multiple emails with commas or new lines.',
-          keys: ['admin_emails'],
-        })}
-
-        {renderCard({
-          icon: UserCog,
-          title: 'Store Owner',
-          subtitle: 'Email(s) of the store owner (Dilip Da). Separate multiple emails with commas or new lines. Gets a read-only view of the dashboard.',
-          keys: ['dilip_da_email'],
-        })}
-
-        {renderCard({
           icon: Send,
           title: 'Telegram',
           subtitle: 'Order notifications delivered to the owner chat.',
@@ -428,17 +409,15 @@ export default function AdminSettingsPage() {
         {renderCard({
           icon: IndianRupee,
           title: 'Pricing',
-          subtitle: 'Applied to cart at checkout and wallet overdraft.',
+          subtitle: 'Applied to cart at checkout, packaging charges and wallet overdraft.',
           toggleKey: 'pricing_enabled',
-          keys: ['delivery_fee', 'maintenance_fee', 'wallet_credit_limit'],
-        })}
-
-        {renderCard({
-          icon: Package,
-          title: 'Packaging Charges',
-          subtitle: 'Configure the cost per big and small packaging unit used per product.',
-          toggleKey: 'packaging_charge_enabled',
-          keys: ['packaging_big_packet_price', 'packaging_small_packet_price'],
+          keys: [
+            'delivery_fee',
+            'maintenance_fee',
+            'wallet_credit_limit',
+            'packaging_big_packet_price',
+            'packaging_small_packet_price',
+          ],
         })}
 
         {renderCard({

@@ -523,3 +523,71 @@ export async function confirmSignupEmail(userId: string) {
     return { error: error.message };
   }
 }
+
+/**
+ * Consolidated server action for the Profile page.
+ * Loads address, recent orders, and wallet details in a single server call,
+ * reducing 3-4 separate client round-trips to just 1 request.
+ */
+export async function getProfileOverview() {
+  const { user } = await getServerSession();
+  if (!user) {
+    return {
+      address: '',
+      orders: [],
+      orderCount: 0,
+      walletCash: null,
+      walletStatus: 'unverified',
+      fullWalletData: null,
+    };
+  }
+
+  const { getUserOrders } = await import('@/features/orders/actions/customer');
+  const { getWalletDetails } = await import('@/features/wallet/actions');
+  const { getCreditAccount } = await import('@/features/bnpl/actions');
+
+  const [addressRes, ordersRes, walletRes] = await Promise.all([
+    getServerAddress(),
+    getUserOrders(1, 2),
+    getWalletDetails(),
+  ]);
+
+  let address = addressRes.address?.full_address || '';
+  let orders = ordersRes.success && ordersRes.data ? ordersRes.data.orders : [];
+  let orderCount = ordersRes.success && ordersRes.data ? ordersRes.data.total : 0;
+  let walletCash: number | null = null;
+  let walletStatus = 'unverified';
+  let fullWalletData: any = null;
+
+  if (walletRes.success && walletRes.data) {
+    walletCash = walletRes.data.balance;
+    const status = walletRes.data.wallet?.status;
+    if (status === 'pending' || (walletRes.data.wallet?.kyc_submitted_at && status !== 'active' && status !== 'rejected')) {
+      walletStatus = 'pending';
+    } else if (status === 'active') {
+      walletStatus = 'active';
+    } else if (status === 'rejected') {
+      walletStatus = 'rejected';
+    } else {
+      walletStatus = 'unverified';
+    }
+    fullWalletData = walletRes.data.wallet;
+  } else {
+    try {
+      const creditRes = await getCreditAccount();
+      if (creditRes.success && creditRes.data) {
+        walletCash = creditRes.data.available_credit;
+      }
+    } catch {}
+  }
+
+  return {
+    address,
+    orders,
+    orderCount,
+    walletCash,
+    walletStatus,
+    fullWalletData,
+  };
+}
+

@@ -1,17 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { User, MapPin, Phone, Mail, LogOut, ClipboardList, ChevronRight, Store, Heart, Pencil, X, Check, Loader2, Clock, BadgeCheck, HelpCircle, Instagram, Facebook, Globe, MessageSquare, ShieldCheck, AlertCircle } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthStore } from '@/features/auth/store';
 import { showToast } from '@/components/shared/Toast';
-import { updateServerProfile, getServerAddress, updateServerAddress } from '@/features/auth/actions';
-import { getUserOrders } from '@/features/orders/actions/customer';
+import { updateServerProfile, updateServerAddress, getProfileOverview } from '@/features/auth/actions';
 import type { Order } from '@/features/orders/types';
-import { getCreditAccount } from '@/features/bnpl/actions';
-import { getWalletDetails } from '@/features/wallet/actions';
 import WalletKycModal from '@/features/wallet/components/WalletKycModal';
 import type { Wallet } from '@/features/wallet/types';
 import { menuSections } from '@/features/menu/data';
@@ -28,9 +25,8 @@ function foodImageFor(name: string | undefined): string | undefined {
   return allMenuItems.find((i) => q.includes(i.name.toLowerCase()) || i.name.toLowerCase().includes(q))?.img;
 }
 
-function StoreStatusPill() {
+function StoreStatusPill({ settings }: { settings: ReturnType<typeof usePublicSettings> }) {
   const [now, setNow] = useState(() => new Date());
-  const settings = usePublicSettings();
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -83,51 +79,32 @@ export default function ProfilePage() {
 
   const favoritesCount = useFavoritesStore((s) => s.items.length);
 
-  async function loadWallet() {
-    const res = await getWalletDetails();
-    if (res.success && res.data) {
-      setWalletCash(res.data.balance);
-      const status = res.data.wallet?.status;
-      if (status === 'pending' || (res.data.wallet?.kyc_submitted_at && status !== 'active' && status !== 'rejected')) {
-        setWalletStatus('pending');
-      } else if (status === 'active') {
-        setWalletStatus('active');
-      } else if (status === 'rejected') {
-        setWalletStatus('rejected');
-      } else {
-        setWalletStatus('unverified');
-      }
-      setFullWalletData(res.data.wallet);
-    } else {
-      const creditRes = await getCreditAccount();
-      if (creditRes.success && creditRes.data) setWalletCash(creditRes.data.available_credit);
+  async function loadProfileData() {
+    try {
+      const data = await getProfileOverview();
+      setAddress(data.address || '');
+      setMyRecentOrders(data.orders || []);
+      setOrderCount(data.orderCount || 0);
+      setWalletCash(data.walletCash);
+      setWalletStatus(data.walletStatus);
+      setFullWalletData(data.fullWalletData);
+    } catch (err) {
+      console.error('Failed to load profile data:', err);
+    } finally {
+      setAddressLoading(false);
+      setOrdersLoading(false);
+      setWalletLoading(false);
     }
-    setWalletLoading(false);
   }
 
-  async function loadAddress() {
-    const result = await getServerAddress();
-    if (result.address) {
-      setAddress(result.address.full_address || '');
-    }
-    setAddressLoading(false);
-  }
-
-  async function loadRecentOrders() {
-    const res = await getUserOrders(1, 2);
-    if (res.success && res.data) {
-      setMyRecentOrders(res.data.orders);
-      setOrderCount(res.data.total);
-    }
-    setOrdersLoading(false);
-  }
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
-    if (isAuthenticated) {
-       
-      loadAddress();
-      loadRecentOrders();
-      loadWallet();
+    if (isAuthenticated && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      loadProfileData();
+    } else if (!isAuthenticated) {
+      hasLoadedRef.current = false;
     }
   }, [isAuthenticated]);
 
@@ -262,7 +239,7 @@ export default function ProfilePage() {
         </div>
 
             {/* Store status */}
-            <StoreStatusPill />
+            <StoreStatusPill settings={settings} />
 
             {/* Stats row */}
             <div className="mt-4 grid grid-cols-3 gap-2.5">
@@ -328,7 +305,7 @@ export default function ProfilePage() {
                   <p className="text-[10px] text-ztext-light mt-0.5">Wallet Disabled</p>
                 </div>
               )}
-              <Link href="/favorites" className="bg-zcard rounded-xl border border-zborder p-3 text-center hover:border-zred/40 transition-colors">
+              <Link href="/favorites" prefetch={false} className="bg-zcard rounded-xl border border-zborder p-3 text-center hover:border-zred/40 transition-colors">
                 <p className="text-lg font-extrabold text-ztext">{favoritesCount}</p>
                 <p className="text-[10px] text-ztext-light mt-0.5">Favorites</p>
               </Link>
@@ -505,7 +482,7 @@ export default function ProfilePage() {
               </Link>
 
               {/* Favorites link (Desktop only) */}
-              <Link href="/favorites" className="hidden sm:flex p-4 items-center gap-3 hover:bg-zgray transition-colors">
+              <Link href="/favorites" prefetch={false} className="hidden sm:flex p-4 items-center gap-3 hover:bg-zgray transition-colors">
                 <Heart size={18} className="text-zred shrink-0" />
                 <div className="flex-1">
                   <p className="font-semibold text-ztext text-sm">Favorites</p>
@@ -587,7 +564,7 @@ export default function ProfilePage() {
         onSuccess={() => {
           setWalletStatus('pending');
           setShowKycModal(false);
-          loadWallet();
+          loadProfileData();
         }}
       />
     </div>

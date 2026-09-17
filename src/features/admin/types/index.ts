@@ -28,6 +28,9 @@ export interface DashboardStats {
   active_merchants: number;
   pending_merchant_approvals: number;
   recent_activity: ActivityEntry[];
+  total_expenses: number;
+  order_type_stats?: Array<{ type: string; label: string; count: number }>;
+  payment_type_stats?: Array<{ category: string; value: number }>;
 }
 
 export interface ActivityEntry {

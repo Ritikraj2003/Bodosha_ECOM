@@ -1,17 +1,29 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { RefreshCw, Users, ShoppingBag, IndianRupee, TrendingUp, Clock, Store, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Users, ShoppingBag, IndianRupee, TrendingUp, Clock, Store, AlertTriangle, ChevronDown, Receipt } from 'lucide-react';
 import { getAdminDashboard, getAdminOrders } from '@/features/admin/actions';
 import type { DashboardStats, AdminOrder } from '@/features/admin/types';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { createClient } from '@/infrastructure/supabase/client';
+
+const DashboardCharts = dynamic(() => import('@/components/admin/DashboardCharts'), {
+  ssr: false,
+  loading: () => (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div className="bg-zcard rounded-xl border border-zborder p-5 h-[420px] animate-pulse" />
+      <div className="bg-zcard rounded-xl border border-zborder p-5 h-[420px] animate-pulse" />
+    </div>
+  ),
+});
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentOrders, setRecentOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -59,10 +71,10 @@ export default function AdminDashboardPage() {
   if (loading) return <Skeleton />;
 
   const primaryCards = [
-    { label: 'Total Users', value: stats?.total_users ?? 0, icon: Users, desc: 'Registered accounts' },
+    { label: 'Total Customers', value: stats?.total_students ?? 0, icon: Users, desc: 'Registered customers' },
     { label: 'Total Orders', value: stats?.total_orders ?? 0, icon: ShoppingBag, desc: 'All time' },
     { label: 'Total Revenue', value: fmt(stats?.total_revenue ?? 0), icon: IndianRupee, desc: 'All time revenue' },
-    // { label: 'BNPL Outstanding', value: fmt(stats?.bnpl_outstanding ?? 0), icon: Wallet, desc: 'Active credit' },
+    { label: 'Total Expense', value: fmt(stats?.total_expenses ?? 0), icon: Receipt, desc: 'All time expenses' },
   ];
 
   const secondaryCards = [
@@ -131,6 +143,12 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
+      {/* 2 Graphs: Order type (Bar) & Payment type (Donut) */}
+      <DashboardCharts
+        orderTypeData={stats?.order_type_stats}
+        paymentTypeData={stats?.payment_type_stats}
+      />
+
       <div className="bg-zcard rounded-xl border border-zborder mb-6">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zborder">
           <h2 className="text-sm font-bold text-ztext">Recent Orders</h2>
@@ -182,25 +200,42 @@ export default function AdminDashboardPage() {
       </div>
 
       {stats?.recent_activity && stats.recent_activity.length > 0 && (
-        <div className="bg-zcard rounded-xl border border-zborder">
-          <div className="px-5 py-4 border-b border-zborder">
-            <h2 className="text-sm font-bold text-ztext">Recent Activity</h2>
-          </div>
-          <div className="divide-y divide-zborder">
-            {stats.recent_activity.slice(0, 8).map((activity) => (
-              <div key={activity.id} className="px-5 py-3 flex items-center gap-3">
-                <div className="w-2 h-2 rounded-full bg-zred shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-ztext-light">
-                    <span className="font-medium text-ztext capitalize">{activity.action.replace(/_/g, ' ')}</span>
-                    {' '}on <span className="font-medium text-ztext">{activity.entity_type}</span>
-                  </p>
-                  <p className="text-[11px] text-ztext-lighter">{activity.user_name}</p>
+        <div className="bg-zcard rounded-xl border border-zborder overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setActivityOpen((prev) => !prev)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-zgray/40 transition-colors"
+          >
+            <div className="flex items-center gap-2.5">
+              <h2 className="text-sm font-bold text-ztext">Recent Activity</h2>
+              <span className="text-[10px] font-bold bg-zsurface text-ztext-lighter px-2 py-0.5 rounded-full border border-zborder">
+                {stats.recent_activity.length}
+              </span>
+            </div>
+            <ChevronDown
+              size={16}
+              className={`text-ztext-lighter transition-transform duration-200 ${
+                activityOpen ? 'rotate-180 text-ztext' : ''
+              }`}
+            />
+          </button>
+          {activityOpen && (
+            <div className="border-t border-zborder divide-y divide-zborder">
+              {stats.recent_activity.slice(0, 8).map((activity) => (
+                <div key={activity.id} className="px-5 py-3 flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-zred shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-ztext-light">
+                      <span className="font-medium text-ztext capitalize">{activity.action.replace(/_/g, ' ')}</span>
+                      {' '}on <span className="font-medium text-ztext">{activity.entity_type}</span>
+                    </p>
+                    <p className="text-[11px] text-ztext-lighter">{activity.user_name}</p>
+                  </div>
+                  <span className="text-[11px] text-ztext-lighter shrink-0">{new Date(activity.created_at).toLocaleString()}</span>
                 </div>
-                <span className="text-[11px] text-ztext-lighter shrink-0">{new Date(activity.created_at).toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

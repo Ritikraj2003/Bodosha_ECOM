@@ -65,18 +65,55 @@ const FALLBACK: PublicStoreSettings = {
   deliveryCustomMessageEnabled: false,
 };
 
+let cachedSettings: PublicStoreSettings | null = null;
+let inflightPromise: Promise<PublicStoreSettings> | null = null;
+let lastFetchedAt = 0;
+const CACHE_TTL_MS = 60_000;
+
+export function getCachedPublicSettings(): Promise<PublicStoreSettings> {
+  const now = Date.now();
+  if (cachedSettings && now - lastFetchedAt < CACHE_TTL_MS) {
+    return Promise.resolve(cachedSettings);
+  }
+  if (inflightPromise) {
+    return inflightPromise;
+  }
+  inflightPromise = getPublicSettings()
+    .then((s) => {
+      cachedSettings = s;
+      lastFetchedAt = Date.now();
+      return s;
+    })
+    .catch((err) => {
+      if (cachedSettings) return cachedSettings;
+      throw err;
+    })
+    .finally(() => {
+      inflightPromise = null;
+    });
+  return inflightPromise;
+}
+
+export function invalidatePublicSettingsCache() {
+  cachedSettings = null;
+  lastFetchedAt = 0;
+  inflightPromise = null;
+}
+
 export function usePublicSettings(): PublicStoreSettings & { loading: boolean } {
-  const [settings, setSettings] = useState<PublicStoreSettings>(FALLBACK);
-  const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<PublicStoreSettings>(() => cachedSettings ?? FALLBACK);
+  const [loading, setLoading] = useState(() => !cachedSettings);
 
   useEffect(() => {
     let cancelled = false;
-    getPublicSettings()
+    getCachedPublicSettings()
       .then((s) => {
-        if (!cancelled) setSettings(s);
+        if (!cancelled) {
+          setSettings(s);
+          setLoading(false);
+        }
       })
-      .catch(() => {})
-      .finally(() => {
+      .catch(() => {
         if (!cancelled) setLoading(false);
       });
     return () => {
@@ -85,4 +122,4 @@ export function usePublicSettings(): PublicStoreSettings & { loading: boolean } 
   }, []);
 
   return { ...settings, loading };
-}
+}

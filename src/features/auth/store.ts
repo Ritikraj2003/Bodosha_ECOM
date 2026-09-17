@@ -11,6 +11,8 @@ interface AuthStore extends SessionState {
   refresh: () => Promise<void>;
 }
 
+let initPromise: Promise<void> | null = null;
+
 export const useAuthStore = create<AuthStore>((set) => ({
   user: null,
   isLoading: true,
@@ -19,12 +21,18 @@ export const useAuthStore = create<AuthStore>((set) => ({
   setUser: (user) => set({ user, isAuthenticated: !!user, isLoading: false }),
 
   initialize: async () => {
-    try {
-      const { user } = await authService.getSession();
-      set({ user, isAuthenticated: !!user, isLoading: false });
-    } catch {
-      set({ user: null, isAuthenticated: false, isLoading: false });
-    }
+    if (initPromise) return initPromise;
+    initPromise = (async () => {
+      try {
+        const { user } = await authService.getSession();
+        set({ user, isAuthenticated: !!user, isLoading: false });
+      } catch {
+        set({ user: null, isAuthenticated: false, isLoading: false });
+      } finally {
+        initPromise = null;
+      }
+    })();
+    return initPromise;
   },
 
   signOut: async () => {

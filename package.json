@@ -17,6 +17,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@amcharts/amcharts5": "^5.20.6",
     "@radix-ui/react-avatar": "^1",
     "@radix-ui/react-progress": "^1",
     "@radix-ui/react-switch": "^1",

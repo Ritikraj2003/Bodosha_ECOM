@@ -222,8 +222,8 @@ export async function deleteCustomRole(roleId: string): Promise<{ success: boole
 
     const roleCheck = await query('SELECT is_system, name, slug FROM public.roles WHERE id = $1', [roleId]);
     if (roleCheck.rows.length === 0) return { success: false, error: 'Role not found' };
-    if (roleCheck.rows[0].is_system) {
-      return { success: false, error: 'System roles cannot be deleted' };
+    if (roleCheck.rows[0].is_system || ['student', 'delivery', 'super_admin'].includes(roleCheck.rows[0].slug)) {
+      return { success: false, error: 'Default system roles cannot be deleted' };
     }
 
     await query('DELETE FROM public.role_permissions WHERE role_id = $1', [roleId]);
