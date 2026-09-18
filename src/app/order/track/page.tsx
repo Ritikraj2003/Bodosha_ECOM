@@ -12,10 +12,11 @@ import { usePolling } from '@/hooks/usePolling';
 
 const POLL_INTERVAL_MS = 15_000;
 
-const DELIVERY_STEPS = ['pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery', 'delivered'];
-const TAKEAWAY_STEPS = ['pending', 'accepted', 'preparing', 'ready', 'completed'];
+const DELIVERY_STEPS = ['placed', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery', 'delivered'];
+const TAKEAWAY_STEPS = ['placed', 'accepted', 'preparing', 'ready', 'completed'];
 
 const STEP_LABELS: Record<string, string> = {
+  placed: 'Order placed',
   pending: 'Order placed',
   accepted: 'Accepted',
   preparing: 'Preparing',
@@ -83,18 +84,20 @@ function TrackContent() {
   async function handleTrack() {
     const trimmed = input.trim().toUpperCase();
     if (!trimmed) return;
-    if (data?.order.tracking_code !== trimmed) setData(null);
+    if (data?.order?.tracking_code !== trimmed) setData(null);
     setCode(trimmed);
     router.replace(`/order/track?code=${encodeURIComponent(trimmed)}`);
   }
 
-  const isTakeaway = data?.order.order_type === 'takeaway' || data?.order.order_type === 'dine_in' || data?.order.order_type === 'in_store';
+  const isTakeaway = data?.order?.order_type === 'takeaway' || data?.order?.order_type === 'dine_in' || data?.order?.order_type === 'in_store';
   const steps = isTakeaway ? TAKEAWAY_STEPS : DELIVERY_STEPS;
-  const currentOrderStatus = data?.order.status === 'delivered' && isTakeaway ? 'completed' : (data?.order.status ?? '');
+  const rawStatus = data?.order?.status ?? '';
+  const normalizedStatus = rawStatus === 'pending' ? 'placed' : rawStatus;
+  const currentOrderStatus = normalizedStatus === 'delivered' && isTakeaway ? 'completed' : normalizedStatus;
   const stepIndex = data ? steps.indexOf(currentOrderStatus) : -1;
-  const isCancelled = data?.order.status === 'cancelled' || data?.order.status === 'declined';
-  const isDelivered = data?.order.status === 'delivered' || data?.order.status === 'completed';
-  const address = data?.order.delivery_address as Record<string, string> | null;
+  const isCancelled = rawStatus === 'cancelled' || rawStatus === 'declined';
+  const isDelivered = rawStatus === 'delivered' || rawStatus === 'completed';
+  const address = data?.order?.delivery_address as Record<string, string> | null;
 
   return (
     <div className="page-pad">
@@ -132,7 +135,7 @@ function TrackContent() {
           <div className="flex justify-center py-10"><Loader2 className="w-6 h-6 animate-spin text-ztext-lighter" /></div>
         )}
 
-        {data && (
+        {data?.order && (
           <>
             <div className="mt-6 bg-zcard rounded-xl shadow-z p-5">
               <div className="flex items-center justify-between">
@@ -143,7 +146,7 @@ function TrackContent() {
                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
                   isCancelled ? 'bg-red-500/10 text-red-400' : isDelivered ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
                 }`}>
-                  {STEP_LABELS[data.order.status] ?? data.order.status.replace(/_/g, ' ')}
+                  {STEP_LABELS[data.order.status] ?? (data.order.status ? data.order.status.replace(/_/g, ' ') : 'Placed')}
                 </span>
               </div>
               {data.order.order_type && (

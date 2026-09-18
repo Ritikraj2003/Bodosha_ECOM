@@ -634,63 +634,116 @@ export async function sendOrderNotification(orderId: string, qrTokenOverride?: s
 }
 
 export async function getOrderTrackingByCode(trackingCode: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured' };
+  try {
+    const { user } = await getServerSession();
 
-  const { user } = await getServerSession();
-  if (!user) return { success: false, error: 'Please sign in to track your order' };
+    const code = (trackingCode || '').trim().toUpperCase();
+    if (!/^[A-Z0-9-]+$/.test(code)) {
+      return { success: false, error: 'Enter a valid tracking code' };
+    }
 
-  const code = (trackingCode || '').trim().toUpperCase();
-  if (!/^[A-Z0-9-]+$/.test(code)) {
-    return { success: false, error: 'Enter a valid tracking code' };
+    const orderRes = await query<any>(`
+      SELECT 
+        o.*,
+        COALESCE(o.total, o.total_amount, 0) AS total,
+        COALESCE(o.subtotal, 0) AS subtotal,
+        COALESCE(o.delivery_fee, 0) AS delivery_fee,
+        COALESCE(o.tax_amount, 0) AS tax_amount,
+        COALESCE(
+          (
+            SELECT json_agg(json_build_object(
+              'id', oi.id,
+              'order_id', oi.order_id,
+              'product_id', oi.product_id,
+              'product_name', oi.product_name,
+              'product_price', COALESCE(oi.product_price, oi.unit_price, 0),
+              'quantity', oi.quantity,
+              'unit_price', COALESCE(oi.unit_price, oi.product_price, 0),
+              'subtotal', COALESCE(oi.subtotal, oi.item_total, 0),
+              'special_instructions', oi.special_instructions,
+              'created_at', oi.created_at
+            ))
+            FROM public.order_items oi
+            WHERE oi.order_id = o.id
+          ),
+          '[]'::json
+        ) AS order_items
+      FROM public.orders o
+      WHERE UPPER(o.tracking_code) = $1
+      LIMIT 1;
+    `, [code]);
+
+    const row = orderRes.rows[0];
+    if (!row) return { success: false, error: 'No order found with this tracking code' };
+
+    if (user) {
+      const isStaffOrAdmin = user.role ? ['admin', 'superadmin', 'manager', 'staff', 'delivery'].includes(user.role) : false;
+      const isOwner = row.user_id === user.id || row.customer_email === user.email || row.customer_phone === user.phone;
+      if (!isStaffOrAdmin && !isOwner) {
+        return { success: false, error: 'Unauthorized to view this order' };
+      }
+    }
+
+    const order = {
+      ...row,
+      subtotal: Number(row.subtotal) || 0,
+      delivery_fee: Number(row.delivery_fee) || 0,
+      tax_amount: Number(row.tax_amount) || 0,
+      total: Number(row.total) || 0,
+      delivery_address: row.delivery_address || row.delivery_address_json || null,
+      order_items: (row.order_items || []).map((item: any) => ({
+        ...item,
+        quantity: Number(item.quantity) || 1,
+        unit_price: Number(item.unit_price) || 0,
+        product_price: Number(item.product_price) || 0,
+        subtotal: Number(item.subtotal) || 0,
+      })),
+    };
+
+    const isDelivery = !order.order_type || order.order_type === 'room_delivery';
+    let assignment = null;
+    let partner = null;
+
+    if (isDelivery) {
+      const assignRes = await query<any>(
+        `SELECT * FROM public.delivery_assignments WHERE order_id = $1 LIMIT 1`,
+        [order.id]
+      );
+      const assignmentData = assignRes.rows[0];
+
+      let partnerData = null;
+      if (order.delivery_partner_id) {
+        const partRes = await query<{ full_name: string | null; phone: string | null }>(
+          `SELECT full_name, phone FROM public.users WHERE id = $1 LIMIT 1`,
+          [order.delivery_partner_id]
+        );
+        partnerData = partRes.rows[0] || null;
+      }
+
+      assignment = assignmentData
+        ? {
+            status: assignmentData.status,
+            otpValue: assignmentData.otp_value ?? null,
+            otpExpiresAt: assignmentData.otp_expires_at ?? null,
+            otpVerifiedAt: assignmentData.otp_verified_at ?? null,
+          }
+        : null;
+
+      partner = partnerData ? { fullName: partnerData.full_name ?? null, phone: partnerData.phone ?? null } : null;
+    }
+
+    return {
+      success: true,
+      data: {
+        order: order as Order & { order_items?: OrderItem[] },
+        assignment,
+        partner,
+      },
+    };
+  } catch (err: any) {
+    console.error('getOrderTrackingByCode error:', err);
+    return { success: false, error: 'Failed to track order' };
   }
-
-  const { data: order } = await supabase
-    .from('orders')
-    .select('*, order_items(*)')
-    .eq('tracking_code', code)
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  if (!order) return { success: false, error: 'No order found with this tracking code' };
-
-  const isDelivery = !order.order_type || order.order_type === 'room_delivery';
-
-  // For takeaway, dine-in, and in-store, delivery assignments and partners must never be shown
-  let assignment = null;
-  let partner = null;
-
-  if (isDelivery) {
-    const { data: assignmentData } = await supabase
-      .from('delivery_assignments')
-      .select('*')
-      .eq('order_id', order.id)
-      .maybeSingle();
-
-    const { data: partnerData } = order.delivery_partner_id
-      ? await supabase.from('profiles').select('full_name, phone').eq('id', order.delivery_partner_id).maybeSingle()
-      : { data: null };
-
-    assignment = assignmentData
-      ? {
-          status: assignmentData.status,
-          otpValue: assignmentData.otp_value ?? null,
-          otpExpiresAt: assignmentData.otp_expires_at ?? null,
-          otpVerifiedAt: assignmentData.otp_verified_at ?? null,
-        }
-      : null;
-
-    partner = partnerData ? { fullName: partnerData.full_name ?? null, phone: partnerData.phone ?? null } : null;
-  }
-
-  return {
-    success: true,
-    data: {
-      order: order as Order & { order_items?: OrderItem[] },
-      assignment,
-      partner,
-    },
-  };
 }
 
 export async function confirmPayment(
@@ -701,18 +754,17 @@ export async function confirmPayment(
     gatewaySignature?: string;
   }
 ) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
-  const { error } = await supabase
-    .from('orders')
-    .update({ payment_status: 'confirmed' })
-    .eq('id', orderId);
-
-  if (error) return { success: false, error: 'Failed to confirm payment' };
-
-  await recordPayment(orderId, gatewayInfo);
-  return { success: true };
+  try {
+    await query(
+      `UPDATE public.orders SET payment_status = 'confirmed', updated_at = NOW() WHERE id = $1`,
+      [orderId]
+    );
+    await recordPayment(orderId, gatewayInfo);
+    return { success: true };
+  } catch (err: any) {
+    console.error('confirmPayment error:', err);
+    return { success: false, error: 'Failed to confirm payment' };
+  }
 }
 
 async function recordPayment(
@@ -723,85 +775,93 @@ async function recordPayment(
     gatewaySignature?: string;
   }
 ) {
-  const supabase = createServiceClient();
-  if (!supabase) return;
+  try {
+    const oRes = await query<any>(
+      `SELECT id, user_id, COALESCE(total, total_amount, 0) as total, payment_method FROM public.orders WHERE id = $1 LIMIT 1`,
+      [orderId]
+    );
+    const order = oRes.rows[0];
+    if (!order) return;
 
-  const { data: order } = await supabase
-    .from('orders')
-    .select('id, user_id, total, payment_method')
-    .eq('id', orderId)
-    .maybeSingle();
-  if (!order) return;
+    const existingRes = await query<any>(
+      `SELECT id FROM public.payments WHERE order_id = $1 LIMIT 1`,
+      [orderId]
+    );
+    const existing = existingRes.rows[0];
 
-  const { data: existing } = await supabase
-    .from('payments')
-    .select('id')
-    .eq('order_id', orderId)
-    .limit(1)
-    .maybeSingle();
-
-  if (existing) {
-    if (gatewayInfo?.gatewayPaymentId || gatewayInfo?.gatewayOrderId) {
-      await supabase.from('payments').update({
-        gateway_payment_id: gatewayInfo.gatewayPaymentId ?? null,
-        gateway_order_id: gatewayInfo.gatewayOrderId ?? null,
-        gateway_signature: gatewayInfo.gatewaySignature ?? null,
-      }).eq('id', existing.id);
+    if (existing) {
+      if (gatewayInfo?.gatewayPaymentId || gatewayInfo?.gatewayOrderId) {
+        await query(
+          `UPDATE public.payments 
+           SET gateway_payment_id = COALESCE($1, gateway_payment_id),
+               gateway_order_id = COALESCE($2, gateway_order_id),
+               gateway_signature = COALESCE($3, gateway_signature),
+               updated_at = NOW()
+           WHERE id = $4`,
+          [gatewayInfo.gatewayPaymentId ?? null, gatewayInfo.gatewayOrderId ?? null, gatewayInfo.gatewaySignature ?? null, existing.id]
+        );
+      }
+      return;
     }
-    return;
+
+    const method = order.payment_method ?? 'razorpay';
+    const gateway =
+      method === 'bnpl' ? 'bnpl'
+      : method === 'cod' ? 'manual'
+      : method === 'wallet' ? 'wallet'
+      : method === 'upi' ? 'upi'
+      : 'razorpay';
+
+    await query(
+      `INSERT INTO public.payments (
+        order_id, user_id, amount, currency, payment_method, gateway,
+        gateway_order_id, gateway_payment_id, gateway_signature, status, created_at, updated_at
+      ) VALUES ($1, $2, $3, 'INR', $4, $5, $6, $7, $8, 'confirmed', NOW(), NOW())`,
+      [
+        order.id,
+        order.user_id ?? null,
+        Number(order.total) || 0,
+        method,
+        gateway,
+        gatewayInfo?.gatewayOrderId ?? null,
+        gatewayInfo?.gatewayPaymentId ?? null,
+        gatewayInfo?.gatewaySignature ?? null,
+      ]
+    );
+  } catch (pErr) {
+    console.error('recordPayment error:', pErr);
   }
-
-  const method = order.payment_method ?? 'razorpay';
-  const gateway =
-    method === 'bnpl' ? 'bnpl'
-    : method === 'cod' ? 'manual'
-    : method === 'wallet' ? 'wallet'
-    : method === 'upi' ? 'upi'
-    : 'razorpay';
-
-  await supabase.from('payments').insert({
-    order_id: order.id,
-    user_id: order.user_id ?? null,
-    amount: order.total,
-    currency: 'INR',
-    payment_method: method,
-    gateway,
-    gateway_order_id: gatewayInfo?.gatewayOrderId ?? null,
-    gateway_payment_id: gatewayInfo?.gatewayPaymentId ?? null,
-    gateway_signature: gatewayInfo?.gatewaySignature ?? null,
-    status: 'confirmed',
-  });
 }
 
 export async function failPayment(orderId: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
-  const { error } = await supabase
-    .from('orders')
-    .update({ payment_status: 'failed' })
-    .eq('id', orderId);
-
-  if (error) return { success: false, error: 'Failed to update payment status' };
-  return { success: true };
+  try {
+    await query(
+      `UPDATE public.orders SET payment_status = 'failed', updated_at = NOW() WHERE id = $1`,
+      [orderId]
+    );
+    return { success: true };
+  } catch (err: any) {
+    console.error('failPayment error:', err);
+    return { success: false, error: 'Failed to update payment status' };
+  }
 }
 
 export async function cancelUnpaidOrder(orderId: string, reason = 'Payment not completed') {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
-
-  const { error } = await supabase
-    .from('orders')
-    .update({
-      status: 'cancelled',
-      cancelled_at: new Date().toISOString(),
-      cancellation_reason: reason,
-    })
-    .eq('id', orderId)
-    .eq('status', 'pending');
-
-  if (error) return { success: false, error: 'Failed to cancel order' };
-  return { success: true };
+  try {
+    await query(
+      `UPDATE public.orders 
+       SET status = 'cancelled', 
+           cancelled_at = NOW(), 
+           cancellation_reason = $2,
+           updated_at = NOW() 
+       WHERE id = $1 AND status = 'pending'`,
+      [orderId, reason]
+    );
+    return { success: true };
+  } catch (err: any) {
+    console.error('cancelUnpaidOrder error:', err);
+    return { success: false, error: 'Failed to cancel order' };
+  }
 }
 
 export async function getUserOrders(page = 1, pageSize = 10) {
@@ -820,9 +880,24 @@ export async function getUserOrders(page = 1, pageSize = 10) {
     const ordersRes = await query(`
       SELECT 
         o.*,
+        COALESCE(o.total, o.total_amount, 0) AS total,
+        COALESCE(o.subtotal, 0) AS subtotal,
+        COALESCE(o.delivery_fee, 0) AS delivery_fee,
+        COALESCE(o.tax_amount, 0) AS tax_amount,
         COALESCE(
           (
-            SELECT json_agg(oi.*)
+            SELECT json_agg(json_build_object(
+              'id', oi.id,
+              'order_id', oi.order_id,
+              'product_id', oi.product_id,
+              'product_name', oi.product_name,
+              'product_price', COALESCE(oi.product_price, oi.unit_price, 0),
+              'quantity', oi.quantity,
+              'unit_price', COALESCE(oi.unit_price, oi.product_price, 0),
+              'subtotal', COALESCE(oi.subtotal, oi.item_total, 0),
+              'special_instructions', oi.special_instructions,
+              'created_at', oi.created_at
+            ))
             FROM public.order_items oi
             WHERE oi.order_id = o.id
           ),
@@ -836,10 +911,26 @@ export async function getUserOrders(page = 1, pageSize = 10) {
 
     const totalPages = Math.ceil(total / pageSize);
 
+    const orders = ordersRes.rows.map((row: any) => ({
+      ...row,
+      subtotal: Number(row.subtotal) || 0,
+      delivery_fee: Number(row.delivery_fee) || 0,
+      tax_amount: Number(row.tax_amount) || 0,
+      total: Number(row.total) || 0,
+      delivery_address: row.delivery_address || row.delivery_address_json || null,
+      order_items: (row.order_items || []).map((item: any) => ({
+        ...item,
+        quantity: Number(item.quantity) || 1,
+        unit_price: Number(item.unit_price) || 0,
+        product_price: Number(item.product_price) || 0,
+        subtotal: Number(item.subtotal) || 0,
+      })),
+    }));
+
     return {
       success: true,
       data: {
-        orders: ordersRes.rows as unknown as Order[],
+        orders: orders as unknown as Order[],
         total,
         page,
         totalPages,
@@ -872,9 +963,6 @@ export async function processOrderRefundIfEligible(order: {
     return { refunded: false, method: 'cod' };
   }
 
-  const supabase = createServiceClient();
-  if (!supabase) return { refunded: false, method: null };
-
   let refunded = false;
 
   // 1. Wallet Refund: ONLY if paid via Wallet
@@ -897,11 +985,11 @@ export async function processOrderRefundIfEligible(order: {
   if (order.payment_method === 'razorpay' || order.payment_method === 'upi') {
     try {
       const { refundRazorpayPayment } = await import('@/features/payments/actions');
-      const { data: payment } = await supabase
-        .from('payments')
-        .select('id, gateway_payment_id')
-        .eq('order_id', order.id)
-        .maybeSingle();
+      const payRes = await query<{ id: string; gateway_payment_id: string }>(
+        `SELECT id, gateway_payment_id FROM public.payments WHERE order_id = $1 LIMIT 1`,
+        [order.id]
+      );
+      const payment = payRes.rows[0];
 
       if (payment?.gateway_payment_id) {
         await refundRazorpayPayment(
@@ -922,14 +1010,12 @@ export async function processOrderRefundIfEligible(order: {
 
   // 3. Update payment record in database
   try {
-    await supabase
-      .from('payments')
-      .update({
-        status: 'refunded',
-        refund_amount: Number(order.total) || 0,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('order_id', order.id);
+    await query(
+      `UPDATE public.payments 
+       SET status = 'refunded', refund_amount = $1, updated_at = NOW() 
+       WHERE order_id = $2`,
+      [Number(order.total) || 0, order.id]
+    );
   } catch (pErr) {
     console.error('Error updating payment status to refunded:', pErr);
   }
@@ -938,74 +1024,131 @@ export async function processOrderRefundIfEligible(order: {
 }
 
 export async function cancelUserOrder(orderId: string, reason: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
+  try {
+    const { user } = await getServerSession();
+    if (!user) return { success: false, error: 'Not authenticated' };
 
-  const { user } = await getServerSession();
-  if (!user) return { success: false, error: 'Not authenticated' };
+    const orderRes = await query<any>(
+      `SELECT id, user_id, status, status_history, created_at, payment_method, payment_status, total, tracking_code 
+       FROM public.orders WHERE id = $1 LIMIT 1`,
+      [orderId]
+    );
+    const order = orderRes.rows[0];
 
-  const { data: order, error: fetchError } = await supabase
-    .from('orders')
-    .select('id, user_id, status, status_history, created_at, payment_method, payment_status, total, tracking_code')
-    .eq('id', orderId)
-    .maybeSingle();
-
-  if (fetchError || !order) return { success: false, error: 'Order not found' };
-  if (order.user_id !== user.id) return { success: false, error: 'Unauthorized' };
-  if (order.status !== 'pending' && order.status !== 'accepted') return { success: false, error: 'Order can no longer be cancelled' };
-
-  const elapsed = Date.now() - new Date(order.created_at).getTime();
-  const cancellationWindowMinutes = await getNumericSetting('cancellation_window_minutes', 2);
-  const cancellationWindowMs = cancellationWindowMinutes * 60_000;
-  if (elapsed > cancellationWindowMs) {
-    return { success: false, error: `Cancellation window has expired (${cancellationWindowMinutes} minute${cancellationWindowMinutes === 1 ? '' : 's'})` };
-  }
-
-  const historyEntry = { status: 'cancelled', timestamp: new Date().toISOString(), note: reason || 'Cancelled by customer' };
-  const existingHistory = (order.status_history ?? []) as Array<Record<string, unknown>>;
-  const statusHistory = [...existingHistory, historyEntry];
-
-  // Process refund: ONLY for confirmed Wallet or Razorpay/UPI payments; COD never refunds
-  const isCod = order.payment_method === 'cod';
-  let newPaymentStatus = isCod ? 'failed' : order.payment_status;
-
-  if (order.payment_status === 'confirmed' && !isCod) {
-    const refundResult = await processOrderRefundIfEligible(order, reason || 'Cancelled by customer');
-    if (refundResult.refunded) {
-      newPaymentStatus = 'refunded';
+    if (!order) return { success: false, error: 'Order not found' };
+    if (order.user_id !== user.id && user.role !== 'admin' && user.role !== 'superadmin') {
+      return { success: false, error: 'Unauthorized' };
     }
+    if (order.status !== 'pending' && order.status !== 'accepted') {
+      return { success: false, error: 'Order can no longer be cancelled' };
+    }
+
+    const elapsed = Date.now() - new Date(order.created_at).getTime();
+    const cancellationWindowMinutes = await getNumericSetting('cancellation_window_minutes', 2);
+    const cancellationWindowMs = cancellationWindowMinutes * 60_000;
+    if (elapsed > cancellationWindowMs) {
+      return { success: false, error: `Cancellation window has expired (${cancellationWindowMinutes} minute${cancellationWindowMinutes === 1 ? '' : 's'})` };
+    }
+
+    const historyEntry = { status: 'cancelled', timestamp: new Date().toISOString(), note: reason || 'Cancelled by customer' };
+    const existingHistory = (order.status_history ?? []) as Array<Record<string, unknown>>;
+    const statusHistory = [...existingHistory, historyEntry];
+
+    // Process refund: ONLY for confirmed Wallet or Razorpay/UPI payments; COD never refunds
+    const isCod = order.payment_method === 'cod';
+    let newPaymentStatus = isCod ? 'failed' : order.payment_status;
+
+    if (order.payment_status === 'confirmed' && !isCod) {
+      const refundResult = await processOrderRefundIfEligible(order, reason || 'Cancelled by customer');
+      if (refundResult.refunded) {
+        newPaymentStatus = 'refunded';
+      }
+    }
+
+    await query(
+      `UPDATE public.orders 
+       SET status = 'cancelled', 
+           payment_status = $1, 
+           cancelled_at = NOW(), 
+           cancellation_reason = $2, 
+           status_history = $3,
+           updated_at = NOW()
+       WHERE id = $4`,
+      [newPaymentStatus, reason || 'Cancelled by customer', JSON.stringify(statusHistory), orderId]
+    );
+
+    return { success: true, refunded: !isCod && order.payment_status === 'confirmed' };
+  } catch (err: any) {
+    console.error('cancelUserOrder error:', err);
+    return { success: false, error: 'Failed to cancel order' };
   }
-
-  const { error } = await supabase
-    .from('orders')
-    .update({
-      status: 'cancelled',
-      payment_status: newPaymentStatus,
-      cancelled_at: new Date().toISOString(),
-      cancellation_reason: reason || 'Cancelled by customer',
-      status_history: statusHistory,
-    })
-    .eq('id', orderId);
-
-  if (error) return { success: false, error: 'Failed to cancel order' };
-  return { success: true, refunded: !isCod && order.payment_status === 'confirmed' };
 }
 
 export async function getUserOrder(orderId: string) {
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service unavailable' };
+  try {
+    const { user } = await getServerSession();
 
-  const { user } = await getServerSession();
-  if (!user) return { success: false, error: 'Not authenticated' };
+    const orderRes = await query<any>(`
+      SELECT 
+        o.*,
+        COALESCE(o.total, o.total_amount, 0) AS total,
+        COALESCE(o.subtotal, 0) AS subtotal,
+        COALESCE(o.delivery_fee, 0) AS delivery_fee,
+        COALESCE(o.tax_amount, 0) AS tax_amount,
+        COALESCE(
+          (
+            SELECT json_agg(json_build_object(
+              'id', oi.id,
+              'order_id', oi.order_id,
+              'product_id', oi.product_id,
+              'product_name', oi.product_name,
+              'product_price', COALESCE(oi.product_price, oi.unit_price, 0),
+              'quantity', oi.quantity,
+              'unit_price', COALESCE(oi.unit_price, oi.product_price, 0),
+              'subtotal', COALESCE(oi.subtotal, oi.item_total, 0),
+              'special_instructions', oi.special_instructions,
+              'created_at', oi.created_at
+            ))
+            FROM public.order_items oi
+            WHERE oi.order_id = o.id
+          ),
+          '[]'::json
+        ) AS order_items
+      FROM public.orders o
+      WHERE o.id = $1
+      LIMIT 1;
+    `, [orderId]);
 
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*, order_items(*)')
-    .eq('id', orderId)
-    .maybeSingle();
+    const row = orderRes.rows[0];
+    if (!row) return { success: false, error: 'Order not found' };
 
-  if (error || !data) return { success: false, error: 'Order not found' };
-  if (data.user_id !== user.id) return { success: false, error: 'Unauthorized' };
+    if (user) {
+      const isStaffOrAdmin = user.role ? ['admin', 'superadmin', 'manager', 'staff', 'delivery'].includes(user.role) : false;
+      const isOwner = row.user_id === user.id || row.customer_email === user.email || row.customer_phone === user.phone;
+      if (!isStaffOrAdmin && !isOwner) {
+        return { success: false, error: 'Unauthorized' };
+      }
+    }
 
-  return { success: true, data: data as unknown as Order };
+    const order = {
+      ...row,
+      subtotal: Number(row.subtotal) || 0,
+      delivery_fee: Number(row.delivery_fee) || 0,
+      tax_amount: Number(row.tax_amount) || 0,
+      total: Number(row.total) || 0,
+      delivery_address: row.delivery_address || row.delivery_address_json || null,
+      order_items: (row.order_items || []).map((item: any) => ({
+        ...item,
+        quantity: Number(item.quantity) || 1,
+        unit_price: Number(item.unit_price) || 0,
+        product_price: Number(item.product_price) || 0,
+        subtotal: Number(item.subtotal) || 0,
+      })),
+    };
+
+    return { success: true, data: order as unknown as Order };
+  } catch (err: any) {
+    console.error('getUserOrder error:', err);
+    return { success: false, error: 'Failed to fetch order' };
+  }
 }

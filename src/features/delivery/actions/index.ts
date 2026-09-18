@@ -1,6 +1,7 @@
 'use server';
 
 import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 import { getServerSession, getServerProfile } from '@/features/auth/actions';
 import { sendDeliveryOtpEmail } from '@/lib/email';
 import { deliveryRepository } from '../repositories';
@@ -497,54 +498,65 @@ export async function getCustomerDeliveryInfo(orderId: string) {
   const { user } = await getServerSession();
   if (!user) return { success: false, error: 'Not authenticated' };
 
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured' };
+  try {
+    const orderRes = await query<any>(
+      `SELECT user_id, status, payment_method, payment_status, delivery_partner_id, 
+              COALESCE(total, total_amount, 0) as total, order_type 
+       FROM public.orders WHERE id = $1 LIMIT 1`,
+      [orderId]
+    );
+    const order = orderRes.rows[0];
+    if (!order || (order.user_id !== user.id && user.role !== 'admin' && user.role !== 'superadmin')) {
+      return { success: false, error: 'Unauthorized' };
+    }
 
-  const { data: order } = await supabase
-    .from('orders')
-    .select('user_id, status, payment_method, payment_status, delivery_partner_id, total, order_type')
-    .eq('id', orderId)
-    .maybeSingle();
-  if (!order || order.user_id !== user.id) return { success: false, error: 'Unauthorized' };
+    const isTakeaway = order.order_type === 'takeaway' || order.order_type === 'dine_in' || order.order_type === 'in_store';
+    if (isTakeaway) {
+      return {
+        success: true,
+        data: {
+          hasDelivery: false,
+          orderStatus: order.status,
+          assignment: null,
+          partner: null,
+          payment: { method: order.payment_method, status: order.payment_status },
+          total: Number(order.total) || 0,
+        },
+      };
+    }
 
-  const isTakeaway = order.order_type === 'takeaway' || order.order_type === 'dine_in' || order.order_type === 'in_store';
-  if (isTakeaway) {
+    const assignment = await deliveryRepository.getAssignmentByOrderId(orderId);
+    let partnerData: { full_name?: string | null; phone?: string | null } | null = null;
+    if (order.delivery_partner_id) {
+      const pRes = await query<{ full_name: string | null; phone: string | null }>(
+        `SELECT full_name, phone FROM public.users WHERE id = $1 LIMIT 1`,
+        [order.delivery_partner_id]
+      );
+      partnerData = pRes.rows[0] || null;
+    }
+
     return {
       success: true,
       data: {
-        hasDelivery: false,
+        hasDelivery: !!(assignment || order.delivery_partner_id),
         orderStatus: order.status,
-        assignment: null,
-        partner: null,
+        assignment: assignment
+          ? {
+              status: assignment.status,
+              otpValue: assignment.otp_value ?? null,
+              otpExpiresAt: assignment.otp_expires_at ?? null,
+              otpVerifiedAt: assignment.otp_verified_at ?? null,
+            }
+          : null,
+        partner: partnerData
+          ? { fullName: partnerData.full_name ?? null, phone: partnerData.phone ?? null }
+          : null,
         payment: { method: order.payment_method, status: order.payment_status },
-        total: order.total,
+        total: Number(order.total) || 0,
       },
     };
+  } catch (err) {
+    console.error('getCustomerDeliveryInfo error:', err);
+    return { success: false, error: 'Failed to fetch delivery info' };
   }
-
-  const assignment = await deliveryRepository.getAssignmentByOrderId(orderId);
-  const partner = order.delivery_partner_id
-    ? await supabase.from('profiles').select('full_name, phone').eq('id', order.delivery_partner_id).maybeSingle()
-    : { data: null };
-
-  return {
-    success: true,
-    data: {
-      hasDelivery: !!(assignment || order.delivery_partner_id),
-      orderStatus: order.status,
-      assignment: assignment
-        ? {
-            status: assignment.status,
-            otpValue: assignment.otp_value ?? null,
-            otpExpiresAt: assignment.otp_expires_at ?? null,
-            otpVerifiedAt: assignment.otp_verified_at ?? null,
-          }
-        : null,
-      partner: partner?.data
-        ? { fullName: partner.data.full_name ?? null, phone: partner.data.phone ?? null }
-        : null,
-      payment: { method: order.payment_method, status: order.payment_status },
-      total: order.total,
-    },
-  };
 }
