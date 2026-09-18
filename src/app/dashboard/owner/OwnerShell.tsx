@@ -51,9 +51,9 @@ export default function OwnerShell({ children }: { children: React.ReactNode }) 
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex items-center justify-between px-5 h-16 border-b border-zborder">
-          <Link href="/dashboard/owner" className="flex items-center gap-1.5 shrink-0" aria-label="Dilip Da">
+          <Link href="/dashboard/owner" className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
             <span className="text-xl font-black tracking-tight">
-              <span className="text-ztext">Dilip</span> <span className="text-zred">Da</span>
+              <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
             </span>
           </Link>
           <button onClick={() => setSidebarOpen(false)} aria-label="Close sidebar" className="lg:hidden p-1.5 hover:bg-zgray transition-colors">
@@ -98,7 +98,7 @@ export default function OwnerShell({ children }: { children: React.ReactNode }) 
             </button>
 
             <div className="hidden lg:flex items-center gap-2">
-              <span className="text-xs font-medium text-ztext-muted">Dilip Da — Owner Dashboard</span>
+              <span className="text-xs font-medium text-ztext-muted">Bodosa — Owner Dashboard</span>
             </div>
 
             <div className="flex items-center gap-3" />

@@ -31,7 +31,7 @@ export default function OnboardingForm() {
     <div className="w-full max-w-lg mx-auto">
       <div className="bg-zcard rounded-xl shadow-z p-8">
         <h1 className="text-2xl font-bold text-ztext mb-1">Almost there!</h1>
-        <p className="text-ztext-light text-sm mb-6">Choose how you&apos;ll use Dilip Da</p>
+        <p className="text-ztext-light text-sm mb-6">Choose how you&apos;ll use Bodosa</p>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-3">
             {roles.map((r) => (

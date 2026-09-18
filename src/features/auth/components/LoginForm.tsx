@@ -80,7 +80,7 @@ export default function LoginForm() {
         ) : (
           <>
             <h1 className="text-2xl font-bold text-ztext mb-1">Welcome back</h1>
-            <p className="text-ztext-light text-sm mb-6">Sign in to your Dilip Da account</p>
+            <p className="text-ztext-light text-sm mb-6">Sign in to your Bodosa account</p>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>

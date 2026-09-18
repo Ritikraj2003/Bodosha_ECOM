@@ -1,6 +1,6 @@
 'use server';
 
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 import { getServerSession } from '@/features/auth/actions';
 import { getAdminEmails, getOwnerEmail } from '@/lib/settings';
 import { isAdminEmail, isOwnerEmail } from '@/config/auth-access';
@@ -21,38 +21,29 @@ async function authorizeAdmin() {
   const { user } = await getServerSession();
   if (!user) return { authorized: false, error: 'Not authenticated', userId: null };
 
-  const supabase = createServiceClient();
-  if (!supabase) return { authorized: false, error: 'Database service unavailable', userId: null };
-
   const adminEmails = await getAdminEmails();
   const isAdminByEmail = isAdminEmail(user.email, adminEmails);
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle();
+  const profileRes = await query('SELECT role FROM public.profiles WHERE id = $1', [user.id]);
+  const profileRole = profileRes.rows[0]?.role;
 
   const isUserAdmin =
     user.role === 'admin' ||
     user.role === 'super_admin' ||
-    profile?.role === 'admin' ||
-    profile?.role === 'super_admin' ||
+    profileRole === 'admin' ||
+    profileRole === 'super_admin' ||
     isAdminByEmail;
 
   if (!isUserAdmin) {
     return { authorized: false, error: 'Forbidden. Admin access required.', userId: null };
   }
 
-  return { authorized: true, userId: user.id, supabase };
+  return { authorized: true, userId: user.id };
 }
 
 async function authorizeAdminOrOwner() {
   const { user } = await getServerSession();
   if (!user) return { authorized: false, error: 'Not authenticated', userId: null, isOwner: false };
-
-  const supabase = createServiceClient();
-  if (!supabase) return { authorized: false, error: 'Database service unavailable', userId: null, isOwner: false };
 
   const [adminEmails, ownerEmail] = await Promise.all([
     getAdminEmails(),
@@ -62,24 +53,21 @@ async function authorizeAdminOrOwner() {
   const isAdminByEmail = isAdminEmail(user.email, adminEmails);
   const isOwner = isOwnerEmail(user.email, ownerEmail);
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle();
+  const profileRes = await query('SELECT role FROM public.profiles WHERE id = $1', [user.id]);
+  const profileRole = profileRes.rows[0]?.role;
 
   const isUserAdmin =
     user.role === 'admin' ||
     user.role === 'super_admin' ||
-    profile?.role === 'admin' ||
-    profile?.role === 'super_admin' ||
+    profileRole === 'admin' ||
+    profileRole === 'super_admin' ||
     isAdminByEmail;
 
   if (!isUserAdmin && !isOwner) {
     return { authorized: false, error: 'Forbidden. Access required.', userId: null, isOwner: false };
   }
 
-  return { authorized: true, userId: user.id, supabase, isOwner };
+  return { authorized: true, userId: user.id, isOwner };
 }
 
 function formatExpenseError(err: unknown, defaultMessage: string): string {
@@ -92,9 +80,6 @@ function formatExpenseError(err: unknown, defaultMessage: string): string {
       ? err
       : defaultMessage;
 
-  if (msg.includes('schema cache') || msg.includes('Could not find the table') || msg.includes('expense_transactions') || msg.includes('expense_settings')) {
-    return "Database table 'expense_transactions' is missing. Please run the SQL migration (supabase/migrations/20260824120000_expense_tracker.sql) in your Supabase SQL Editor.";
-  }
   return msg || defaultMessage;
 }
 
@@ -105,7 +90,11 @@ function formatDateISO(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getDateRange(filter: DateFilterType, customStart?: string, customEnd?: string): { startDate?: string; endDate?: string } {
+function getDateRange(
+  filter: DateFilterType,
+  customStart?: string,
+  customEnd?: string
+): { startDate?: string; endDate?: string } {
   const now = new Date();
   const todayStr = formatDateISO(now);
 
@@ -120,7 +109,7 @@ function getDateRange(filter: DateFilterType, customStart?: string, customEnd?: 
     }
     case 'this_week': {
       const day = now.getDay();
-      const diffToMonday = (day === 0 ? -6 : 1 - day);
+      const diffToMonday = day === 0 ? -6 : 1 - day;
       const monday = new Date(now);
       monday.setDate(now.getDate() + diffToMonday);
       const sunday = new Date(monday);
@@ -149,47 +138,36 @@ export async function getExpenseSummary(
   customEnd?: string
 ): Promise<{ success: boolean; data?: ExpenseSummary; error?: string }> {
   const auth = await authorizeAdminOrOwner();
-  if (!auth.authorized || !auth.supabase || !auth.userId) {
+  if (!auth.authorized || !auth.userId) {
     return { success: false, error: auth.error };
   }
-  const { supabase, userId, isOwner } = auth;
 
   try {
     // 1. Fetch starting balance
     let startingBalance = 0;
     try {
-      let settingsQuery = supabase.from('expense_settings').select('starting_balance');
-      if (!isOwner) {
-        settingsQuery = settingsQuery.eq('user_id', userId);
+      const settingsRes = await query(
+        `SELECT starting_balance FROM public.expense_settings ORDER BY created_at DESC LIMIT 1`
+      );
+      if (settingsRes.rows.length > 0) {
+        startingBalance = Number(settingsRes.rows[0].starting_balance) || 0;
       }
-      const { data: settingsData } = await settingsQuery.order('created_at', { ascending: false }).limit(1).maybeSingle();
-
-      if (settingsData) {
-        startingBalance = Number(settingsData.starting_balance) || 0;
-      }
-    } catch {
-      // Table may not exist yet or empty
+    } catch (e) {
+      console.error('Error fetching starting_balance:', e);
     }
 
     // 2. Fetch ALL transactions sorted chronologically (ASC) to calculate running balance
-    let txQuery = supabase.from('expense_transactions').select('*');
-    if (!isOwner) {
-      txQuery = txQuery.eq('user_id', userId);
-    }
-    const { data: allRaw, error: fetchErr } = await txQuery
-      .order('transaction_date', { ascending: true })
-      .order('created_at', { ascending: true });
-
-    if (fetchErr) {
-      console.error('Error fetching expense transactions:', fetchErr);
-      return { success: false, error: formatExpenseError(fetchErr, 'Failed to fetch transactions') };
-    }
+    const txRes = await query(
+      `SELECT id, user_id, transaction_date::text, description, amount, type, note, created_at, updated_at
+       FROM public.expense_transactions
+       ORDER BY transaction_date ASC, created_at ASC`
+    );
 
     let running = startingBalance;
     let totalIncome = 0;
     let totalExpenses = 0;
 
-    const allCalculated: ExpenseTransaction[] = (allRaw || []).map((raw: any) => {
+    const allCalculated: ExpenseTransaction[] = (txRes.rows || []).map((raw: any) => {
       const amount = Number(raw.amount) || 0;
       const type = raw.type as 'income' | 'expense';
 
@@ -210,8 +188,8 @@ export async function getExpenseSummary(
         type,
         note: raw.note ?? null,
         running_balance: running,
-        created_at: raw.created_at,
-        updated_at: raw.updated_at,
+        created_at: new Date(raw.created_at).toISOString(),
+        updated_at: new Date(raw.updated_at).toISOString(),
       };
     });
 
@@ -274,16 +252,16 @@ export async function getExpenseSummary(
 }
 
 /**
- * Set or update user's initial starting balance
+ * Set or update store initial starting balance
  */
 export async function updateStartingBalance(
   startingBalance: number
 ): Promise<{ success: boolean; error?: string }> {
   const auth = await authorizeAdmin();
-  if (!auth.authorized || !auth.supabase || !auth.userId) {
+  if (!auth.authorized || !auth.userId) {
     return { success: false, error: auth.error };
   }
-  const { supabase, userId } = auth;
+  const { userId } = auth;
 
   const parsed = startingBalanceSchema.safeParse({ starting_balance: startingBalance });
   if (!parsed.success) {
@@ -291,35 +269,17 @@ export async function updateStartingBalance(
   }
 
   try {
-    const { data: existing } = await supabase
-      .from('expense_settings')
-      .select('id')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (existing) {
-      const { error: updateErr } = await supabase
-        .from('expense_settings')
-        .update({
-          starting_balance: parsed.data.starting_balance,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId);
-
-      if (updateErr) {
-        console.error('updateStartingBalance update error:', updateErr);
-        return { success: false, error: formatExpenseError(updateErr, 'Failed to update starting balance') };
-      }
+    const existing = await query(`SELECT id FROM public.expense_settings LIMIT 1`);
+    if (existing.rows.length > 0) {
+      await query(
+        `UPDATE public.expense_settings SET starting_balance = $1, user_id = $2, updated_at = NOW() WHERE id = $3`,
+        [parsed.data.starting_balance, userId, existing.rows[0].id]
+      );
     } else {
-      const { error: insertErr } = await supabase.from('expense_settings').insert({
-        user_id: userId,
-        starting_balance: parsed.data.starting_balance,
-      });
-
-      if (insertErr) {
-        console.error('updateStartingBalance insert error:', insertErr);
-        return { success: false, error: formatExpenseError(insertErr, 'Failed to insert starting balance') };
-      }
+      await query(
+        `INSERT INTO public.expense_settings (user_id, starting_balance) VALUES ($1, $2)`,
+        [userId, parsed.data.starting_balance]
+      );
     }
 
     return { success: true };
@@ -339,10 +299,10 @@ export async function addExpenseTransaction(
   input: CreateExpenseInput
 ): Promise<{ success: boolean; error?: string }> {
   const auth = await authorizeAdmin();
-  if (!auth.authorized || !auth.supabase || !auth.userId) {
+  if (!auth.authorized || !auth.userId) {
     return { success: false, error: auth.error };
   }
-  const { supabase, userId } = auth;
+  const { userId } = auth;
 
   const parsed = expenseTransactionSchema.safeParse(input);
   if (!parsed.success) {
@@ -350,23 +310,22 @@ export async function addExpenseTransaction(
   }
 
   try {
-    const { error: insertErr } = await supabase.from('expense_transactions').insert({
-      user_id: userId,
-      transaction_date: parsed.data.transaction_date,
-      description: parsed.data.description,
-      amount: parsed.data.amount,
-      type: parsed.data.type,
-      note: parsed.data.note ?? null,
-    });
-
-    if (insertErr) {
-      console.error('addExpenseTransaction insert error:', insertErr);
-      return { success: false, error: formatExpenseError(insertErr, 'Failed to add transaction') };
-    }
+    await query(
+      `INSERT INTO public.expense_transactions (user_id, transaction_date, description, amount, type, note)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        userId,
+        parsed.data.transaction_date,
+        parsed.data.description,
+        parsed.data.amount,
+        parsed.data.type,
+        parsed.data.note ?? null,
+      ]
+    );
 
     return { success: true };
   } catch (err: unknown) {
-    console.error('addExpenseTransaction error:', err);
+    console.error('addExpenseTransaction insert error:', err);
     return {
       success: false,
       error: formatExpenseError(err, 'Failed to add transaction'),
@@ -382,10 +341,9 @@ export async function updateExpenseTransaction(
   input: UpdateExpenseInput
 ): Promise<{ success: boolean; error?: string }> {
   const auth = await authorizeAdmin();
-  if (!auth.authorized || !auth.supabase || !auth.userId) {
+  if (!auth.authorized || !auth.userId) {
     return { success: false, error: auth.error };
   }
-  const { supabase, userId } = auth;
 
   if (!id) return { success: false, error: 'Transaction ID is required' };
 
@@ -395,19 +353,24 @@ export async function updateExpenseTransaction(
   }
 
   try {
-    const { error: updateErr } = await supabase
-      .from('expense_transactions')
-      .update({
-        ...parsed.data,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (updateErr) {
-      console.error('updateExpenseTransaction update error:', updateErr);
-      return { success: false, error: formatExpenseError(updateErr, 'Failed to update transaction') };
+    const existing = await query(`SELECT * FROM public.expense_transactions WHERE id = $1`, [id]);
+    if (existing.rows.length === 0) {
+      return { success: false, error: 'Transaction not found' };
     }
+
+    const current = existing.rows[0];
+    const newDate = parsed.data.transaction_date ?? current.transaction_date;
+    const newDesc = parsed.data.description ?? current.description;
+    const newAmount = parsed.data.amount ?? current.amount;
+    const newType = parsed.data.type ?? current.type;
+    const newNote = parsed.data.note !== undefined ? parsed.data.note : current.note;
+
+    await query(
+      `UPDATE public.expense_transactions
+       SET transaction_date = $1, description = $2, amount = $3, type = $4, note = $5, updated_at = NOW()
+       WHERE id = $6`,
+      [newDate, newDesc, newAmount, newType, newNote, id]
+    );
 
     return { success: true };
   } catch (err: unknown) {
@@ -426,25 +389,14 @@ export async function deleteExpenseTransaction(
   id: string
 ): Promise<{ success: boolean; error?: string }> {
   const auth = await authorizeAdmin();
-  if (!auth.authorized || !auth.supabase || !auth.userId) {
+  if (!auth.authorized || !auth.userId) {
     return { success: false, error: auth.error };
   }
-  const { supabase, userId } = auth;
 
   if (!id) return { success: false, error: 'Transaction ID is required' };
 
   try {
-    const { error: deleteErr } = await supabase
-      .from('expense_transactions')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', userId);
-
-    if (deleteErr) {
-      console.error('deleteExpenseTransaction delete error:', deleteErr);
-      return { success: false, error: formatExpenseError(deleteErr, 'Failed to delete transaction') };
-    }
-
+    await query(`DELETE FROM public.expense_transactions WHERE id = $1`, [id]);
     return { success: true };
   } catch (err: unknown) {
     console.error('deleteExpenseTransaction error:', err);

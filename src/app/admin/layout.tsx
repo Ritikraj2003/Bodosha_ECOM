@@ -54,9 +54,9 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       <aside className="hidden md:flex flex-col w-64 bg-zcard border-r border-zborder shadow-z-modal z-20">
         <div className="p-6 flex items-center gap-3 border-b border-zborder">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-zred to-orange-500 flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-sm">D</span>
+            <span className="text-white font-bold text-sm">B</span>
           </div>
-          <span className="font-bold text-lg tracking-tight">Dilip Da Admin</span>
+          <span className="font-bold text-lg tracking-tight">Bodosa Admin</span>
         </div>
         
         <nav className="flex-1 py-6 px-4 space-y-1.5 overflow-y-auto scrollbar-hide">

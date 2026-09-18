@@ -113,7 +113,7 @@ export async function sendTestPushNotification(): Promise<{ success: boolean; er
 
     const { sendPushToUser } = await import('@/lib/push');
     const res = await sendPushToUser(user.id, {
-      title: '🎉 Dilip Da Alerts Active!',
+      title: '🎉 Bodosa Alerts Active!',
       body: 'Congratulations! Real-time notifications for kitchen orders & wallet fines are working on this device.',
       url: '/orders',
       tag: 'test-notification',

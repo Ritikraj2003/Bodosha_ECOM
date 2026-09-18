@@ -58,7 +58,7 @@ async function getMerchantRestaurantId(): Promise<string | null> {
       ) VALUES (
         'd1111111-1111-1111-1111-111111111111',
         $1,
-        'Dilip Da Main Store',
+        'Bodosa Main Store',
         'dilip-da-main',
         'Near CIT Kokrajhar Campus',
         'Kokrajhar',

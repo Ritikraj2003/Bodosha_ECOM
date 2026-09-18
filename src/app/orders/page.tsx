@@ -107,7 +107,7 @@ function OrderCard({ order, index, onCancel, cancellationWindowMs }: { order: Or
           )}
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-ztext text-[13px] leading-tight">Dilip Da</h3>
+          <h3 className="font-bold text-ztext text-[13px] leading-tight">Bodosa</h3>
           <p className="text-[10px] text-ztext-lighter mt-0.5 truncate">{orderTypeLabel(order.order_type) || 'Hostel Delivery'}</p>
           <Link href="/menu" className="text-[10px] font-semibold text-zred hover:underline inline-flex items-center gap-1 mt-0.5">
             View menu <ChevronDown size={9} />
@@ -386,7 +386,7 @@ export default function OrdersPage() {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <h1 className="flex items-center gap-1.5 text-base font-bold text-ztext">
-                  <MapPin size={14} className="text-zred" /> Dilip Da <ChevronDown size={12} className="text-ztext-lighter" />
+                  <MapPin size={14} className="text-zred" /> Bodosa <ChevronDown size={12} className="text-ztext-lighter" />
                 </h1>
                 <p className="text-[11px] text-ztext-light mt-0.5">Near CIT Kokrajhar, 2nd Gate</p>
               </div>

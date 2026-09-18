@@ -227,7 +227,7 @@ function TrackContent() {
                   </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-amber-500/15 text-xs text-ztext-lighter">
-                  📍 Dilip Da Canteen, Near CIT Kokrajhar 2nd Gate
+                  📍 Bodosa Canteen, Near CIT Kokrajhar 2nd Gate
                 </div>
               </div>
             )}

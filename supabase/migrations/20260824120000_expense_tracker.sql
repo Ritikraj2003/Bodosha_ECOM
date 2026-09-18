@@ -1,8 +1,8 @@
 -- Expense Settings (per-user starting balance)
 CREATE TABLE IF NOT EXISTS public.expense_settings (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id          uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
-  starting_balance numeric(10,2) NOT NULL DEFAULT 0.00,
+  user_id          uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE UNIQUE,
+  starting_balance numeric(12,2) NOT NULL DEFAULT 0.00,
   created_at       timestamptz NOT NULL DEFAULT now(),
   updated_at       timestamptz NOT NULL DEFAULT now()
 );
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.expense_settings (
 -- Expense & Income Transactions
 CREATE TABLE IF NOT EXISTS public.expense_transactions (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id          uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id          uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   transaction_date date NOT NULL DEFAULT CURRENT_DATE,
   description      text NOT NULL,
   amount           numeric(10,2) NOT NULL CHECK (amount > 0),

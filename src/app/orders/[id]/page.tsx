@@ -187,7 +187,7 @@ export default function OrderDetailPage() {
               <MapPin size={16} className="text-amber-500 shrink-0" />
               <div>
                 <p className="font-semibold text-ztext">Store Pickup (Take Away)</p>
-                <p className="text-xs text-ztext-light mt-0.5">Collect directly from store counter • Dilip Da Canteen</p>
+                <p className="text-xs text-ztext-light mt-0.5">Collect directly from store counter • Bodosa Canteen</p>
               </div>
             </div>
           </div>

@@ -48,9 +48,9 @@ export default function Navbar() {
             <ChevronLeft size={20} /> Back
           </button>
         ) : (
-          <Link href="/" className="flex items-center gap-1.5 shrink-0" aria-label="Dilip Da">
+          <Link href="/" className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
             <span className="text-xl sm:text-2xl font-semibold tracking-tight">
-              <span className="text-ztext">Dilip</span> <span className="text-zred">Da</span>
+              <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
             </span>
           </Link>
         )}

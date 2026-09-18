@@ -329,7 +329,7 @@ export default function SignupForm() {
     <div className="w-full max-w-md mx-auto">
       <div className="bg-zcard rounded-xl shadow-z p-8">
         <h1 className="text-2xl font-bold text-ztext mb-1">Create account</h1>
-        <p className="text-ztext-light text-sm mb-6">Join Dilip Da and start ordering</p>
+        <p className="text-ztext-light text-sm mb-6">Join Bodosa and start ordering</p>
 
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">

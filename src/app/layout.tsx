@@ -17,10 +17,10 @@ const PushNotificationManager = dynamic(() => import('@/components/notifications
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | Dilip Da',
-    default: 'Dilip Da — Homestyle Meals near CIT Kokrajhar',
+    template: '%s | Bodosa',
+    default: 'Bodosa — Homestyle Meals near CIT Kokrajhar',
   },
-  description: 'Dilip Da is a homestyle food service run by Dilip da, serving fresh meals near CIT Kokrajhar. Order online for delivery.',
+  description: 'Bodosa is a homestyle food service, serving fresh meals near CIT Kokrajhar. Order online for delivery.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

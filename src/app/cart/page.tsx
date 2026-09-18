@@ -57,7 +57,7 @@ export default function CartPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-ztext">Your Bag</h1>
-            <p className="text-xs text-ztext-light mt-0.5">{count} item{count > 1 ? 's' : ''} from Dilip Da</p>
+            <p className="text-xs text-ztext-light mt-0.5">{count} item{count > 1 ? 's' : ''} from Bodosa</p>
           </div>
           <button onClick={clearCart} className="text-xs text-ztext-lighter hover:text-red-400 font-medium flex items-center gap-1 transition-colors">
             <Trash2 size={13} /> Clear Bag

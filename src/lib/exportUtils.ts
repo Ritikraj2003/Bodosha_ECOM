@@ -168,7 +168,7 @@ export function exportToPDF(
       <body>
         <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #ef4444; padding-bottom: 8px; margin-bottom: 12px;">
           <div>
-            <h1>Dilip Da Admin Report: ${title}</h1>
+            <h1>Bodosa Admin Report: ${title}</h1>
             <p>Generated on ${dateStr} • Total Records: ${rows.length}</p>
           </div>
           <button onclick="window.print();" style="background: #ef4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">

@@ -430,7 +430,7 @@ export default function InStorePage() {
       openRazorpayCheckout({
         key: razorpayKey,
         amount: rzpRes.data.amount,
-        name: 'Dilip Da In-Store Counter',
+        name: 'Bodosa In-Store Counter',
         description: `Counter Order for ${displayName}`,
         orderId: rzpRes.data.id,
         prefill: { name: displayName, contact: customerPhone.trim() || '', email: customerEmail.trim() || '' },

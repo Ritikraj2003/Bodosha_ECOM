@@ -30,7 +30,7 @@ export default function Footer() {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           <div className="flex items-center gap-2">
             <span className="font-black text-ztext text-sm">
-              Dilip<span className="text-zred"> Da</span>
+              Bodo<span className="text-zred">sa</span>
             </span>
             <span className="text-xs text-ztext-light">&mdash; Order food. Pay fair.</span>
           </div>

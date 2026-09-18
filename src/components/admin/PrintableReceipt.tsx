@@ -61,7 +61,7 @@ export function PrintableReceipt({ order, onClose }: PrintableReceiptProps) {
         <div id="receipt-printable-area" className="space-y-4 text-xs font-mono text-ztext print:text-black print:w-full">
           {/* Header */}
           <div className="text-center border-b border-dashed border-zborder print:border-black pb-3">
-            <h1 className="text-base font-black tracking-tight text-ztext print:text-black">DILIP DA</h1>
+            <h1 className="text-base font-black tracking-tight text-ztext print:text-black">BODOSA</h1>
             <p className="text-[10px] text-ztext-light print:text-black">Near CIT Kokrajhar, Kokrajhar, Assam</p>
             <p className="text-[10px] font-bold text-zred print:text-black mt-1 uppercase tracking-wider">
               {isTakeaway ? '*** TAKE AWAY RECEIPT ***' : '*** IN-STORE COUNTER RECEIPT ***'}
@@ -139,7 +139,7 @@ export function PrintableReceipt({ order, onClose }: PrintableReceiptProps) {
               <span>PAYMENT MODE:</span>
               <span className="uppercase text-zred print:text-black">{order.paymentMethod}</span>
             </div>
-            <p className="text-ztext-light print:text-black pt-2">Thank you for dining at Dilip Da!</p>
+            <p className="text-ztext-light print:text-black pt-2">Thank you for dining at Bodosa!</p>
             <p className="text-ztext-lighter print:text-black">Please visit us again soon.</p>
           </div>
         </div>

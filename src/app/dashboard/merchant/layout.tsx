@@ -45,9 +45,9 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
     <div className="min-h-screen bg-zgray flex flex-col lg:flex-row">
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-zcard border-r border-zborder transform transition-transform duration-300 lg:translate-x-0 lg:fixed lg:top-0 lg:bottom-0 lg:left-0 lg:z-30 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-zborder">
-          <Link href="/dashboard/merchant" className="flex items-center gap-1.5 shrink-0" aria-label="Dilip Da">
+          <Link href="/dashboard/merchant" className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
             <span className="text-xl font-black tracking-tight">
-              <span className="text-ztext">Dilip</span> <span className="text-zred">Da</span>
+              <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
             </span>
           </Link>
           <button onClick={closeSidebar} aria-label="Close sidebar" className="lg:hidden p-1 rounded-lg hover:bg-zgray text-ztext-lighter">

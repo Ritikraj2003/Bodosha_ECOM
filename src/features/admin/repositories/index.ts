@@ -34,7 +34,7 @@ export class AdminRepository {
           (SELECT COUNT(*) FROM public.credit_repayments WHERE status = 'pending' AND due_date < $4)::int AS total_overdue_accounts,
           (SELECT COUNT(*) FROM public.restaurants WHERE is_active = true AND deleted_at IS NULL)::int AS active_merchants,
           (SELECT COUNT(*) FROM public.restaurants WHERE is_active = false AND deleted_at IS NULL)::int AS pending_merchant_approvals,
-          (SELECT COALESCE(SUM(amount), 0) FROM public.expense_transactions)::numeric AS total_expenses;
+          (SELECT COALESCE(SUM(amount), 0) FROM public.expense_transactions WHERE type = 'expense')::numeric AS total_expenses;
       `, [today, weekStart.toISOString(), monthStart.toISOString(), today]);
 
       const s = statsRes.rows[0] || {};
@@ -627,7 +627,7 @@ export class AdminRepository {
     if (status === 'ready') {
       sendPushToDeliveryPartners({
         title: `🛵 Order #${order.tracking_code} is Ready!`,
-        body: `Food is packed and ready for delivery pickup from Dilip Da kitchen.`,
+        body: `Food is packed and ready for delivery pickup from Bodosa kitchen.`,
         url: `/dashboard/delivery`,
         tag: `delivery-ready-${order.id}`,
       }).catch((err) => console.error('Error sending delivery partner push:', err));
