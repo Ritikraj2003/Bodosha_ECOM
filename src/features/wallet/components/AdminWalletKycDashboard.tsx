@@ -4,8 +4,16 @@ import { useState, useEffect, Fragment } from 'react';
 import { ShieldCheck, CheckCircle, XCircle, Search, Eye, AlertCircle, RefreshCw, X, Filter, ChevronDown, ChevronUp } from 'lucide-react';
 import { getAllWallets, approveWalletKyc, rejectWalletKyc, updateWalletStatus, getAdminWalletTransactions, updateWalletCreditLimit, processBnplPenalties } from '../actions';
 import type { Wallet, WalletTransaction } from '../types';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
 export default function AdminWalletKycDashboard() {
+  const user = useAuthStore((s) => s.user);
+  const canRunPenalty = hasPermission(user?.permissions, PERMISSION_CODES.WALLET_KYC_PENALTY, user?.role);
+  const canViewHistory = hasPermission(user?.permissions, PERMISSION_CODES.WALLET_KYC_HIST, user?.role);
+  const canSetLimit = hasPermission(user?.permissions, PERMISSION_CODES.WALLET_KYC_LIMIT, user?.role);
+  const canViewKyc = hasPermission(user?.permissions, PERMISSION_CODES.WALLET_KYC_VIEW, user?.role);
+
   const [kycs, setKycs] = useState<Wallet[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -178,14 +186,16 @@ export default function AdminWalletKycDashboard() {
               className="input-z pl-9 text-sm w-full"
             />
           </div>
-          <button 
-            onClick={handleRunPenaltyCheck}
-            disabled={processingPenalties}
-            className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-500/10 text-rose-500 font-bold border border-rose-500/20 rounded-xl hover:bg-rose-500 hover:text-white transition-colors disabled:opacity-50 text-sm flex items-center justify-center gap-2 whitespace-nowrap"
-          >
-            {processingPenalties ? <RefreshCw size={16} className="animate-spin shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
-            Run Penalty Check
-          </button>
+          {canRunPenalty && (
+            <button 
+              onClick={handleRunPenaltyCheck}
+              disabled={processingPenalties}
+              className="flex-1 sm:flex-initial px-4 py-2.5 bg-rose-500/10 text-rose-500 font-bold border border-rose-500/20 rounded-xl hover:bg-rose-500 hover:text-white transition-colors disabled:opacity-50 text-sm flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              {processingPenalties ? <RefreshCw size={16} className="animate-spin shrink-0" /> : <AlertCircle size={16} className="shrink-0" />}
+              Run Penalty Check
+            </button>
+          )}
           <button 
             onClick={fetchKycs}
             className="p-2.5 bg-zgray text-ztext border border-zborder rounded-xl hover:bg-zcard transition-colors shrink-0"
@@ -283,31 +293,37 @@ export default function AdminWalletKycDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => selectedHistoryWallet?.id === kyc.id ? setSelectedHistoryWallet(null) : handleViewHistory(kyc)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zgray text-ztext border border-zborder rounded-lg text-xs font-bold hover:bg-zcard hover:border-ztext-muted transition-colors shrink-0"
-                          >
-                            {selectedHistoryWallet?.id === kyc.id ? (
-                              <><ChevronUp size={14} /> History</>
-                            ) : (
-                              <><ChevronDown size={14} /> History</>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setUpdateLimitModal({ id: kyc.id, name: kyc.kyc_name || 'User', currentLimit: Number(kyc.credit_limit) || 0 });
-                              setUpdateLimitValue((kyc.credit_limit || 0).toString());
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zgray text-ztext border border-zborder rounded-lg text-xs font-bold hover:bg-emerald-500/10 hover:text-emerald-500 hover:border-emerald-500/30 transition-colors shrink-0"
-                          >
-                            Update Limit
-                          </button>
-                          <button
-                            onClick={() => { setSelectedKyc(kyc); setRejectReason(''); setCreditLimit(''); setError(''); }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zgray text-ztext border border-zborder rounded-lg text-xs font-bold hover:bg-zcard hover:border-ztext-muted transition-colors shrink-0"
-                          >
-                            <Eye size={14} /> View
-                          </button>
+                          {canViewHistory && (
+                            <button
+                              onClick={() => selectedHistoryWallet?.id === kyc.id ? setSelectedHistoryWallet(null) : handleViewHistory(kyc)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zgray text-ztext border border-zborder rounded-lg text-xs font-bold hover:bg-zcard hover:border-ztext-muted transition-colors shrink-0"
+                            >
+                              {selectedHistoryWallet?.id === kyc.id ? (
+                                <><ChevronUp size={14} /> History</>
+                              ) : (
+                                <><ChevronDown size={14} /> History</>
+                              )}
+                            </button>
+                          )}
+                          {canSetLimit && (
+                            <button
+                              onClick={() => {
+                                setUpdateLimitModal({ id: kyc.id, name: kyc.kyc_name || 'User', currentLimit: Number(kyc.credit_limit) || 0 });
+                                setUpdateLimitValue((kyc.credit_limit || 0).toString());
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zgray text-ztext border border-zborder rounded-lg text-xs font-bold hover:bg-emerald-500/10 hover:text-emerald-500 hover:border-emerald-500/30 transition-colors shrink-0"
+                            >
+                              Update Limit
+                            </button>
+                          )}
+                          {canViewKyc && (
+                            <button
+                              onClick={() => { setSelectedKyc(kyc); setRejectReason(''); setCreditLimit(''); setError(''); }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zgray text-ztext border border-zborder rounded-lg text-xs font-bold hover:bg-zcard hover:border-ztext-muted transition-colors shrink-0"
+                            >
+                              <Eye size={14} /> View
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -425,67 +441,71 @@ export default function AdminWalletKycDashboard() {
             )}
 
             {selectedKyc.status === 'active' ? (
-              <div className="flex flex-col gap-3">
-                <div className="p-3 sm:p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3">
-                  <AlertCircle size={20} className="text-amber-500 mt-0.5 shrink-0" />
-                  <div>
-                    <h3 className="text-sm font-bold text-amber-500">Deactivate Wallet</h3>
-                    <p className="text-xs text-ztext-light mt-1">If you deactivate this wallet, the user will no longer be able to use their balance until re-approved.</p>
+              canSetLimit && (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3 sm:p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-3">
+                    <AlertCircle size={20} className="text-amber-500 mt-0.5 shrink-0" />
+                    <div>
+                      <h3 className="text-sm font-bold text-amber-500">Deactivate Wallet</h3>
+                      <p className="text-xs text-ztext-light mt-1">If you deactivate this wallet, the user will no longer be able to use their balance until re-approved.</p>
+                    </div>
                   </div>
+                  <button
+                    onClick={handleDeactivate}
+                    disabled={processing}
+                    className="w-full py-3 px-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
+                  >
+                    <XCircle size={18} className="shrink-0" /> Deactivate Wallet
+                  </button>
                 </div>
-                <button
-                  onClick={handleDeactivate}
-                  disabled={processing}
-                  className="w-full py-3 px-4 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
-                >
-                  <XCircle size={18} className="shrink-0" /> Deactivate Wallet
-                </button>
-              </div>
+              )
             ) : (
-              <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-                  <div className="bg-zgray/50 border border-zborder rounded-xl p-3 sm:p-4">
-                    <label className="block text-xs font-semibold text-ztext-lighter mb-2">Rejection Reason (Optional for Approve)</label>
-                    <input
-                      type="text"
-                      placeholder="Required if rejecting"
-                      value={rejectReason}
-                      onChange={(e) => setRejectReason(e.target.value)}
-                      className="input-z w-full text-sm"
-                    />
+              canSetLimit && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                    <div className="bg-zgray/50 border border-zborder rounded-xl p-3 sm:p-4">
+                      <label className="block text-xs font-semibold text-ztext-lighter mb-2">Rejection Reason (Optional for Approve)</label>
+                      <input
+                        type="text"
+                        placeholder="Required if rejecting"
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        className="input-z w-full text-sm"
+                      />
+                    </div>
+                    
+                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 sm:p-4">
+                      <label className="block text-xs font-semibold text-emerald-600 mb-2">Assign BNPL Credit Limit (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="e.g. 1000"
+                        value={creditLimit}
+                        onChange={(e) => setCreditLimit(e.target.value)}
+                        className="input-z w-full text-sm !border-emerald-500/30 focus:!border-emerald-500"
+                      />
+                      <p className="text-[10px] text-ztext-muted mt-1">Leave 0 for no overdraft allowed.</p>
+                    </div>
                   </div>
-                  
-                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-3 sm:p-4">
-                    <label className="block text-xs font-semibold text-emerald-600 mb-2">Assign BNPL Credit Limit (₹)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      placeholder="e.g. 1000"
-                      value={creditLimit}
-                      onChange={(e) => setCreditLimit(e.target.value)}
-                      className="input-z w-full text-sm !border-emerald-500/30 focus:!border-emerald-500"
-                    />
-                    <p className="text-[10px] text-ztext-muted mt-1">Leave 0 for no overdraft allowed.</p>
-                  </div>
-                </div>
 
-                <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-3">
-                  <button
-                    onClick={handleReject}
-                    disabled={processing}
-                    className="w-full sm:flex-1 py-3 px-4 bg-zgray border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
-                  >
-                    <XCircle size={18} className="shrink-0" /> Reject
-                  </button>
-                  <button
-                    onClick={handleApprove}
-                    disabled={processing}
-                    className="w-full sm:flex-1 py-3 px-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 text-sm sm:text-base"
-                  >
-                    <CheckCircle size={18} className="shrink-0" /> {selectedKyc.status === 'rejected' ? 'Re-Approve KYC' : 'Approve KYC'}
-                  </button>
-                </div>
-              </>
+                  <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-3">
+                    <button
+                      onClick={handleReject}
+                      disabled={processing}
+                      className="w-full sm:flex-1 py-3 px-4 bg-zgray border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-500 hover:text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-sm sm:text-base"
+                    >
+                      <XCircle size={18} className="shrink-0" /> Reject
+                    </button>
+                    <button
+                      onClick={handleApprove}
+                      disabled={processing}
+                      className="w-full sm:flex-1 py-3 px-4 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 text-sm sm:text-base"
+                    >
+                      <CheckCircle size={18} className="shrink-0" /> {selectedKyc.status === 'rejected' ? 'Re-Approve KYC' : 'Approve KYC'}
+                    </button>
+                  </div>
+                </>
+              )
             )}
           </div>
         </div>

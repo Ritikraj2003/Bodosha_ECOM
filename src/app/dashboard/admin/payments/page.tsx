@@ -6,6 +6,8 @@ import { PageHeader, ToastContainer, useToast } from '@/components/ui/data-table
 import DateFilter, { type DateFilterValue } from '@/components/ui/date-filter';
 import { getAdminPayments, processRefund } from '@/features/admin/actions';
 import type { PaymentAdmin } from '@/features/admin/types';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
@@ -79,6 +81,10 @@ const PAYMENT_EXPORT_HEADERS = [
 ];
 
 export default function AdminPaymentsPage() {
+  const user = useAuthStore((s) => s.user);
+  const canExport = hasPermission(user?.permissions, PERMISSION_CODES.PAYMENTS_EXPORT, user?.role);
+  const canToggle = hasPermission(user?.permissions, PERMISSION_CODES.PAYMENTS_TOGGLE, user?.role);
+
   const [payments, setPayments] = useState<PaymentAdmin[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -88,7 +94,13 @@ export default function AdminPaymentsPage() {
   const [status, setStatus] = useState('all');
   const [paymentMethodGroup, setPaymentMethodGroup] = useState<'all' | 'online' | 'wallet' | 'cod'>('all');
   const [dateRange, setDateRange] = useState<DateFilterValue>({});
-  const [showTransactions, setShowTransactions] = useState<boolean>(false);
+  const [showTransactions, setShowTransactions] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!canToggle) {
+      setShowTransactions(true);
+    }
+  }, [canToggle]);
   const sortBy = 'created_at';
   const sortOrder: 'asc' | 'desc' = 'desc';
   const [refundModal, setRefundModal] = useState<{ id: string; amount: number; currentRefunded: number } | null>(null);
@@ -169,29 +181,33 @@ export default function AdminPaymentsPage() {
   return (
     <div>
       <PageHeader title="Payments & Billing" description={`${total} transaction${total !== 1 ? 's' : ''}`}>
-        <button
-          onClick={() => setShowTransactions((prev) => !prev)}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-zcard text-ztext border border-zborder rounded-xl hover:bg-zgray transition-colors"
-        >
-          {showTransactions ? (
-            <>
-              <EyeOff size={14} className="text-ztext-muted" />
-              <span>Hide</span>
-            </>
-          ) : (
-            <>
-              <Eye size={14} className="text-zred" />
-              <span>Show</span>
-            </>
-          )}
-        </button>
-        <ExportDropdown
-          title="Payments & Billing Report"
-          filenamePrefix="payments-export"
-          headers={PAYMENT_EXPORT_HEADERS}
-          rows={exportRows}
-          disabled={payments.length === 0}
-        />
+        {canToggle && (
+          <button
+            onClick={() => setShowTransactions((prev) => !prev)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-zcard text-ztext border border-zborder rounded-xl hover:bg-zgray transition-colors"
+          >
+            {showTransactions ? (
+              <>
+                <EyeOff size={14} className="text-ztext-muted" />
+                <span>Hide</span>
+              </>
+            ) : (
+              <>
+                <Eye size={14} className="text-zred" />
+                <span>Show</span>
+              </>
+            )}
+          </button>
+        )}
+        {canExport && (
+          <ExportDropdown
+            title="Payments & Billing Report"
+            filenamePrefix="payments-export"
+            headers={PAYMENT_EXPORT_HEADERS}
+            rows={exportRows}
+            disabled={payments.length === 0}
+          />
+        )}
         <button onClick={() => fetchPayments()} aria-label="Refresh payments" className="p-2.5 rounded-xl hover:bg-zgray text-ztext-lighter transition-colors">
           <RefreshCw size={18} />
         </button>

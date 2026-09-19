@@ -15,7 +15,7 @@ import {
   type RoleWithPermissions,
   type PermissionItem
 } from '@/features/admin/actions/rbac';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import { useAuthStore } from '@/features/auth/store';
 
 export default function RolesAndPermissionsPage() {
@@ -49,7 +49,10 @@ export default function RolesAndPermissionsPage() {
   const [modalSelectedChosenId, setModalSelectedChosenId] = useState<string | null>(null);
   const [creatingRole, setCreatingRole] = useState(false);
 
-  const canManageRoles = hasPermission(userPermissions, ['ROLES_MANAGE', 'roles.manage'], userRole);
+  const canAddRole = hasPermission(userPermissions, [PERMISSION_CODES.USER_ROLES_ADD, 'ROLES_MANAGE', 'roles.manage'], userRole);
+  const canEditRole = hasPermission(userPermissions, [PERMISSION_CODES.USER_ROLES_EDIT, 'ROLES_MANAGE', 'roles.manage'], userRole);
+  const canDeleteRole = hasPermission(userPermissions, [PERMISSION_CODES.USER_ROLES_DEL, 'ROLES_MANAGE', 'roles.manage'], userRole);
+  const canManageRoles = canAddRole || canEditRole || canDeleteRole;
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -237,7 +240,7 @@ export default function RolesAndPermissionsPage() {
             Manage roles and assign permissions to control staff access.
           </p>
         </div>
-        {canManageRoles && (
+        {canAddRole && (
           <button
             onClick={handleOpenAddRole}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-zred text-white text-sm font-semibold rounded-xl hover:bg-red-600 transition shadow-sm shrink-0"
@@ -361,7 +364,7 @@ export default function RolesAndPermissionsPage() {
                           </button>
 
                           {/* Edit */}
-                          {canManageRoles && (
+                          {canEditRole && (
                             <button
                               onClick={() => openEdit(role)}
                               title="Edit Permissions"
@@ -372,7 +375,7 @@ export default function RolesAndPermissionsPage() {
                           )}
 
                           {/* Delete — only for custom roles */}
-                          {!isSys && canManageRoles ? (
+                          {!isSys && canDeleteRole ? (
                             <button
                               onClick={() => handleDeleteRole(role.id, role.display_name || role.name)}
                               title="Delete Role"

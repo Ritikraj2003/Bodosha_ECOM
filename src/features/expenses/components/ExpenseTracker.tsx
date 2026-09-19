@@ -22,6 +22,8 @@ import { getExpenseSummary, deleteExpenseTransaction } from '../actions';
 import { showToast } from '@/components/shared/Toast';
 import StartingBalanceModal from './StartingBalanceModal';
 import AddEditExpenseModal from './AddEditExpenseModal';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import type { ExpenseSummary, DateFilterType, ExpenseTransaction, ExpenseType } from '../types';
 
 function getPastWeekRange(): { startDate: string; endDate: string } {
@@ -40,6 +42,11 @@ function getPastWeekRange(): { startDate: string; endDate: string } {
 }
 
 export default function ExpenseTracker({ readOnly = false }: { readOnly?: boolean }) {
+  const user = useAuthStore((s) => s.user);
+  const canAddExpense = hasPermission(user?.permissions, PERMISSION_CODES.EXP_ADD, user?.role);
+  const canInvest = hasPermission(user?.permissions, PERMISSION_CODES.EXP_INVEST, user?.role);
+  const effectiveReadOnly = readOnly || (!canAddExpense && !canInvest);
+
   const defaultRange = getPastWeekRange();
 
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
@@ -188,7 +195,7 @@ export default function ExpenseTracker({ readOnly = false }: { readOnly?: boolea
         </div>
 
         {/* Button Row [Add Money] [Add Expense] or Read-Only Badge */}
-        {readOnly ? (
+        {effectiveReadOnly ? (
           <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-ztext-muted bg-zcard rounded-xl border border-zborder shrink-0">
             <Lock size={13} />
             <span>Read-only view</span>
@@ -196,22 +203,26 @@ export default function ExpenseTracker({ readOnly = false }: { readOnly?: boolea
         ) : (
           <div className="flex flex-row items-center gap-2.5 w-full sm:w-auto shrink-0">
             {/* Add Money Button */}
-            <button
-              onClick={handleOpenAddMoney}
-              className="flex-1 sm:flex-initial min-h-[44px] button-z bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-5 py-2.5 shadow-md flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98]"
-            >
-              <ArrowDownLeft size={18} strokeWidth={2.5} />
-              <span>Add Money</span>
-            </button>
+            {canInvest && (
+              <button
+                onClick={handleOpenAddMoney}
+                className="flex-1 sm:flex-initial min-h-[44px] button-z bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-5 py-2.5 shadow-md flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98]"
+              >
+                <ArrowDownLeft size={18} strokeWidth={2.5} />
+                <span>Add Money</span>
+              </button>
+            )}
 
             {/* Add Expense Button */}
-            <button
-              onClick={handleOpenAddExpense}
-              className="flex-1 sm:flex-initial min-h-[44px] button-z button-z-primary text-sm px-5 py-2.5 shadow-md flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98]"
-            >
-              <Plus size={18} strokeWidth={2.5} />
-              <span>Add Expense</span>
-            </button>
+            {canAddExpense && (
+              <button
+                onClick={handleOpenAddExpense}
+                className="flex-1 sm:flex-initial min-h-[44px] button-z button-z-primary text-sm px-5 py-2.5 shadow-md flex items-center justify-center gap-2 font-bold transition-all active:scale-[0.98]"
+              >
+                <Plus size={18} strokeWidth={2.5} />
+                <span>Add Expense</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -325,7 +336,7 @@ export default function ExpenseTracker({ readOnly = false }: { readOnly?: boolea
             <span className="text-ztext-light font-medium truncate">
               Starting: {formatCurrency(summary?.startingBalance ?? 0)}
             </span>
-            {!readOnly && (
+            {!readOnly && canInvest && (
               <button
                 onClick={() => setIsStartingBalanceOpen(true)}
                 className="text-zred font-bold hover:underline flex items-center gap-1 shrink-0"
@@ -512,7 +523,7 @@ export default function ExpenseTracker({ readOnly = false }: { readOnly?: boolea
                       </div>
 
                       {/* Actions */}
-                      {!readOnly ? (
+                      {!readOnly && canAddExpense ? (
                         <div className="md:col-span-2 flex items-center justify-end md:justify-center gap-1 pt-1 md:pt-0">
                           <button
                             onClick={() => handleOpenEdit(tx)}

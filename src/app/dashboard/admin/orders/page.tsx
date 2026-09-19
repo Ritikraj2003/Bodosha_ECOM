@@ -10,6 +10,8 @@ import { orderTypeLabel } from '@/features/orders/types';
 import { usePolling } from '@/hooks/usePolling';
 import QRCode from 'qrcode';
 import { createClient } from '@/infrastructure/supabase/client';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
 const RUNNING_STATUS_OPTIONS = [
   { label: 'All Running Statuses', value: 'all' },
@@ -33,7 +35,19 @@ const ORDER_STATUSES = ['placed', 'pending', 'confirmed', 'accepted', 'preparing
 const POLL_INTERVAL_MS = 30_000;
 
 export default function AdminOrdersPage() {
+  const user = useAuthStore((s) => s.user);
+  const canRunning = hasPermission(user?.permissions, PERMISSION_CODES.ORDERS_RUNNING, user?.role);
+  const canHistory = hasPermission(user?.permissions, PERMISSION_CODES.ORDERS_HIST, user?.role);
+
   const [activeTab, setActiveTab] = useState<'running' | 'history'>('running');
+
+  useEffect(() => {
+    if (!canRunning && canHistory && activeTab === 'running') {
+      setActiveTab('history');
+    } else if (canRunning && !canHistory && activeTab === 'history') {
+      setActiveTab('running');
+    }
+  }, [canRunning, canHistory, activeTab]);
   const [tabCounts, setTabCounts] = useState<{ running: number; history: number }>({ running: 0, history: 0 });
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [total, setTotal] = useState(0);
@@ -298,57 +312,61 @@ export default function AdminOrdersPage() {
 
       {/* Two Tabs: Running Orders & Order History */}
       <div className="flex items-center gap-2 border-b border-zborder mb-4">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('running');
-            setStatus('all');
-            setPage(1);
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
-            activeTab === 'running'
-              ? 'border-zred text-zred bg-red-500/5'
-              : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
-          }`}
-        >
-          <Clock size={16} className={activeTab === 'running' && tabCounts.running > 0 ? 'text-amber-500 animate-pulse' : ''} />
-          <span>Running Orders</span>
-          <span
-            className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
+        {canRunning && (
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('running');
+              setStatus('all');
+              setPage(1);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
               activeTab === 'running'
-                ? 'bg-zred text-white'
-                : 'bg-zgray text-ztext-lighter'
+                ? 'border-zred text-zred bg-red-500/5'
+                : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
             }`}
           >
-            {tabCounts.running}
-          </span>
-        </button>
+            <Clock size={16} className={activeTab === 'running' && tabCounts.running > 0 ? 'text-amber-500 animate-pulse' : ''} />
+            <span>Running Orders</span>
+            <span
+              className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
+                activeTab === 'running'
+                  ? 'bg-zred text-white'
+                  : 'bg-zgray text-ztext-lighter'
+              }`}
+            >
+              {tabCounts.running}
+            </span>
+          </button>
+        )}
 
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('history');
-            setStatus('all');
-            setPage(1);
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
-            activeTab === 'history'
-              ? 'border-zred text-zred bg-red-500/5'
-              : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
-          }`}
-        >
-          <CheckCircle2 size={16} className={activeTab === 'history' ? 'text-emerald-500' : ''} />
-          <span>Order History</span>
-          <span
-            className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
+        {canHistory && (
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('history');
+              setStatus('all');
+              setPage(1);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
               activeTab === 'history'
-                ? 'bg-zred text-white'
-                : 'bg-zgray text-ztext-lighter'
+                ? 'border-zred text-zred bg-red-500/5'
+                : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
             }`}
           >
-            {tabCounts.history}
-          </span>
-        </button>
+            <CheckCircle2 size={16} className={activeTab === 'history' ? 'text-emerald-500' : ''} />
+            <span>Order History</span>
+            <span
+              className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
+                activeTab === 'history'
+                  ? 'bg-zred text-white'
+                  : 'bg-zgray text-ztext-lighter'
+              }`}
+            >
+              {tabCounts.history}
+            </span>
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">

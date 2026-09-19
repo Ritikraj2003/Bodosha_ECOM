@@ -7,8 +7,15 @@ import {
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/features/products/actions';
 import type { Category } from '@/features/products/types';
 import { Skeleton, EmptyState } from '@/components/ui';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
 export default function AdminCategoriesPage() {
+  const user = useAuthStore((s) => s.user);
+  const canAdd = hasPermission(user?.permissions, PERMISSION_CODES.SET_CAT_ADD, user?.role);
+  const canEdit = hasPermission(user?.permissions, PERMISSION_CODES.SET_CAT_EDIT, user?.role);
+  const canDelete = hasPermission(user?.permissions, PERMISSION_CODES.SET_CAT_DEL, user?.role);
+
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -180,12 +187,14 @@ export default function AdminCategoriesPage() {
             Organize menu categories for your store ({categories.length} total categories)
           </p>
         </div>
-        <button
-          onClick={openCreateForm}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-zred text-white text-sm font-semibold rounded-xl hover:bg-zred-dark transition-all shadow-z shrink-0"
-        >
-          <Plus size={18} /> Add New Category
-        </button>
+        {canAdd && (
+          <button
+            onClick={openCreateForm}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-zred text-white text-sm font-semibold rounded-xl hover:bg-zred-dark transition-all shadow-z shrink-0"
+          >
+            <Plus size={18} /> Add New Category
+          </button>
+        )}
       </div>
 
       {/* Search Bar */}
@@ -351,27 +360,33 @@ export default function AdminCategoriesPage() {
                     </td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => handleToggleActive(cat)}
-                          title={cat.is_active ? 'Hide Category' : 'Show Category'}
-                          className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
-                        >
-                          {cat.is_active ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                        <button
-                          onClick={() => openEditForm(cat)}
-                          title="Edit Category"
-                          className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(cat)}
-                          title="Delete Category"
-                          className="p-2 rounded-lg hover:bg-red-500/10 text-ztext-lighter hover:text-red-400 transition-colors"
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {canEdit && (
+                          <>
+                            <button
+                              onClick={() => handleToggleActive(cat)}
+                              title={cat.is_active ? 'Hide Category' : 'Show Category'}
+                              className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
+                            >
+                              {cat.is_active ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                            <button
+                              onClick={() => openEditForm(cat)}
+                              title="Edit Category"
+                              className="p-2 rounded-lg hover:bg-zgray text-ztext-lighter hover:text-ztext transition-colors"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                          </>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(cat)}
+                            title="Delete Category"
+                            className="p-2 rounded-lg hover:bg-red-500/10 text-ztext-lighter hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

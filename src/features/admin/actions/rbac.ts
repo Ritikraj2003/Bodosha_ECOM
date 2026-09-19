@@ -91,8 +91,25 @@ export async function getAllPermissions(): Promise<{ success: boolean; data?: Re
     const grouped: Record<string, PermissionItem[]> = {};
     for (const p of permRes.rows) {
       const parts = (p.permission_name || '').split('|').map((s) => s.trim());
-      const mod = parts.length > 1 ? parts[0] : 'General';
-      const action = parts.length > 1 ? parts[parts.length - 1] : p.permission_code;
+      let mod = 'General';
+      let action = 'View / Access';
+
+      if (parts.length === 1) {
+        mod = parts[0] || 'General';
+        action = 'View / Access';
+      } else if (parts.length === 2) {
+        const first = parts[0].toLowerCase();
+        if (first === 'setting' || first === 'user management') {
+          mod = `${parts[0]} | ${parts[1]}`;
+          action = 'View / Access';
+        } else {
+          mod = parts[0];
+          action = parts[1];
+        }
+      } else if (parts.length >= 3) {
+        mod = `${parts[0]} | ${parts[1]}`;
+        action = parts.slice(2).join(' | ');
+      }
 
       const item: PermissionItem = {
         id: p.id,

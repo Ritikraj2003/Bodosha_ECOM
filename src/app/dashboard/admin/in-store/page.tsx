@@ -20,6 +20,8 @@ import { loadRazorpayScript, openRazorpayCheckout } from '@/features/payments/se
 import { createRazorpayOrder, verifyRazorpayPayment } from '@/features/payments/actions';
 import { PrintableReceipt } from '@/components/admin/PrintableReceipt';
 import { usePublicSettings } from '@/hooks/usePublicSettings';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import type { Product, Category } from '@/features/products/types';
 import type { CartItem } from '@/features/cart/types';
 
@@ -78,8 +80,17 @@ export default function InStorePage() {
   const razorpayKey = publicSettings.razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
   const isUpiEnabled = publicSettings.upiEnabled && !!(publicSettings.storeUpiId || process.env.NEXT_PUBLIC_STORE_UPI_ID);
 
+  const user = useAuthStore((s) => s.user);
+  const canViewHistory = hasPermission(user?.permissions, PERMISSION_CODES.INSTORE_HIST, user?.role);
+
   // Active Tab
   const [activeTab, setActiveTab] = useState<'pos' | 'history'>('pos');
+
+  useEffect(() => {
+    if (!canViewHistory && activeTab === 'history') {
+      setActiveTab('pos');
+    }
+  }, [canViewHistory, activeTab]);
 
   // Catalog state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -630,17 +641,19 @@ export default function InStorePage() {
 
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
             {/* History Button (Repositioned to the left of + Customer Info in the same row) */}
-            <button
-              onClick={() => setActiveTab(activeTab === 'history' ? 'pos' : 'history')}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-colors text-xs font-semibold ${
-                activeTab === 'history'
-                  ? 'bg-zred text-white border-zred'
-                  : 'bg-zgray text-ztext hover:bg-zborder border-zborder'
-              }`}
-            >
-              <History size={14} />
-              <span>History</span>
-            </button>
+            {canViewHistory && (
+              <button
+                onClick={() => setActiveTab(activeTab === 'history' ? 'pos' : 'history')}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-colors text-xs font-semibold ${
+                  activeTab === 'history'
+                    ? 'bg-zred text-white border-zred'
+                    : 'bg-zgray text-ztext hover:bg-zborder border-zborder'
+                }`}
+              >
+                <History size={14} />
+                <span>History</span>
+              </button>
+            )}
 
             {/* + Customer Info Button */}
             <button

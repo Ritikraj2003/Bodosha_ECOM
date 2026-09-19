@@ -13,6 +13,8 @@ import type { SystemSetting } from '@/features/admin/types';
 import DeliverySlotsManagerModal from '@/features/admin/components/DeliverySlotsManagerModal';
 import type { DeliverySlot } from '@/features/delivery/types/slots';
 import { invalidatePublicSettingsCache } from '@/hooks/usePublicSettings';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
 const LABELS: Record<string, string> = {
   payment_method_wallet_enabled: 'Wallet',
@@ -42,6 +44,9 @@ const LABELS: Record<string, string> = {
 const inputClass = 'w-full bg-zgray border border-zborder rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zred/20 focus:border-zred';
 
 export default function AdminSettingsPage() {
+  const user = useAuthStore((s) => s.user);
+  const canEditSettings = hasPermission(user?.permissions, PERMISSION_CODES.SET_GEN_EDIT, user?.role);
+
   const [settings, setSettings] = useState<SystemSetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -318,35 +323,37 @@ export default function AdminSettingsPage() {
   return (
     <div>
       <PageHeader title="General Settings" description="Payment methods, credentials, telegram, owner links and SMTP">
-        {editing ? (
-          <>
+        {canEditSettings && (
+          editing ? (
+            <>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="button-z button-z-primary flex items-center gap-2 text-sm px-4 py-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                {dirtyCount > 0 ? `Save Changes (${dirtyCount})` : 'Save Changes'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setEditing(false); fetchSettings(); }}
+                disabled={saving}
+                className="button-z button-z-ghost flex items-center gap-2 text-sm px-4 py-2 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
             <button
               type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="button-z button-z-primary flex items-center gap-2 text-sm px-4 py-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              onClick={() => setEditing(true)}
+              className="button-z button-z-primary flex items-center gap-2 text-sm px-4 py-2"
             >
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              {dirtyCount > 0 ? `Save Changes (${dirtyCount})` : 'Save Changes'}
+              <Pencil size={16} />
+              Edit Settings
             </button>
-            <button
-              type="button"
-              onClick={() => { setEditing(false); fetchSettings(); }}
-              disabled={saving}
-              className="button-z button-z-ghost flex items-center gap-2 text-sm px-4 py-2 disabled:opacity-60"
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="button-z button-z-primary flex items-center gap-2 text-sm px-4 py-2"
-          >
-            <Pencil size={16} />
-            Edit Settings
-          </button>
+          )
         )}
         <button onClick={() => { setLoading(true); fetchSettings(); }} aria-label="Refresh settings" className="p-2.5 rounded-xl hover:bg-zgray text-ztext-lighter transition-colors">
           {loading ? <Loader2 size={18} className="animate-spin text-zred" /> : <RefreshCw size={18} />}

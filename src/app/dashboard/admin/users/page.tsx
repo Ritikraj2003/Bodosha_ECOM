@@ -35,7 +35,7 @@ import {
   type RoleWithPermissions,
 } from '@/features/admin/actions/rbac';
 import type { AdminUser } from '@/features/admin/types';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import { useAuthStore } from '@/features/auth/store';
 
 const roleOptions = [
@@ -81,7 +81,13 @@ export default function AdminUsersPage() {
   const { toasts, addToast, removeToast } = useToast();
 
   const currentUser = useAuthStore((s) => s.user);
-  const canManageUsers = hasPermission(currentUser?.permissions, ['USERS_MANAGE', 'users.manage'], currentUser?.role);
+  const userRole = currentUser?.role ?? null;
+  const userPermissions = currentUser?.permissions ?? [];
+
+  const canAddEmployee = hasPermission(userPermissions, [PERMISSION_CODES.USER_EMP_ADD, 'USERS_MANAGE', 'users.manage'], userRole);
+  const canEditEmployee = hasPermission(userPermissions, [PERMISSION_CODES.USER_EMP_EDIT, 'USERS_MANAGE', 'users.manage'], userRole);
+  const canDeleteEmployee = hasPermission(userPermissions, [PERMISSION_CODES.USER_EMP_DEL, 'USERS_MANAGE', 'users.manage'], userRole);
+  const canManageUsers = canAddEmployee || canEditEmployee || canDeleteEmployee;
 
   // Roles cache for modals
   const [availableRoles, setAvailableRoles] = useState<RoleWithPermissions[]>([]);
@@ -258,8 +264,9 @@ export default function AdminUsersPage() {
       render: (u: AdminUser) => (
         <select
           value={u.role}
+          disabled={!canEditEmployee}
           onChange={(e) => handleRoleChange(u.id, e.target.value)}
-          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border bg-zcard focus:outline-none focus:ring-1 focus:ring-zred cursor-pointer ${
+          className={`px-2.5 py-1 rounded-lg text-xs font-semibold border bg-zcard focus:outline-none focus:ring-1 focus:ring-zred cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
             roleBadge[u.role] ?? 'text-ztext border-zborder'
           }`}
         >
@@ -311,20 +318,24 @@ export default function AdminUsersPage() {
       header: 'Actions',
       render: (u: AdminUser) => (
         <div className="flex items-center gap-1">
-          <button
-            onClick={() => openInspectModal(u)}
-            className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-500/10 transition-colors"
-            title="View role permissions"
-          >
-            <KeyRound size={16} />
-          </button>
-          <button
-            onClick={() => setConfirmAction({ type: 'delete', id: u.id })}
-            className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
-            title="Delete user"
-          >
-            <Trash2 size={16} />
-          </button>
+          {canEditEmployee && (
+            <button
+              onClick={() => openInspectModal(u)}
+              className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-500/10 transition-colors"
+              title="View role permissions"
+            >
+              <KeyRound size={16} />
+            </button>
+          )}
+          {canDeleteEmployee && (
+            <button
+              onClick={() => setConfirmAction({ type: 'delete', id: u.id })}
+              className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
+              title="Delete user"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
         </div>
       ),
     },
@@ -337,7 +348,7 @@ export default function AdminUsersPage() {
         description={`${total} user${total === 1 ? '' : 's'} registered across store`}
       >
         <div className="flex items-center gap-2">
-          {canManageUsers && (
+          {canAddEmployee && (
             <button
               onClick={() => {
                 setCreateError('');

@@ -8,7 +8,7 @@ import {
 import { getProducts, getCategories, updateProduct, deleteProduct, restoreProduct } from '@/features/products/actions';
 import type { Product, Category } from '@/features/products/types';
 import { Skeleton, EmptyState } from '@/components/ui';
-import { hasPermission } from '@/lib/permissions';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import { useAuthStore } from '@/features/auth/store';
 
 export default function AdminProductsPage() {
@@ -24,9 +24,9 @@ export default function AdminProductsPage() {
   const userRole = currentUser?.role ?? null;
   const userPermissions = currentUser?.permissions ?? [];
 
-  const canAddProduct = hasPermission(userPermissions, ['PROD_ADD', 'products.create'], userRole);
-  const canEditProduct = hasPermission(userPermissions, ['PROD_EDIT', 'products.edit'], userRole);
-  const canDeleteProduct = hasPermission(userPermissions, ['PROD_DEL', 'products.delete'], userRole);
+  const canAddProduct = hasPermission(userPermissions, [PERMISSION_CODES.SET_PROD_ADD, 'PROD_ADD', 'products.create'], userRole);
+  const canEditProduct = hasPermission(userPermissions, [PERMISSION_CODES.SET_PROD_EDIT, 'PROD_EDIT', 'products.edit'], userRole);
+  const canDeleteProduct = hasPermission(userPermissions, [PERMISSION_CODES.SET_PROD_DEL, 'PROD_DEL', 'products.delete'], userRole);
   
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);

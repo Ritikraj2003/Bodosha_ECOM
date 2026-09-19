@@ -4,84 +4,108 @@
  */
 
 export const PERMISSION_CODES = {
-  // System / Dashboard
-  DASHBOARD_VIEW: 'DASH',
+  // Dashboard
+  DASH: 'DASH',
+  DASHFL: 'DASHFL',
 
-  // Catalog
-  PRODUCTS_VIEW: 'PROD_VIEW',
-  PRODUCTS_ADD: 'PROD_ADD',
-  PRODUCTS_EDIT: 'PROD_EDIT',
-  PRODUCTS_DEL: 'PROD_DEL',
-  CATEGORIES_MANAGE: 'CAT_MANAGE',
+  // In-Store
+  INSTORE: 'INSTORE',
+  INSTORE_HIST: 'INSTORE_HIST',
 
-  // Orders & In-Store
-  ORDERS_VIEW: 'ORD_VIEW',
-  ORDERS_STATUS: 'ORD_STATUS',
-  ORDERS_CANCEL: 'ORD_CANCEL',
-  ORDERS_REFUND: 'ORD_REFUND',
+  // Wallet KYC
+  WALLET_KYC: 'WALLET_KYC',
+  WALLET_KYC_HIST: 'WALLET_KYC_HIST',
+  WALLET_KYC_LIMIT: 'WALLET_KYC_LIMIT',
+  WALLET_KYC_VIEW: 'WALLET_KYC_VIEW',
+  WALLET_KYC_PENALTY: 'WALLET_KYC_PENALTY',
 
-  // Delivery
-  DELIVERY_VIEW: 'DELV_VIEW',
-  DELIVERY_ASSIGN: 'DELV_ASSIGN',
+  // Orders
+  ORDERS: 'ORDERS',
+  ORDERS_RUNNING: 'ORDERS_RUNNING',
+  ORDERS_HIST: 'ORDERS_HIST',
 
-  // Users & Staff
-  USERS_VIEW: 'USERS_VIEW',
-  USERS_MANAGE: 'USERS_MANAGE',
-  ROLES_MANAGE: 'ROLES_MANAGE',
+  // Payments
+  PAYMENTS: 'PAYMENTS',
+  PAYMENTS_EXPORT: 'PAYMENTS_EXPORT',
+  PAYMENTS_TOGGLE: 'PAYMENTS_TOGGLE',
 
-  // Finance & Wallet
-  WALLET_VIEW: 'WALLET_VIEW',
-  WALLET_ADJUST: 'WALLET_ADJUST',
-  BNPL_MANAGE: 'BNPL_MANAGE',
-  EXPENSES_MANAGE: 'EXP_MANAGE',
+  // Expenses
+  EXPENSES: 'EXPENSES',
+  EXP_ADD: 'EXP_ADD',
+  EXP_INVEST: 'EXP_INVEST',
 
-  // Administration
-  AUDIT_VIEW: 'AUDIT_VIEW',
-  SETTINGS_VIEW: 'SETTINGS_VIEW',
-  SETTINGS_EDIT: 'SETTINGS_EDIT',
-  OFFERS_MANAGE: 'OFFERS_MANAGE',
+  // Setting | Category
+  SET_CAT: 'SET_CAT',
+  SET_CAT_ADD: 'SET_CAT_ADD',
+  SET_CAT_EDIT: 'SET_CAT_EDIT',
+  SET_CAT_DEL: 'SET_CAT_DEL',
 
-  // Merchants
-  MERCHANTS_VIEW: 'MERCH_VIEW',
-  MERCHANTS_EDIT: 'MERCH_EDIT',
-  MERCHANTS_APPROVE: 'MERCH_APPROVE',
+  // Setting | Product
+  SET_PROD: 'SET_PROD',
+  SET_PROD_ADD: 'SET_PROD_ADD',
+  SET_PROD_EDIT: 'SET_PROD_EDIT',
+  SET_PROD_DEL: 'SET_PROD_DEL',
+
+  // Setting | General Setting
+  SET_GEN: 'SET_GEN',
+  SET_GEN_EDIT: 'SET_GEN_EDIT',
+
+  // Setting | Audit Log
+  SET_AUDIT: 'SET_AUDIT',
+
+  // Setting | Bumper Offer
+  SET_OFFERS: 'SET_OFFERS',
+
+  // User Management | Employee
+  USER_EMP: 'USER_EMP',
+  USER_EMP_ADD: 'USER_EMP_ADD',
+  USER_EMP_EDIT: 'USER_EMP_EDIT',
+  USER_EMP_DEL: 'USER_EMP_DEL',
+
+  // User Management | Roles & Permissions
+  USER_ROLES: 'USER_ROLES',
+  USER_ROLES_ADD: 'USER_ROLES_ADD',
+  USER_ROLES_EDIT: 'USER_ROLES_EDIT',
+  USER_ROLES_DEL: 'USER_ROLES_DEL',
+
+  // User Management | Customer
+  USER_CUST: 'USER_CUST',
+  USER_CUST_CREDIT: 'USER_CUST_CREDIT',
+  USER_CUST_SUSPEND: 'USER_CUST_SUSPEND',
 } as const;
 
 export const ADMIN_PAGE_PERMISSIONS: Record<string, string[]> = {
   '/dashboard/admin': ['DASH', 'dashboard.view'],
-  '/dashboard/admin/users': ['USERS_VIEW', 'USERS_MANAGE', 'users.view', 'users.manage'],
-  '/dashboard/admin/roles': ['ROLES_MANAGE', 'roles.manage'],
-  '/dashboard/admin/in-store': ['ORD_VIEW', 'ORD_STATUS', 'orders.view', 'orders.update_status'],
-  '/dashboard/admin/categories': ['CAT_MANAGE', 'categories.manage'],
-  '/dashboard/admin/products': [
-    'PROD_VIEW', 'PROD_ADD', 'PROD_EDIT', 'PROD_DEL',
-    'products.view', 'products.create', 'products.edit', 'products.delete'
-  ],
-  '/dashboard/admin/students': ['USERS_VIEW', 'USERS_MANAGE', 'users.view', 'users.manage'],
-  '/dashboard/admin/wallet': ['WALLET_VIEW', 'WALLET_ADJUST', 'BNPL_MANAGE', 'wallet.view', 'wallet.credit_adjust', 'bnpl.manage'],
-  '/dashboard/admin/orders': ['ORD_VIEW', 'ORD_STATUS', 'ORD_CANCEL', 'ORD_REFUND', 'orders.view', 'orders.update_status', 'orders.cancel', 'orders.refund'],
-  '/dashboard/admin/payments': ['WALLET_VIEW', 'ORD_VIEW', 'wallet.view', 'orders.view'],
-  '/dashboard/admin/expenses': ['EXP_MANAGE', 'expenses.manage'],
-  '/dashboard/admin/audit-logs': ['AUDIT_VIEW', 'audit.view'],
-  '/dashboard/admin/settings': ['SETTINGS_VIEW', 'SETTINGS_EDIT', 'settings.view', 'settings.edit'],
-  '/dashboard/admin/bumper-offers': ['OFFERS_MANAGE', 'PROD_EDIT', 'CAT_MANAGE', 'offers.manage', 'products.edit', 'categories.manage'],
+  '/dashboard/admin/in-store': ['INSTORE', 'ORD_VIEW', 'orders.view'],
+  '/dashboard/admin/wallet': ['WALLET_KYC', 'WALLET_KYC_VIEW', 'WALLET_VIEW', 'wallet.view'],
+  '/dashboard/admin/orders': ['ORDERS', 'ORDERS_RUNNING', 'ORDERS_HIST', 'ORD_VIEW', 'orders.view'],
+  '/dashboard/admin/payments': ['PAYMENTS', 'PAYMENTS_EXPORT', 'PAYMENTS_TOGGLE', 'WALLET_VIEW', 'wallet.view'],
+  '/dashboard/admin/expenses': ['EXPENSES', 'EXP_ADD', 'EXP_INVEST', 'EXP_MANAGE', 'expenses.manage'],
+  '/dashboard/admin/categories': ['SET_CAT', 'SET_CAT_ADD', 'SET_CAT_EDIT', 'SET_CAT_DEL', 'CAT_MANAGE', 'categories.manage'],
+  '/dashboard/admin/products': ['SET_PROD', 'SET_PROD_ADD', 'SET_PROD_EDIT', 'SET_PROD_DEL', 'PROD_VIEW', 'products.view'],
+  '/dashboard/admin/settings': ['SET_GEN', 'SET_GEN_EDIT', 'SETTINGS_VIEW', 'settings.view'],
+  '/dashboard/admin/audit-logs': ['SET_AUDIT', 'AUDIT_VIEW', 'audit.view'],
+  '/dashboard/admin/bumper-offers': ['SET_OFFERS', 'OFFERS_MANAGE', 'offers.manage'],
+  '/dashboard/admin/users': ['USER_EMP', 'USER_EMP_ADD', 'USER_EMP_EDIT', 'USER_EMP_DEL', 'USERS_VIEW', 'users.view'],
+  '/dashboard/admin/roles': ['USER_ROLES', 'USER_ROLES_ADD', 'USER_ROLES_EDIT', 'USER_ROLES_DEL', 'ROLES_MANAGE', 'roles.manage'],
+  '/dashboard/admin/students': ['USER_CUST', 'USER_CUST_CREDIT', 'USER_CUST_SUSPEND', 'USERS_VIEW', 'users.view'],
 };
 
 export const ADMIN_ORDERED_PAGES = [
   '/dashboard/admin',
-  '/dashboard/admin/users',
-  '/dashboard/admin/roles',
   '/dashboard/admin/in-store',
-  '/dashboard/admin/categories',
-  '/dashboard/admin/products',
-  '/dashboard/admin/students',
   '/dashboard/admin/wallet',
   '/dashboard/admin/orders',
   '/dashboard/admin/payments',
   '/dashboard/admin/expenses',
-  '/dashboard/admin/audit-logs',
+  '/dashboard/admin/categories',
+  '/dashboard/admin/products',
   '/dashboard/admin/settings',
+  '/dashboard/admin/audit-logs',
   '/dashboard/admin/bumper-offers',
+  '/dashboard/admin/users',
+  '/dashboard/admin/roles',
+  '/dashboard/admin/students',
 ];
 
 /**

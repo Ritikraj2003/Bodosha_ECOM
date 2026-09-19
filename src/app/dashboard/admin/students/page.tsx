@@ -8,6 +8,8 @@ import ExportDropdown from '@/components/admin/ExportDropdown';
 import { getAdminStudents, suspendStudent, unsuspendStudent, verifyStudent, resetStudentVerification, bulkSuspendStudents, bulkUnsuspendStudents } from '@/features/admin/actions';
 import { adminCreditWallet, getAdminUserWalletBalance } from '@/features/wallet/actions';
 import type { AdminStudent } from '@/features/admin/types';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
 const STUDENT_EXPORT_HEADERS = [
   'Student Name',
@@ -23,6 +25,9 @@ const STUDENT_EXPORT_HEADERS = [
 ];
 
 export default function AdminStudentsPage() {
+  const user = useAuthStore((s) => s.user);
+  const canCredit = hasPermission(user?.permissions, [PERMISSION_CODES.USER_CUST_CREDIT, 'WALLET_ADJUST', 'users.manage'], user?.role);
+  const canSuspend = hasPermission(user?.permissions, [PERMISSION_CODES.USER_CUST_SUSPEND, 'users.manage'], user?.role);
 
   const [students, setStudents] = useState<AdminStudent[]>([]);
   const [total, setTotal] = useState(0);
@@ -208,17 +213,21 @@ export default function AdminStudentsPage() {
       const w = Array.isArray(s.wallet) ? s.wallet[0] : s.wallet;
       return (
       <div className="flex items-center gap-1">
-        <button onClick={() => setWalletModal({ id: s.id, name: s.full_name })} className="p-1.5 hover:bg-emerald-500/10 rounded-lg text-ztext-muted hover:text-emerald-600 transition-colors" title="Credit wallet">
-          <Wallet size={14} />
-        </button>
-        {s.is_active ? (
-          <button onClick={() => setConfirmAction({ type: 'suspend', id: s.id })} className="p-1.5 hover:bg-red-500/10 rounded-lg text-ztext-muted hover:text-red-400 transition-colors" title="Suspend">
-            <ShieldOff size={14} />
+        {canCredit && (
+          <button onClick={() => setWalletModal({ id: s.id, name: s.full_name })} className="p-1.5 hover:bg-emerald-500/10 rounded-lg text-ztext-muted hover:text-emerald-600 transition-colors" title="Credit wallet">
+            <Wallet size={14} />
           </button>
-        ) : (
-          <button onClick={() => setConfirmAction({ type: 'unsuspend', id: s.id })} className="p-1.5 hover:bg-emerald-500/10 rounded-lg text-ztext-muted hover:text-emerald-600 transition-colors" title="Restore">
-            <Shield size={14} />
-          </button>
+        )}
+        {canSuspend && (
+          s.is_active ? (
+            <button onClick={() => setConfirmAction({ type: 'suspend', id: s.id })} className="p-1.5 hover:bg-red-500/10 rounded-lg text-ztext-muted hover:text-red-400 transition-colors" title="Suspend">
+              <ShieldOff size={14} />
+            </button>
+          ) : (
+            <button onClick={() => setConfirmAction({ type: 'unsuspend', id: s.id })} className="p-1.5 hover:bg-emerald-500/10 rounded-lg text-ztext-muted hover:text-emerald-600 transition-colors" title="Restore">
+              <Shield size={14} />
+            </button>
+          )
         )}
         {w && w.status !== 'active' && (
           <button onClick={() => setVerifyModal({ id: s.id, name: s.full_name })} className="p-1.5 hover:bg-blue-500/10 rounded-lg text-ztext-muted hover:text-blue-600 transition-colors" title="Verify">
@@ -262,7 +271,7 @@ export default function AdminStudentsPage() {
           rows={exportRows}
           disabled={students.length === 0}
         />
-        {selectedIds.length > 0 && (
+        {selectedIds.length > 0 && canSuspend && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-ztext-lighter">{selectedIds.length} selected</span>
             <button onClick={() => setConfirmAction({ type: 'bulk_suspend', ids: selectedIds })} className="px-3 py-1.5 text-xs font-medium bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition-colors">

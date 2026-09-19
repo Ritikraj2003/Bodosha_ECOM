@@ -8,6 +8,8 @@ import DateFilter, { type DateFilterValue } from '@/components/ui/date-filter';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { createClient } from '@/infrastructure/supabase/client';
+import { useAuthStore } from '@/features/auth/store';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
 const DashboardCharts = dynamic(() => import('@/components/admin/DashboardCharts'), {
   ssr: false,
@@ -20,6 +22,8 @@ const DashboardCharts = dynamic(() => import('@/components/admin/DashboardCharts
 });
 
 export default function AdminDashboardPage() {
+  const user = useAuthStore((s) => s.user);
+  const canFilter = hasPermission(user?.permissions, PERMISSION_CODES.DASHFL, user?.role);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentOrders, setRecentOrders] = useState<AdminOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,7 +131,7 @@ export default function AdminDashboardPage() {
           <p className="text-sm text-ztext-light mt-0.5">Platform overview at a glance</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <DateFilter onChange={handleDateChange} initialPreset="today" />
+          {canFilter && <DateFilter onChange={handleDateChange} initialPreset="today" />}
           <button onClick={() => fetchData(dateFilter)} className="p-2 rounded-xl hover:bg-zgray text-ztext-lighter transition-colors shrink-0" aria-label="Refresh">
             <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
           </button>
