@@ -22,6 +22,7 @@ export interface DeliveryAssignment {
 
 export interface DeliveryPartnerRow {
   id: string;
+  user_id?: string;
   vehicle_type: string;
   license_plate: string | null;
   is_available: boolean;

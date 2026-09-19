@@ -21,16 +21,14 @@ async function authorizeDeliveryPartner() {
   const { user } = await getServerSession();
   if (!user) return null;
   const { profile } = await getServerProfile();
-  if (!profile || profile.role !== 'delivery') return null;
+  const effectiveRole = profile?.role || user.role;
+  if (effectiveRole !== 'delivery' && user.role !== 'delivery') return null;
   return user;
 }
 
 export async function getDeliveryDashboard() {
   const user = await authorizeDeliveryPartner();
   if (!user) return { success: false, error: 'Unauthorized', data: null };
-
-  const supabase = createServiceClient();
-  if (!supabase) return { success: false, error: 'Service not configured', data: null };
 
   const partner = await deliveryRepository.getPartnerByUserId(user.id);
   if (!partner) return { success: false, error: 'Delivery partner profile not found', data: null };
@@ -560,3 +558,24 @@ export async function getCustomerDeliveryInfo(orderId: string) {
     return { success: false, error: 'Failed to fetch delivery info' };
   }
 }
+
+export async function updateDeliveryVehicleProfile(data: {
+  vehicleType: string;
+  licensePlate: string;
+}) {
+  const user = await authorizeDeliveryPartner();
+  if (!user) return { success: false, error: 'Unauthorized' };
+
+  const partner = await deliveryRepository.updatePartnerVehicle(
+    user.id,
+    data.vehicleType,
+    data.licensePlate
+  );
+
+  if (!partner) {
+    return { success: false, error: 'Failed to update vehicle details' };
+  }
+
+  return { success: true, data: { partner } };
+}
+

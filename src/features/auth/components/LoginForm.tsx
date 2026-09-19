@@ -6,6 +6,7 @@ import { useAuthStore } from '../store';
 import { loginWithCredentials } from '../actions/credentials';
 import ForgotPasswordForm from './ForgotPasswordForm';
 import type { Role } from '../types';
+import { getFirstAllowedAdminPage, canAccessAdminPage } from '@/lib/permissions';
 
 export default function LoginForm() {
   const [email, setEmail] = useState(() => {
@@ -57,23 +58,30 @@ export default function LoginForm() {
         permissions: user.permissions ?? [],
       });
 
-      const roleTarget: Record<string, string> = {
-        admin: '/dashboard/admin',
-        super_admin: '/dashboard/admin',
-        owner: '/dashboard/admin',
-        delivery: '/dashboard/delivery',
-        merchant: '/dashboard/merchant',
-        staff: '/dashboard/admin',
-        manager: '/dashboard/admin',
-      };
+      const isEmployeeOrAdmin = role && role !== 'student' && role !== 'delivery' && role !== 'merchant';
+      let defaultTarget = '/';
+
+      if (isEmployeeOrAdmin) {
+        defaultTarget = getFirstAllowedAdminPage(user.permissions, role);
+      } else if (role === 'delivery') {
+        defaultTarget = '/dashboard/delivery';
+      } else if (role === 'merchant') {
+        defaultTarget = '/dashboard/merchant';
+      } else if (role === 'student') {
+        defaultTarget = '/dashboard/student';
+      }
 
       if (role) {
-        // If it's not student/delivery/merchant, default to /dashboard/admin
-        const isEmployeeOrAdmin = role !== 'student' && role !== 'delivery' && role !== 'merchant';
-        const defaultTarget = roleTarget[role] || (isEmployeeOrAdmin ? '/dashboard/admin' : '/');
-        const target = (next && next.startsWith('/') && !roleTarget[role])
-          ? next
-          : defaultTarget;
+        let target = defaultTarget;
+        if (next && next.startsWith('/')) {
+          if (isEmployeeOrAdmin) {
+            if (canAccessAdminPage(user.permissions, next, role)) {
+              target = next;
+            }
+          } else {
+            target = next;
+          }
+        }
         window.location.href = target;
       } else {
         window.location.href = '/';

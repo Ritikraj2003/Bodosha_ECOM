@@ -75,7 +75,7 @@ export const PERMISSION_CODES = {
 } as const;
 
 export const ADMIN_PAGE_PERMISSIONS: Record<string, string[]> = {
-  '/dashboard/admin': ['DASH', 'dashboard.view'],
+  '/dashboard/admin': ['DASH', 'DASHFL', 'dashboard.view'],
   '/dashboard/admin/in-store': ['INSTORE', 'ORD_VIEW', 'orders.view'],
   '/dashboard/admin/wallet': ['WALLET_KYC', 'WALLET_KYC_VIEW', 'WALLET_VIEW', 'wallet.view'],
   '/dashboard/admin/orders': ['ORDERS', 'ORDERS_RUNNING', 'ORDERS_HIST', 'ORD_VIEW', 'orders.view'],
@@ -180,7 +180,7 @@ export function getFirstAllowedAdminPage(
   userPermissions?: string[] | null,
   role?: string | null
 ): string {
-  if (isSuperAdminOrOwner(role) || canAccessAdminPage(userPermissions, '/dashboard/admin', role)) {
+  if (isSuperAdminOrOwner(role)) {
     return '/dashboard/admin';
   }
 

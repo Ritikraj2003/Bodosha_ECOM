@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { User, Phone, Mail, Bike, CreditCard, Star, LogOut, Pencil, Check, X, Loader2, ChevronLeft } from 'lucide-react';
+import { User, Phone, Mail, Bike, CreditCard, Star, LogOut, Pencil, Check, X, Loader2, ChevronLeft, AlertCircle, ShieldCheck } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/store';
 import { showToast } from '@/components/shared/Toast';
 import { updateServerProfile } from '@/features/auth/actions';
-import { getDeliveryDashboard } from '@/features/delivery/actions';
+import { getDeliveryDashboard, updateDeliveryVehicleProfile } from '@/features/delivery/actions';
 import type { DeliveryPartnerRow } from '@/features/delivery/types';
 
 export default function DeliveryProfile() {
@@ -18,9 +18,19 @@ export default function DeliveryProfile() {
   const [editValue, setEditValue] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Vehicle Details state
+  const [vehicleType, setVehicleType] = useState('Bike');
+  const [licensePlate, setLicensePlate] = useState('');
+  const [editingVehicle, setEditingVehicle] = useState(false);
+  const [savingVehicle, setSavingVehicle] = useState(false);
+
   const load = useCallback(async () => {
     const res = await getDeliveryDashboard();
-    if (res.success && res.data) setPartner(res.data.partner);
+    if (res.success && res.data) {
+      setPartner(res.data.partner);
+      if (res.data.partner.vehicle_type) setVehicleType(res.data.partner.vehicle_type);
+      if (res.data.partner.license_plate) setLicensePlate(res.data.partner.license_plate);
+    }
     setLoading(false);
   }, []);
 
@@ -42,6 +52,27 @@ export default function DeliveryProfile() {
       showToast(editingField === 'name' ? 'Name updated' : 'Phone updated');
       setEditingField(null);
       setEditValue('');
+    }
+  }
+
+  async function handleSaveVehicle(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!licensePlate.trim()) {
+      showToast('Please enter your license plate / vehicle number');
+      return;
+    }
+    setSavingVehicle(true);
+    const res = await updateDeliveryVehicleProfile({
+      vehicleType,
+      licensePlate: licensePlate.trim().toUpperCase(),
+    });
+    setSavingVehicle(false);
+    if (res.success && res.data?.partner) {
+      setPartner(res.data.partner);
+      setEditingVehicle(false);
+      showToast('Vehicle details updated successfully!');
+    } else {
+      showToast(res.error || 'Failed to update vehicle details');
     }
   }
 
@@ -103,12 +134,112 @@ export default function DeliveryProfile() {
           ))}
         </div>
 
-        {partner?.license_plate && (
-          <div className="mt-3 bg-zcard rounded-xl border border-zborder p-4">
-            <p className="font-semibold text-ztext text-sm">License plate</p>
-            <p className="text-xs text-ztext-light mt-0.5 font-mono">{partner.license_plate}</p>
+        {/* Vehicle Registration & Details Section */}
+        <div className="mt-4 bg-zcard rounded-xl border border-zborder p-4 shadow-z">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Bike className="text-zred" size={20} />
+              <h3 className="font-bold text-ztext text-sm">Vehicle Information</h3>
+            </div>
+            {partner?.license_plate && !editingVehicle && (
+              <button
+                onClick={() => {
+                  setVehicleType(partner.vehicle_type || 'Bike');
+                  setLicensePlate(partner.license_plate || '');
+                  setEditingVehicle(true);
+                }}
+                className="size-7 grid place-items-center rounded-lg hover:bg-zgray text-ztext-muted hover:text-ztext transition-colors"
+                title="Edit Vehicle"
+              >
+                <Pencil size={15} />
+              </button>
+            )}
           </div>
-        )}
+
+          {!partner?.license_plate && !editingVehicle && (
+            <div className="mb-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-start gap-2.5">
+              <AlertCircle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-200">
+                <p className="font-semibold">Vehicle details needed</p>
+                <p className="mt-0.5 text-amber-200/80">Please enter your vehicle type and number so orders can be assigned to you.</p>
+              </div>
+            </div>
+          )}
+
+          {!editingVehicle && partner?.license_plate ? (
+            <div className="flex items-center justify-between p-3 rounded-lg bg-zgray/50 border border-zborder">
+              <div>
+                <p className="text-[11px] text-ztext-light">Vehicle Type & Number</p>
+                <p className="font-bold text-ztext text-sm mt-0.5">
+                  {partner.vehicle_type || 'Bike'} • <span className="font-mono text-zred">{partner.license_plate}</span>
+                </p>
+              </div>
+              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">
+                <ShieldCheck size={12} />
+                Verified
+              </span>
+            </div>
+          ) : (
+            <form onSubmit={handleSaveVehicle} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-ztext-light mb-1.5">Vehicle Type</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'Bike', label: 'Bike 🏍️' },
+                    { id: 'Scooter', label: 'Scooter 🛵' },
+                    { id: 'Bicycle', label: 'Cycle 🚲' },
+                    { id: 'EV', label: 'EV ⚡' },
+                  ].map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={() => setVehicleType(v.id)}
+                      className={`px-3 py-2 text-xs font-semibold rounded-lg border transition-all ${
+                        vehicleType === v.id
+                          ? 'bg-zred text-white border-zred shadow-sm'
+                          : 'bg-zgray border-zborder text-ztext-light hover:border-ztext-muted'
+                      }`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-ztext-light mb-1.5">License Plate / Vehicle Number</label>
+                <input
+                  type="text"
+                  placeholder="e.g. AS-26-A-1234"
+                  value={licensePlate}
+                  onChange={(e) => setLicensePlate(e.target.value.toUpperCase())}
+                  className="input-z text-sm font-mono tracking-wider uppercase w-full"
+                  required
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={savingVehicle || !licensePlate.trim()}
+                  className="button-z button-z-primary text-xs font-bold px-4 py-2 flex-1 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {savingVehicle ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  <span>{partner?.license_plate ? 'Update Vehicle' : 'Save & Register Vehicle'}</span>
+                </button>
+                {partner?.license_plate && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingVehicle(false)}
+                    className="button-z button-z-secondary text-xs px-3 py-2"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+          )}
+        </div>
 
         {loading && (
           <div className="mt-4 flex justify-center py-6">

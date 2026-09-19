@@ -170,8 +170,16 @@ export default function DeliveryDashboard() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-ztext">Delivery dashboard</h1>
-            <p className="mt-1 text-ztext-light text-sm">
-              {data.partner.vehicle_type} • {data.partner.license_plate || 'no plate'}
+            <p className="mt-1 text-ztext-light text-sm flex items-center gap-1.5">
+              <span>{data.partner.vehicle_type || 'Bike'}</span>
+              <span>•</span>
+              {data.partner.license_plate ? (
+                <span className="font-mono text-ztext font-semibold">{data.partner.license_plate}</span>
+              ) : (
+                <Link href="/dashboard/delivery/profile" className="text-amber-400 hover:underline text-xs inline-flex items-center gap-1 font-medium">
+                  Add vehicle number →
+                </Link>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -183,6 +191,18 @@ export default function DeliveryDashboard() {
             </button>
           </div>
         </div>
+
+        {!data.partner.license_plate && (
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between gap-3">
+            <div className="text-xs text-amber-200">
+              <p className="font-bold">Vehicle details pending</p>
+              <p className="text-amber-200/80 mt-0.5">Add your vehicle number in your profile to take deliveries.</p>
+            </div>
+            <Link href="/dashboard/delivery/profile" className="button-z button-z-primary text-xs px-3 py-1.5 shrink-0">
+              Set Vehicle
+            </Link>
+          </div>
+        )}
 
         <div className="mt-5 grid gap-3 grid-cols-2">
           {[

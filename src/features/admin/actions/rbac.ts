@@ -280,12 +280,32 @@ export async function assignUserRole(
     await query('UPDATE public.users SET role = $1, updated_at = NOW() WHERE id = $2', [actualSlug, userId]);
     await query('UPDATE public.profiles SET role = $1, updated_at = NOW() WHERE id = $2', [actualSlug, userId]);
 
-    // Upsert into user_roles
+    // Clean up old role assignments and assign the new role
+    await query('DELETE FROM public.user_roles WHERE user_id = $1', [userId]);
     await query(`
       INSERT INTO public.user_roles (user_id, role_id, created_at)
       VALUES ($1, $2, NOW())
       ON CONFLICT (user_id, role_id) DO NOTHING
     `, [userId, roleId]);
+
+    // Handle delivery_partners provisioning/status
+    if (actualSlug === 'delivery') {
+      await query(`
+        INSERT INTO public.delivery_partners (id, user_id, vehicle_type, vehicle_no, license_plate, is_available, is_online, total_deliveries, rating, created_at, updated_at)
+        VALUES ($1, $1, 'Bike', null, null, true, true, 0, 5.0, NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET 
+          user_id = EXCLUDED.user_id,
+          is_available = true, 
+          is_online = true, 
+          updated_at = NOW()
+      `, [userId]);
+    } else {
+      await query(`
+        UPDATE public.delivery_partners 
+        SET is_available = false, is_online = false, updated_at = NOW() 
+        WHERE user_id = $1 OR id = $1
+      `, [userId]);
+    }
 
     await query(`
       INSERT INTO public.audit_logs (table_name, record_id, action, new_data, user_id, created_at)
@@ -417,6 +437,19 @@ export async function createAdminUser(data: {
         VALUES ($1, $2, NOW())
         ON CONFLICT (user_id, role_id) DO NOTHING;
       `, [newUser.id, targetRoleId]);
+    }
+
+    // Auto-create delivery partner profile if created with delivery role
+    if (actualSlug === 'delivery') {
+      await query(`
+        INSERT INTO public.delivery_partners (id, user_id, vehicle_type, vehicle_no, license_plate, is_available, is_online, total_deliveries, rating, created_at, updated_at)
+        VALUES ($1, $1, 'Bike', null, null, true, true, 0, 5.0, NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET 
+          user_id = EXCLUDED.user_id,
+          is_available = true, 
+          is_online = true, 
+          updated_at = NOW()
+      `, [newUser.id]);
     }
 
     // Audit log

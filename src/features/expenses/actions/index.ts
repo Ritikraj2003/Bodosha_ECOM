@@ -4,6 +4,7 @@ import { query } from '@/infrastructure/db';
 import { getServerSession } from '@/features/auth/actions';
 import { getAdminEmails, getOwnerEmail } from '@/lib/settings';
 import { isAdminEmail, isOwnerEmail } from '@/config/auth-access';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import {
   expenseTransactionSchema,
   updateExpenseTransactionSchema,
@@ -17,7 +18,7 @@ import type {
   ExpenseTransaction,
 } from '../types';
 
-async function authorizeAdmin() {
+async function authorizeAdmin(requiredActionPerm?: string | string[]) {
   const { user } = await getServerSession();
   if (!user) return { authorized: false, error: 'Not authenticated', userId: null };
 
@@ -26,6 +27,7 @@ async function authorizeAdmin() {
 
   const profileRes = await query('SELECT role FROM public.profiles WHERE id = $1', [user.id]);
   const profileRole = profileRes.rows[0]?.role;
+  const effectiveRole = profileRole || user.role;
 
   const isUserAdmin =
     user.role === 'admin' ||
@@ -34,7 +36,21 @@ async function authorizeAdmin() {
     profileRole === 'super_admin' ||
     isAdminByEmail;
 
-  if (!isUserAdmin) {
+  const required = requiredActionPerm || [
+    PERMISSION_CODES.EXPENSES,
+    PERMISSION_CODES.EXP_ADD,
+    PERMISSION_CODES.EXP_INVEST,
+    'EXP_MANAGE',
+    'expenses.manage',
+  ];
+
+  const hasExpensePerm = hasPermission(
+    user.permissions,
+    required,
+    effectiveRole
+  );
+
+  if (!isUserAdmin && !hasExpensePerm) {
     return { authorized: false, error: 'Forbidden. Admin access required.', userId: null };
   }
 
@@ -55,6 +71,7 @@ async function authorizeAdminOrOwner() {
 
   const profileRes = await query('SELECT role FROM public.profiles WHERE id = $1', [user.id]);
   const profileRole = profileRes.rows[0]?.role;
+  const effectiveRole = profileRole || user.role;
 
   const isUserAdmin =
     user.role === 'admin' ||
@@ -63,7 +80,19 @@ async function authorizeAdminOrOwner() {
     profileRole === 'super_admin' ||
     isAdminByEmail;
 
-  if (!isUserAdmin && !isOwner) {
+  const hasExpensePerm = hasPermission(
+    user.permissions,
+    [
+      PERMISSION_CODES.EXPENSES,
+      PERMISSION_CODES.EXP_ADD,
+      PERMISSION_CODES.EXP_INVEST,
+      'EXP_MANAGE',
+      'expenses.manage',
+    ],
+    effectiveRole
+  );
+
+  if (!isUserAdmin && !isOwner && !hasExpensePerm) {
     return { authorized: false, error: 'Forbidden. Access required.', userId: null, isOwner: false };
   }
 

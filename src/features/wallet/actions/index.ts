@@ -4,6 +4,7 @@ import { getServerSession } from '@/features/auth/actions';
 import { query } from '@/infrastructure/db';
 import { getAdminEmails } from '@/lib/settings';
 import { isAdminEmail } from '@/config/auth-access';
+import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import type { Wallet, WalletTransaction, WalletSummary } from '../types';
 import { notifyBnplFinePush } from '@/lib/push';
 
@@ -19,7 +20,19 @@ async function checkAdminAuth() {
     [admin.id]
   );
   const userRole = roleRes.rows[0]?.role || admin.role || '';
-  const isAuthorized = ['admin', 'super_admin', 'owner'].includes(userRole) || isAdminByEmail;
+  const hasWalletPerm = hasPermission(
+    admin.permissions,
+    [
+      PERMISSION_CODES.WALLET_KYC,
+      PERMISSION_CODES.WALLET_KYC_VIEW,
+      PERMISSION_CODES.WALLET_KYC_LIMIT,
+      PERMISSION_CODES.WALLET_KYC_PENALTY,
+      PERMISSION_CODES.WALLET_KYC_HIST,
+      'wallet.view',
+    ],
+    userRole
+  );
+  const isAuthorized = ['admin', 'super_admin', 'owner'].includes(userRole) || isAdminByEmail || hasWalletPerm;
 
   if (!isAuthorized) {
     return { authorized: false, error: 'Forbidden. Admin access required.', admin: null };

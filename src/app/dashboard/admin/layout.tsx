@@ -7,7 +7,8 @@ import {
   LayoutDashboard, Users, ShoppingBag, Banknote,
   LogOut, Menu, X, Bell, FolderTree, UtensilsCrossed,
   ClipboardList, Settings, Megaphone, Store, ShieldCheck, WalletCards,
-  UserCog, KeyRound, ShieldAlert, ArrowRight, ChevronDown, GraduationCap
+  UserCog, KeyRound, ShieldAlert, ArrowRight, ChevronDown, GraduationCap,
+  Loader2
 } from 'lucide-react';
 import { getServerSession } from '@/features/auth/actions';
 import { canAccessAdminPage, getFirstAllowedAdminPage } from '@/lib/permissions';
@@ -165,6 +166,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const isAllowed = !isLoaded || canAccessAdminPage(permissions, pathname, adminRole);
 
+  useEffect(() => {
+    if (!isLoaded) return;
+    const allowed = canAccessAdminPage(permissions, pathname, adminRole);
+    if (!allowed) {
+      const targetPage = getFirstAllowedAdminPage(permissions, adminRole);
+      if (targetPage && targetPage !== pathname && targetPage !== '/auth/login') {
+        router.replace(targetPage);
+      }
+    }
+  }, [isLoaded, permissions, pathname, adminRole, router]);
+
   return (
     <div className="min-h-screen bg-zgray flex flex-col lg:flex-row">
       {/* Mobile overlay */}
@@ -177,7 +189,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex items-center justify-between px-5 h-16 border-b border-zborder">
-          <Link href="/dashboard/admin" className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
+          <Link href={getFirstAllowedAdminPage(permissions, adminRole)} className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
             <span className="text-xl font-black tracking-tight">
               <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
             </span>
@@ -321,22 +333,39 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {isAllowed ? (
             children
           ) : (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-zcard rounded-2xl border border-zborder max-w-md mx-auto mt-12 shadow-z">
-              <div className="w-16 h-16 rounded-2xl bg-zred/10 text-zred flex items-center justify-center mb-4">
-                <ShieldAlert size={32} />
-              </div>
-              <h2 className="text-xl font-bold text-ztext mb-2">Access Denied</h2>
-              <p className="text-sm text-ztext-light mb-6">
-                You do not have permission to access this page. If you need access, please contact your Super Admin.
-              </p>
-              <Link
-                href={getFirstAllowedAdminPage(permissions, adminRole)}
-                className="button-z button-z-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm"
-              >
-                <span>Go to Allowed Page</span>
-                <ArrowRight size={16} />
-              </Link>
-            </div>
+            (() => {
+              const targetPage = getFirstAllowedAdminPage(permissions, adminRole);
+              const isRedirecting = Boolean(targetPage && targetPage !== pathname && targetPage !== '/auth/login');
+
+              if (isRedirecting) {
+                return (
+                  <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8">
+                    <Loader2 size={36} className="animate-spin text-zred mb-3" />
+                    <p className="text-sm font-medium text-ztext">Redirecting...</p>
+                    <p className="text-xs text-ztext-lighter mt-1">Navigating to your authorized page</p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 bg-zcard rounded-2xl border border-zborder max-w-md mx-auto mt-12 shadow-z">
+                  <div className="w-16 h-16 rounded-2xl bg-zred/10 text-zred flex items-center justify-center mb-4">
+                    <ShieldAlert size={32} />
+                  </div>
+                  <h2 className="text-xl font-bold text-ztext mb-2">Access Denied</h2>
+                  <p className="text-sm text-ztext-light mb-6">
+                    You do not have permission to access this page. If you need access, please contact your Super Admin.
+                  </p>
+                  <button
+                    onClick={handleSignOut}
+                    className="button-z button-z-primary inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-medium text-sm"
+                  >
+                    <span>Sign Out</span>
+                    <LogOut size={16} />
+                  </button>
+                </div>
+              );
+            })()
           )}
         </main>
       </div>
