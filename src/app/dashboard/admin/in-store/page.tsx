@@ -7,8 +7,9 @@ import {
   CreditCard, CheckCircle2, AlertCircle, ShoppingBag, Loader2,
   RefreshCw, Store, Sparkles, Check, DollarSign, Printer, History,
   TrendingUp, Calendar, FileText, ChevronRight, Filter, UserPlus, X, Clock,
-  QrCode,
+  QrCode, Copy,
 } from 'lucide-react';
+import QRCode from 'qrcode';
 import {
   getInStoreCatalog,
   searchCustomerByPhone,
@@ -73,7 +74,9 @@ interface HistoryStats {
 
 export default function InStorePage() {
   const publicSettings = usePublicSettings();
+  const isRazorpayEnabled = publicSettings.razorpayEnabled && !!(publicSettings.razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID);
   const razorpayKey = publicSettings.razorpayKeyId || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const isUpiEnabled = publicSettings.upiEnabled && !!(publicSettings.storeUpiId || process.env.NEXT_PUBLIC_STORE_UPI_ID);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState<'pos' | 'history'>('pos');
@@ -103,6 +106,21 @@ export default function InStorePage() {
   const [cashTendered, setCashTendered] = useState<string>('');
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isRazorpayEnabled && paymentMethod === 'razorpay') {
+      setPaymentMethod('cash');
+    }
+    if (!isUpiEnabled && paymentMethod === 'upi') {
+      setPaymentMethod('cash');
+    }
+  }, [isRazorpayEnabled, isUpiEnabled, paymentMethod]);
+
+  // UPI QR Modal state
+  const [showUpiModal, setShowUpiModal] = useState(false);
+  const [upiQrDataUrl, setUpiQrDataUrl] = useState<string | null>(null);
+  const [generatingQr, setGeneratingQr] = useState(false);
+  const [copiedUpi, setCopiedUpi] = useState(false);
 
   // Success receipt modal state
   const [successData, setSuccessData] = useState<OrderSuccessData | null>(null);
@@ -318,6 +336,97 @@ export default function InStorePage() {
   const tenderedAmount = Number(cashTendered) || 0;
   const changeDue = tenderedAmount >= total ? tenderedAmount - total : 0;
 
+  // Generate and open UPI QR modal with amount and store UPI ID
+  async function generateAndOpenUpiModal() {
+    setError(null);
+    if (cart.length === 0) {
+      setError('Please add at least one product to the bill before opening UPI QR.');
+      return;
+    }
+
+    const cleanPhone = customerPhone.trim();
+    if (cleanPhone && !/^[0-9]{10}$/.test(cleanPhone)) {
+      setError('Customer phone number must be exactly 10 digits (0-9)');
+      return;
+    }
+
+    const rawUpi = (publicSettings.storeUpiId || publicSettings.gpayUpiId || process.env.NEXT_PUBLIC_STORE_UPI_ID || 'ritikraj1092002-4@okaxis').trim();
+    const upiName = (publicSettings.storeUpiName || publicSettings.gpayUpiName || 'Bodosa').trim();
+
+    if (!rawUpi) {
+      setError('Store UPI ID is not configured in General Settings.');
+      return;
+    }
+
+    setGeneratingQr(true);
+    setShowUpiModal(true);
+    try {
+      const note = isTakeaway ? 'Bodosa Parcel' : 'Bodosa Counter';
+      const upiUri = `upi://pay?pa=${encodeURIComponent(rawUpi)}&pn=${encodeURIComponent(upiName)}&am=${total.toFixed(2)}&cu=INR&tn=${encodeURIComponent(note)}`;
+      const dataUrl = await QRCode.toDataURL(upiUri, {
+        width: 320,
+        margin: 2,
+        color: {
+          dark: '#000000ff',
+          light: '#ffffffff',
+        },
+      });
+      setUpiQrDataUrl(dataUrl);
+    } catch (err) {
+      console.error('Failed to generate UPI QR:', err);
+      setError('Failed to generate UPI QR code. Please try again.');
+    } finally {
+      setGeneratingQr(false);
+    }
+  }
+
+  // Completes the order after customer has scanned and paid on UPI QR
+  async function handleCompleteUpiPayment() {
+    setError(null);
+    setPlacing(true);
+
+    const displayName = customerName.trim() || 'Walk-in Customer';
+    const displayPhone = customerPhone.trim() || 'N/A';
+    const currentOrderType = isTakeaway ? 'takeaway' : 'in_store';
+
+    const res = await createInStoreOrder({
+      items: cart,
+      subtotal,
+      taxAmount: totalFees,
+      total,
+      paymentMethod: 'upi',
+      customerPhone: customerPhone.trim() || undefined,
+      customerName: customerName.trim() || undefined,
+      customerEmail: customerEmail.trim() || undefined,
+      notes: orderNotes,
+      orderType: currentOrderType,
+    });
+
+    setPlacing(false);
+    if (res.success && res.data) {
+      setShowUpiModal(false);
+      setCart([]);
+      setOrderNotes('');
+      setCashTendered('');
+      setSuccessData({
+        orderId: res.data.orderId,
+        trackingCode: res.data.trackingCode,
+        customerName: displayName,
+        customerPhone: displayPhone,
+        customerEmail: customerEmail.trim() || undefined,
+        orderType: currentOrderType,
+        total,
+        subtotal,
+        taxAmount: totalFees,
+        paymentMethod: 'UPI',
+        items: [...cart],
+        createdAt: new Date().toISOString(),
+      });
+    } else {
+      setError(res.error || 'Failed to complete UPI order.');
+    }
+  }
+
   // Checkout submit handler - customer information is optional
   async function handleCheckout() {
     setError(null);
@@ -329,6 +438,12 @@ export default function InStorePage() {
     const cleanPhone = customerPhone.trim();
     if (cleanPhone && !/^[0-9]{10}$/.test(cleanPhone)) {
       setError('Customer phone number must be exactly 10 digits (0-9)');
+      return;
+    }
+
+    // UPI Direct flow: opens QR modal so customer scans and admin clicks Done
+    if (paymentMethod === 'upi') {
+      await generateAndOpenUpiModal();
       return;
     }
 
@@ -370,43 +485,6 @@ export default function InStorePage() {
         });
       } else {
         setError(res.error || 'Failed to complete cash checkout.');
-      }
-      return;
-    }
-
-    // UPI Direct flow
-    if (paymentMethod === 'upi') {
-      const res = await createInStoreOrder({
-        items: cart,
-        subtotal,
-        taxAmount: totalFees,
-        total,
-        paymentMethod: 'upi',
-        customerPhone: customerPhone.trim() || undefined,
-        customerName: customerName.trim() || undefined,
-        customerEmail: customerEmail.trim() || undefined,
-        notes: orderNotes,
-        orderType: currentOrderType,
-      });
-
-      setPlacing(false);
-      if (res.success && res.data) {
-        setSuccessData({
-          orderId: res.data.orderId,
-          trackingCode: res.data.trackingCode,
-          customerName: displayName,
-          customerPhone: displayPhone,
-          customerEmail: customerEmail.trim() || undefined,
-          orderType: currentOrderType,
-          total,
-          subtotal,
-          taxAmount: totalFees,
-          paymentMethod: 'UPI',
-          items: [...cart],
-          createdAt: new Date().toISOString(),
-        });
-      } else {
-        setError(res.error || 'Failed to complete UPI checkout.');
       }
       return;
     }
@@ -906,7 +984,7 @@ export default function InStorePage() {
                 <label className="text-[10px] font-semibold text-ztext-light uppercase tracking-wide mb-1 block">
                   Payment Method
                 </label>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className={`grid ${isRazorpayEnabled ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5`}>
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('cash')}
@@ -919,30 +997,39 @@ export default function InStorePage() {
                     <Banknote size={13} className="shrink-0" />
                     <span className="truncate">Cash<span className="hidden sm:inline"> Payment</span></span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('razorpay')}
-                    className={`py-1.5 px-1.5 sm:px-2 rounded-lg border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all text-center ${
-                      paymentMethod === 'razorpay'
-                        ? 'border-zred bg-red-500/10 text-zred shadow-sm'
-                        : 'border-zborder bg-zgray text-ztext-light hover:text-ztext'
-                    }`}
-                  >
-                    <CreditCard size={13} className="shrink-0" />
-                    <span className="truncate">Online<span className="hidden sm:inline"> / Razorpay</span></span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('upi')}
-                    className={`py-1.5 px-1.5 sm:px-2 rounded-lg border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all text-center ${
-                      paymentMethod === 'upi'
-                        ? 'border-zred bg-red-500/10 text-zred shadow-sm'
-                        : 'border-zborder bg-zgray text-ztext-light hover:text-ztext'
-                    }`}
-                  >
-                    <QrCode size={13} className="shrink-0" />
-                    <span>UPI</span>
-                  </button>
+                  {isRazorpayEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('razorpay')}
+                      className={`py-1.5 px-1.5 sm:px-2 rounded-lg border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all text-center ${
+                        paymentMethod === 'razorpay'
+                          ? 'border-zred bg-red-500/10 text-zred shadow-sm'
+                          : 'border-zborder bg-zgray text-ztext-light hover:text-ztext'
+                      }`}
+                    >
+                      <CreditCard size={13} className="shrink-0" />
+                      <span className="truncate">Online<span className="hidden sm:inline"> / Razorpay</span></span>
+                    </button>
+                  )}
+                  {isUpiEnabled && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod('upi');
+                        if (cart.length > 0) {
+                          generateAndOpenUpiModal();
+                        }
+                      }}
+                      className={`py-1.5 px-1.5 sm:px-2 rounded-lg border text-[11px] sm:text-xs font-semibold flex items-center justify-center gap-1 sm:gap-1.5 transition-all text-center ${
+                        paymentMethod === 'upi'
+                          ? 'border-zred bg-red-500/10 text-zred shadow-sm'
+                          : 'border-zborder bg-zgray text-ztext-light hover:text-ztext'
+                      }`}
+                    >
+                      <QrCode size={13} className="shrink-0" />
+                      <span>UPI QR</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -992,6 +1079,11 @@ export default function InStorePage() {
                 {placing ? (
                   <span className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" /> Processing {isTakeaway ? 'Take Away' : 'In-Store'} Order...
+                  </span>
+                ) : paymentMethod === 'upi' ? (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <QrCode size={15} />
+                    <span>Show UPI QR Code • ₹{total}</span>
                   </span>
                 ) : (
                   `Confirm & Checkout ${isTakeaway ? '(Take Away)' : ''} • ₹${total}`
@@ -1071,8 +1163,8 @@ export default function InStorePage() {
                     >
                       <option value="all">All Payment Methods</option>
                       <option value="cash">Cash Only</option>
-                      <option value="razorpay">Razorpay / Online Only</option>
-                      <option value="upi">UPI Only</option>
+                      {isRazorpayEnabled && <option value="razorpay">Razorpay / Online Only</option>}
+                      {isUpiEnabled && <option value="upi">UPI Only</option>}
                     </select>
                   </div>
 
@@ -1403,6 +1495,133 @@ export default function InStorePage() {
                 className="button-z button-z-primary px-4 py-2 text-xs font-bold shadow-z"
               >
                 Save Details
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UPI QR CODE PAYMENT MODAL */}
+      {showUpiModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zcard border border-zborder rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-zborder pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-zred/10 text-zred flex items-center justify-center">
+                  <QrCode size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-ztext">Scan & Pay via UPI</h3>
+                  <p className="text-[10px] text-ztext-light">Instant Counter Settlement</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowUpiModal(false)}
+                disabled={placing}
+                className="p-1 text-ztext-lighter hover:text-ztext rounded-lg hover:bg-zgray transition-colors disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Total Amount Badge */}
+            <div className="bg-zgray p-3 rounded-xl border border-zborder flex items-center justify-between">
+              <div>
+                <span className="text-[10px] uppercase font-semibold text-ztext-light block">Amount Payable</span>
+                <span className="text-xs font-medium text-ztext-light">
+                  {cart.reduce((s, i) => s + i.quantity, 0)} item{cart.reduce((s, i) => s + i.quantity, 0) > 1 ? 's' : ''} • {isTakeaway ? '🥡 Take Away' : '🏪 Dine-in'}
+                </span>
+              </div>
+              <span className="text-2xl font-black text-zred">₹{total}</span>
+            </div>
+
+            {/* QR Code Container */}
+            <div className="flex flex-col items-center justify-center p-4 bg-white rounded-2xl shadow-inner border border-gray-200">
+              {generatingQr ? (
+                <div className="w-56 h-56 flex flex-col items-center justify-center gap-2 text-gray-500">
+                  <Loader2 size={32} className="animate-spin text-zred" />
+                  <span className="text-xs font-medium">Generating QR Code...</span>
+                </div>
+              ) : upiQrDataUrl ? (
+                <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={upiQrDataUrl}
+                    alt="UPI Payment QR"
+                    className="w-56 h-56 object-contain rounded-lg"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-9 h-9 bg-white rounded-lg shadow-md border border-gray-300 flex items-center justify-center">
+                      <span className="text-xs font-black text-zred">B</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="w-56 h-56 flex flex-col items-center justify-center text-center p-4 text-gray-500">
+                  <AlertCircle size={28} className="text-zred mb-2" />
+                  <p className="text-xs font-semibold">Unable to load QR Code</p>
+                  <p className="text-[10px] text-gray-400 mt-1">Please ensure Store UPI ID is configured in settings</p>
+                </div>
+              )}
+              <p className="text-[11px] font-semibold text-gray-700 mt-2 flex items-center gap-1">
+                Scan with GPay, PhonePe, Paytm, BHIM
+              </p>
+            </div>
+
+            {/* UPI ID Info with Copy Button */}
+            <div className="flex items-center justify-between bg-zgray px-3 py-2 rounded-xl border border-zborder">
+              <div className="min-w-0 pr-2">
+                <span className="text-[10px] uppercase font-semibold text-ztext-light block">Store UPI ID</span>
+                <span className="text-xs font-mono font-bold text-ztext truncate block">
+                  {(publicSettings.storeUpiId || publicSettings.gpayUpiId || process.env.NEXT_PUBLIC_STORE_UPI_ID || 'ritikraj1092002-4@okaxis').trim()}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const id = (publicSettings.storeUpiId || publicSettings.gpayUpiId || process.env.NEXT_PUBLIC_STORE_UPI_ID || 'ritikraj1092002-4@okaxis').trim();
+                  navigator.clipboard.writeText(id);
+                  setCopiedUpi(true);
+                  setTimeout(() => setCopiedUpi(false), 2000);
+                }}
+                className="p-1.5 rounded-lg bg-zcard border border-zborder text-ztext hover:text-zred text-xs flex items-center gap-1 shrink-0 transition-colors"
+                title="Copy UPI ID"
+              >
+                {copiedUpi ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                <span className="text-[10px] font-medium">{copiedUpi ? 'Copied' : 'Copy'}</span>
+              </button>
+            </div>
+
+            {/* Action Buttons: Cancel and Done */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                disabled={placing}
+                onClick={() => setShowUpiModal(false)}
+                className="py-2.5 px-3 rounded-xl border border-zborder bg-zgray hover:bg-zborder text-ztext text-xs font-bold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={placing || generatingQr || !upiQrDataUrl}
+                onClick={handleCompleteUpiPayment}
+                className="button-z button-z-primary py-2.5 px-3 text-xs font-bold flex items-center justify-center gap-1.5 shadow-z disabled:opacity-50"
+              >
+                {placing ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin" />
+                    <span>Completing...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={15} />
+                    <span>Done (Paid)</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

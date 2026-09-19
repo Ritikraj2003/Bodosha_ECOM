@@ -8,11 +8,16 @@ import type {
 import { notifyOrderStatusPush, sendPushToUser, sendPushToDeliveryPartners } from '@/lib/push';
 
 export class AdminRepository {
-  async getDashboardStats(): Promise<DashboardStats | null> {
+  async getDashboardStats(filter?: { fromDate?: string; toDate?: string }): Promise<DashboardStats | null> {
     try {
       const today = new Date().toISOString().slice(0, 10);
       const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay()); weekStart.setHours(0,0,0,0);
       const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+
+      const fromDate = filter?.fromDate || null;
+      const toDate = filter?.toDate || null;
+      const fromDateStr = fromDate ? fromDate.slice(0, 10) : null;
+      const toDateStr = toDate ? toDate.slice(0, 10) : null;
 
       const statsRes = await query(`
         SELECT
@@ -20,22 +25,22 @@ export class AdminRepository {
           (SELECT COUNT(*) FROM public.users WHERE role = 'student' AND deleted_at IS NULL)::int AS total_students,
           (SELECT COUNT(*) FROM public.users WHERE role = 'merchant' AND deleted_at IS NULL)::int AS total_merchants,
           (SELECT COUNT(*) FROM public.restaurants WHERE deleted_at IS NULL)::int AS total_restaurants,
-          (SELECT COUNT(*) FROM public.orders)::int AS total_orders,
-          (SELECT COUNT(*) FROM public.orders WHERE status IN ('pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery'))::int AS active_orders,
-          (SELECT COUNT(*) FROM public.orders WHERE status IN ('completed', 'delivered'))::int AS completed_orders,
-          (SELECT COUNT(*) FROM public.orders WHERE status = 'cancelled')::int AS cancelled_orders,
-          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered'))::numeric AS total_revenue,
-          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $1)::numeric AS today_revenue,
-          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $2)::numeric AS weekly_revenue,
-          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $3)::numeric AS monthly_revenue,
+          (SELECT COUNT(*) FROM public.orders WHERE ($1::timestamptz IS NULL OR created_at >= $1) AND ($2::timestamptz IS NULL OR created_at <= $2))::int AS total_orders,
+          (SELECT COUNT(*) FROM public.orders WHERE status IN ('pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery') AND ($1::timestamptz IS NULL OR created_at >= $1) AND ($2::timestamptz IS NULL OR created_at <= $2))::int AS active_orders,
+          (SELECT COUNT(*) FROM public.orders WHERE status IN ('completed', 'delivered') AND ($1::timestamptz IS NULL OR created_at >= $1) AND ($2::timestamptz IS NULL OR created_at <= $2))::int AS completed_orders,
+          (SELECT COUNT(*) FROM public.orders WHERE status = 'cancelled' AND ($1::timestamptz IS NULL OR created_at >= $1) AND ($2::timestamptz IS NULL OR created_at <= $2))::int AS cancelled_orders,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND ($1::timestamptz IS NULL OR created_at >= $1) AND ($2::timestamptz IS NULL OR created_at <= $2))::numeric AS total_revenue,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $3)::numeric AS today_revenue,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $4)::numeric AS weekly_revenue,
+          (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $5)::numeric AS monthly_revenue,
           (SELECT COALESCE(SUM(used_credit), 0) FROM public.credit_accounts)::numeric AS bnpl_outstanding,
           (SELECT COALESCE(SUM(credit_limit), 0) FROM public.credit_accounts)::numeric AS total_credit_issued,
           (SELECT COALESCE(SUM(amount), 0) FROM public.credit_repayments WHERE status = 'paid')::numeric AS total_credit_repaid,
-          (SELECT COUNT(*) FROM public.credit_repayments WHERE status = 'pending' AND due_date < $4)::int AS total_overdue_accounts,
+          (SELECT COUNT(*) FROM public.credit_repayments WHERE status = 'pending' AND due_date < $3)::int AS total_overdue_accounts,
           (SELECT COUNT(*) FROM public.restaurants WHERE is_active = true AND deleted_at IS NULL)::int AS active_merchants,
           (SELECT COUNT(*) FROM public.restaurants WHERE is_active = false AND deleted_at IS NULL)::int AS pending_merchant_approvals,
-          (SELECT COALESCE(SUM(amount), 0) FROM public.expense_transactions WHERE type = 'expense')::numeric AS total_expenses;
-      `, [today, weekStart.toISOString(), monthStart.toISOString(), today]);
+          (SELECT COALESCE(SUM(amount), 0) FROM public.expense_transactions WHERE type = 'expense' AND ($6::date IS NULL OR transaction_date >= $6) AND ($7::date IS NULL OR transaction_date <= $7))::numeric AS total_expenses;
+      `, [fromDate, toDate, today, weekStart.toISOString(), monthStart.toISOString(), fromDateStr, toDateStr]);
 
       const s = statsRes.rows[0] || {};
 
@@ -61,8 +66,10 @@ export class AdminRepository {
       const orderTypeRes = await query(`
         SELECT COALESCE(order_type, 'room_delivery') AS type, COUNT(*)::int AS count
         FROM public.orders
+        WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+          AND ($2::timestamptz IS NULL OR created_at <= $2)
         GROUP BY COALESCE(order_type, 'room_delivery')
-      `);
+      `, [fromDate, toDate]);
 
       const orderTypeLabels: Record<string, string> = {
         room_delivery: 'Hostel Delivery',
@@ -93,8 +100,10 @@ export class AdminRepository {
       const paymentTypeRes = await query(`
         SELECT COALESCE(payment_method, 'cash') AS method, COUNT(*)::int AS count
         FROM public.orders
+        WHERE ($1::timestamptz IS NULL OR created_at >= $1)
+          AND ($2::timestamptz IS NULL OR created_at <= $2)
         GROUP BY COALESCE(payment_method, 'cash')
-      `);
+      `, [fromDate, toDate]);
 
       const paymentMethodLabels: Record<string, string> = {
         cash: 'Cash / COD',
@@ -486,15 +495,22 @@ export class AdminRepository {
   }
 
   async getOrders(filter: AdminFilter & { restaurantId?: string } = {}): Promise<PaginatedResponse<AdminOrder>> {
-    const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc', fromDate, toDate, restaurantId } = filter;
+    const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc', fromDate, toDate, restaurantId, tab, statuses } = filter;
     
     const whereClauses: string[] = ['o.deleted_at IS NULL'];
     const params: any[] = [];
     let paramIdx = 1;
 
-    if (status && status !== 'all') {
+    if (statuses && statuses.length > 0) {
+      whereClauses.push(`o.status = ANY($${paramIdx++})`);
+      params.push(statuses);
+    } else if (status && status !== 'all') {
       whereClauses.push(`o.status = $${paramIdx++}`);
       params.push(status);
+    } else if (tab === 'running') {
+      whereClauses.push(`o.status IN ('placed', 'pending', 'confirmed', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery')`);
+    } else if (tab === 'history') {
+      whereClauses.push(`o.status IN ('delivered', 'completed', 'cancelled')`);
     }
     if (search && search.trim()) {
       whereClauses.push(`(o.tracking_code ILIKE $${paramIdx} OR u.full_name ILIKE $${paramIdx} OR u.email ILIKE $${paramIdx} OR u.phone ILIKE $${paramIdx})`);
@@ -559,6 +575,46 @@ export class AdminRepository {
       page,
       pageSize,
       totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async getOrderTabCounts(filter: { search?: string; fromDate?: string; toDate?: string; restaurantId?: string } = {}): Promise<{ running: number; history: number }> {
+    const { search, fromDate, toDate, restaurantId } = filter;
+    const whereClauses: string[] = ['o.deleted_at IS NULL'];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (search && search.trim()) {
+      whereClauses.push(`(o.tracking_code ILIKE $${paramIdx} OR u.full_name ILIKE $${paramIdx} OR u.email ILIKE $${paramIdx} OR u.phone ILIKE $${paramIdx})`);
+      params.push(`%${search.trim()}%`);
+      paramIdx++;
+    }
+    if (fromDate) {
+      whereClauses.push(`o.created_at >= $${paramIdx++}`);
+      params.push(fromDate);
+    }
+    if (toDate) {
+      whereClauses.push(`o.created_at <= $${paramIdx++}`);
+      params.push(toDate);
+    }
+    if (restaurantId) {
+      whereClauses.push(`o.restaurant_id = $${paramIdx++}`);
+      params.push(restaurantId);
+    }
+
+    const whereStr = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+    const res = await query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE o.status IN ('placed', 'pending', 'confirmed', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery'))::int AS running,
+        COUNT(*) FILTER (WHERE o.status IN ('delivered', 'completed', 'cancelled'))::int AS history
+      FROM public.orders o
+      LEFT JOIN public.users u ON o.user_id = u.id
+      ${whereStr}
+    `, params);
+
+    return {
+      running: res.rows[0]?.running ?? 0,
+      history: res.rows[0]?.history ?? 0,
     };
   }
 
@@ -743,127 +799,238 @@ export class AdminRepository {
   }
 
   async getPayments(filter: AdminFilter = {}): Promise<PaginatedResponse<PaymentAdmin>> {
-    const admin = createAdminClient();
-    const { search, status, paymentMethodGroup, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc', fromDate, toDate } = filter;
-    let query = admin
-      .from('payments')
-      .select('*, order:orders!order_id!inner(tracking_code, status, customer_name, customer_phone, customer_email, user_id, order_items(id, product_name, quantity, unit_price, subtotal))', { count: 'exact' });
-    if (status && status !== 'all') query = query.eq('status', status);
+    const {
+      search,
+      status,
+      paymentMethodGroup,
+      page = 1,
+      pageSize = 50,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      fromDate,
+      toDate,
+    } = filter;
+
+    const conditions: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    // Status filter
+    if (status && status !== 'all') {
+      if (status === 'confirmed') {
+        conditions.push(`p.status IN ('confirmed', 'collected')`);
+      } else if (status === 'pending') {
+        conditions.push(`p.status IN ('pending', 'processing')`);
+      } else if (status === 'refunded') {
+        conditions.push(`(p.status IN ('refunded', 'partially_refunded') OR COALESCE(p.refund_amount, 0) > 0)`);
+      } else if (status === 'failed') {
+        conditions.push(`p.status IN ('failed', 'cancelled')`);
+      } else {
+        conditions.push(`p.status = $${paramIndex++}`);
+        values.push(status);
+      }
+    }
+
+    // Payment method group filter
     if (paymentMethodGroup && paymentMethodGroup !== 'all') {
       if (paymentMethodGroup === 'online') {
-        query = query.in('payment_method', ['razorpay', 'upi', 'phonepe', 'gpay', 'online']);
+        conditions.push(`LOWER(p.payment_method) IN ('razorpay', 'upi', 'phonepe', 'gpay', 'online', 'card', 'netbanking')`);
       } else if (paymentMethodGroup === 'wallet') {
-        query = query.in('payment_method', ['wallet', 'bnpl']);
+        conditions.push(`LOWER(p.payment_method) IN ('wallet', 'bnpl')`);
       } else if (paymentMethodGroup === 'cod') {
-        query = query.in('payment_method', ['cod', 'cash', 'collected']).in('order.status', ['delivered', 'completed']);
-      }
-    }
-    if (search) {
-      query = query.or(
-        `gateway_payment_id.ilike.%${search}%,gateway_order_id.ilike.%${search}%,order.tracking_code.ilike.%${search}%,order.customer_name.ilike.%${search}%,order.customer_phone.ilike.%${search}%,order.customer_email.ilike.%${search}%`,
-      );
-    }
-    if (fromDate) query = query.gte('created_at', fromDate);
-    if (toDate) query = query.lte('created_at', toDate);
-    query = query.order(sortBy, { ascending: sortOrder === 'asc' });
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    const { data, count } = await query.range(from, to);
-
-    // Fetch user profiles & credit account references for payments that have user_id
-    const userIds = Array.from(new Set((data ?? []).map((p: any) => p.user_id || p.order?.user_id).filter(Boolean))) as string[];
-    let userMap = new Map<string, { full_name: string; email: string; phone: string | null }>();
-    let creditMap = new Map<string, { available_credit: number; credit_limit: number }>();
-
-    if (userIds.length > 0) {
-      const [{ data: profiles }, { data: credits }] = await Promise.all([
-        admin.from('profiles').select('id, full_name, email, phone').in('id', userIds),
-        admin.from('credit_accounts').select('user_id, available_credit, credit_limit').in('user_id', userIds),
-      ]);
-
-      if (profiles) {
-        userMap = new Map(profiles.map((u: any) => [u.id, { full_name: u.full_name, email: u.email, phone: u.phone ?? null }]));
-      }
-      if (credits) {
-        creditMap = new Map(credits.map((c: any) => [c.user_id, { available_credit: Number(c.available_credit), credit_limit: Number(c.credit_limit) }]));
+        conditions.push(`LOWER(p.payment_method) IN ('cod', 'cash', 'collected')`);
       }
     }
 
-    const paymentsWithDetails = (data ?? []).map((p: any) => {
-      const uid = p.user_id || p.order?.user_id;
-      const userProfile = uid ? userMap.get(uid) : undefined;
-      const creditAcc = uid ? creditMap.get(uid) : undefined;
-      const walletRef = creditAcc
-        ? `BNPL Credit (Avail: ₹${creditAcc.available_credit.toLocaleString('en-IN')})`
-        : p.user_id
-          ? `User Wallet (${p.user_id.slice(0, 8)})`
+    // Search filter
+    if (search && search.trim()) {
+      const term = `%${search.trim()}%`;
+      conditions.push(`(
+        p.id::text ILIKE $${paramIndex} OR
+        COALESCE(p.gateway_payment_id, '') ILIKE $${paramIndex} OR
+        COALESCE(p.gateway_order_id, '') ILIKE $${paramIndex} OR
+        COALESCE(o.tracking_code, '') ILIKE $${paramIndex} OR
+        COALESCE(o.customer_name, '') ILIKE $${paramIndex} OR
+        COALESCE(o.customer_phone, '') ILIKE $${paramIndex} OR
+        COALESCE(o.customer_email, '') ILIKE $${paramIndex} OR
+        COALESCE(u.full_name, '') ILIKE $${paramIndex} OR
+        COALESCE(u.phone, '') ILIKE $${paramIndex} OR
+        COALESCE(u.email, '') ILIKE $${paramIndex}
+      )`);
+      values.push(term);
+      paramIndex++;
+    }
+
+    // Date filters
+    if (fromDate) {
+      conditions.push(`p.created_at >= $${paramIndex++}`);
+      values.push(fromDate);
+    }
+    if (toDate) {
+      conditions.push(`p.created_at <= $${paramIndex++}`);
+      values.push(toDate);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const allowedSortCols: Record<string, string> = {
+      created_at: 'p.created_at',
+      amount: 'p.amount',
+      status: 'p.status',
+      payment_method: 'p.payment_method',
+    };
+    const sortCol = allowedSortCols[sortBy] || 'p.created_at';
+    const sortDir = sortOrder?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+    const limit = Math.max(1, Number(pageSize) || 50);
+    const offset = (Math.max(1, Number(page) || 1) - 1) * limit;
+
+    const sql = `
+      SELECT
+        p.id,
+        p.order_id,
+        p.amount,
+        p.currency,
+        p.payment_method,
+        p.status,
+        p.gateway_order_id,
+        p.gateway_payment_id,
+        p.error_description AS failure_reason,
+        COALESCE(p.refund_amount, 0) AS refund_amount,
+        p.created_at,
+        o.user_id AS order_user_id,
+        o.tracking_code,
+        o.status AS order_status,
+        o.customer_name,
+        o.customer_phone,
+        o.customer_email,
+        u.full_name AS user_full_name,
+        u.email AS user_email,
+        u.phone AS user_phone,
+        (ca.credit_limit - ca.used_credit) AS available_credit,
+        ca.credit_limit,
+        COALESCE(
+          (SELECT json_agg(json_build_object(
+            'id', oi.id,
+            'product_name', oi.product_name,
+            'quantity', oi.quantity,
+            'unit_price', oi.unit_price,
+            'subtotal', oi.subtotal
+          ))
+          FROM public.order_items oi WHERE oi.order_id = p.order_id),
+          '[]'::json
+        ) AS order_items,
+        COUNT(*) OVER() AS full_count
+      FROM public.payments p
+      LEFT JOIN public.orders o ON p.order_id = o.id
+      LEFT JOIN public.users u ON o.user_id = u.id
+      LEFT JOIN public.credit_accounts ca ON o.user_id = ca.user_id
+      ${whereClause}
+      ORDER BY ${sortCol} ${sortDir}
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `;
+
+    values.push(limit, offset);
+
+    const res = await query(sql, values);
+    const rows = res.rows || [];
+    const total = rows.length > 0 ? parseInt(rows[0].full_count, 10) : 0;
+
+    const data: PaymentAdmin[] = rows.map((r: any) => {
+      const uid = r.order_user_id || null;
+      const walletRef = r.credit_limit != null
+        ? `BNPL Credit (Avail: ₹${Number(r.available_credit ?? 0).toLocaleString('en-IN')})`
+        : uid
+          ? `User Wallet (${String(uid).slice(0, 8)})`
           : 'N/A';
 
+      const gateway = ['razorpay', 'upi', 'phonepe', 'gpay'].includes(r.payment_method?.toLowerCase())
+        ? r.payment_method.toUpperCase()
+        : r.payment_method?.toUpperCase() || 'DIRECT';
+
       return {
-        ...p,
-        user: userProfile ? { full_name: userProfile.full_name, email: userProfile.email, phone: userProfile.phone } : null,
+        id: r.id,
+        order_id: r.order_id,
+        user_id: uid,
+        amount: Number(r.amount ?? 0),
+        currency: r.currency || 'INR',
+        payment_method: r.payment_method,
+        gateway,
+        gateway_order_id: r.gateway_order_id ?? null,
+        gateway_payment_id: r.gateway_payment_id ?? null,
+        status: r.status,
+        failure_reason: r.failure_reason ?? null,
+        refund_amount: r.refund_amount != null ? Number(r.refund_amount) : 0,
+        created_at: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
+        order: r.tracking_code ? {
+          tracking_code: r.tracking_code,
+          status: r.order_status,
+          customer_name: r.customer_name ?? null,
+          customer_phone: r.customer_phone ?? null,
+          customer_email: r.customer_email ?? null,
+          user_id: uid,
+          order_items: Array.isArray(r.order_items) ? r.order_items : [],
+        } : null,
+        user: r.user_full_name || r.user_email ? {
+          full_name: r.user_full_name ?? null,
+          email: r.user_email ?? null,
+          phone: r.user_phone ?? null,
+        } : null,
         wallet_info: walletRef,
       };
     });
 
-    const validPayments = paymentsWithDetails.filter((p: any) => {
-      const isCod = ['cod', 'cash', 'collected'].includes(p.payment_method);
-      if (isCod) {
-        return p.order?.status === 'delivered' || p.order?.status === 'completed';
-      }
-      return true;
-    });
-
     return {
-      data: validPayments as unknown as PaymentAdmin[],
-      total: count ?? 0,
-      page,
-      pageSize,
-      totalPages: Math.ceil((count ?? 0) / pageSize),
+      data,
+      total,
+      page: Number(page) || 1,
+      pageSize: limit,
+      totalPages: Math.ceil(total / limit) || 0,
     };
   }
 
   async processRefund(paymentId: string, amount: number, reason: string): Promise<void> {
-    const admin = createAdminClient();
-    const { data: payment, error: fetchError } = await admin
-      .from('payments')
-      .select('id, order_id, amount, refund_amount, status, payment_method')
-      .eq('id', paymentId)
-      .single();
-    if (fetchError || !payment) throw new Error('Payment not found');
-    if (payment.status !== 'confirmed') throw new Error('Only confirmed payments can be refunded');
-    const currentRefunded = payment.refund_amount ?? 0;
+    const res = await query(`
+      SELECT id, order_id, amount, refund_amount, status, payment_method
+      FROM public.payments
+      WHERE id = $1
+    `, [paymentId]);
+
+    if (!res.rows[0]) throw new Error('Payment not found');
+    const payment = res.rows[0];
+
+    if (payment.status !== 'confirmed' && payment.status !== 'collected') {
+      throw new Error('Only confirmed payments can be refunded');
+    }
+
+    const currentRefunded = Number(payment.refund_amount || 0);
+    const paymentAmount = Number(payment.amount);
     const newRefunded = currentRefunded + amount;
-    if (newRefunded > payment.amount) throw new Error('Refund amount exceeds payment amount');
-    const newStatus = newRefunded >= payment.amount ? 'refunded' : 'partially_refunded';
-    const { error } = await admin
-      .from('payments')
-      .update({ refund_amount: newRefunded, status: newStatus })
-      .eq('id', paymentId);
-    if (error) throw new Error(error.message);
-    if (payment.payment_method === 'bnpl') {
-      const { data: order } = await admin
-        .from('orders')
-        .select('*, credit_transactions(*)')
-        .eq('id', payment.order_id)
-        .single();
-      if (order) {
-        const { data: creditTx } = await admin
-          .from('credit_transactions')
-          .select('credit_account_id')
-          .eq('order_id', payment.order_id)
-          .eq('type', 'purchase')
-          .single();
-        if (creditTx) {
-          await admin
-            .from('credit_accounts')
-            .update({
-              available_credit: admin.rpc('', {}).then,
-            })
-            .eq('id', creditTx.credit_account_id);
-        }
+    if (newRefunded > paymentAmount) throw new Error('Refund amount exceeds payment amount');
+    const newStatus = newRefunded >= paymentAmount ? 'refunded' : 'partially_refunded';
+
+    await query(`
+      UPDATE public.payments
+      SET refund_amount = $1, status = $2, updated_at = NOW()
+      WHERE id = $3
+    `, [newRefunded, newStatus, paymentId]);
+
+    if (payment.payment_method === 'bnpl' && payment.order_id) {
+      const creditTxRes = await query(`
+        SELECT credit_account_id
+        FROM public.credit_transactions
+        WHERE order_id = $1 AND type = 'purchase'
+        LIMIT 1
+      `, [payment.order_id]);
+      if (creditTxRes.rows[0]?.credit_account_id) {
+        await query(`
+          UPDATE public.credit_accounts
+          SET used_credit = GREATEST(0, used_credit - $1), updated_at = NOW()
+          WHERE id = $2
+        `, [amount, creditTxRes.rows[0].credit_account_id]);
       }
     }
+
     await this.createAuditLog({
       table_name: 'payments',
       record_id: paymentId,

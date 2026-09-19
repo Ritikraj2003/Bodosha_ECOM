@@ -6,7 +6,7 @@ import {
   RefreshCw, Loader2, Save, Pencil, Clock,
   type LucideIcon,
 } from 'lucide-react';
-import { PageHeader, ToastContainer, useToast, LoadingSkeleton } from '@/components/ui/data-table';
+import { PageHeader, ToastContainer, useToast } from '@/components/ui/data-table';
 import { getSystemSettings, updateSystemSetting } from '@/features/admin/actions';
 import { authService } from '@/features/auth/services/auth-service';
 import type { SystemSetting } from '@/features/admin/types';
@@ -17,9 +17,10 @@ import { invalidatePublicSettingsCache } from '@/hooks/usePublicSettings';
 const LABELS: Record<string, string> = {
   payment_method_wallet_enabled: 'Wallet',
   payment_method_razorpay_enabled: 'Razorpay',
-  payment_method_phonepe_enabled: 'PhonePe',
-  payment_method_gpay_enabled: 'Google Pay',
+  payment_method_upi_enabled: 'UPI',
   payment_method_cod_enabled: 'Cash on Delivery',
+  store_upi_id: 'Store Upi Id',
+  store_upi_name: 'Store Upi Name',
   maintenance_fee: 'Maintenance fee (₹)',
   packaging_charge: 'Packaging Charge (₹)',
   packaging_charge_enabled: 'Enable Packaging Charge',
@@ -51,17 +52,22 @@ export default function AdminSettingsPage() {
   const { toasts, addToast, removeToast } = useToast();
 
   const fetchSettings = useCallback(async () => {
-    const res = await getSystemSettings();
-    if (res.success && res.data) {
-      const data = res.data as SystemSetting[];
-      setSettings(data);
-      const values: Record<string, string> = {};
-      data.forEach((s) => { values[s.key] = s.value ?? ''; });
-      setEditingValues(values);
-      setOriginalValues({ ...values });
+    try {
+      const res = await getSystemSettings();
+      if (res.success && res.data) {
+        const data = res.data as SystemSetting[];
+        setSettings(data);
+        const values: Record<string, string> = {};
+        data.forEach((s) => { values[s.key] = s.value ?? ''; });
+        setEditingValues((prev) => (editing ? prev : values));
+        setOriginalValues(values);
+      }
+    } catch (err) {
+      console.error('Failed to fetch settings:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, []);
+  }, [editing]);
 
   useEffect(() => {
      
@@ -130,19 +136,9 @@ export default function AdminSettingsPage() {
   const isEnabled = (key: string) => editingValues[key] === 'true';
   const paymentCredentialKeys = [
     ...(isEnabled('payment_method_razorpay_enabled') ? ['razorpay_key_id', 'razorpay_key_secret'] : []),
-    ...(isEnabled('payment_method_phonepe_enabled') ? ['phonepe_merchant_id', 'phonepe_salt_key', 'phonepe_salt_index'] : []),
-    ...(isEnabled('payment_method_gpay_enabled') ? ['gpay_upi_id', 'gpay_upi_name'] : []),
-    'store_upi_id', 'store_upi_name',
+    ...(isEnabled('payment_method_upi_enabled') ? ['store_upi_id', 'store_upi_name'] : []),
   ];
 
-  if (loading) {
-    return (
-      <div>
-        <div className="h-8 w-48 bg-zgray rounded-lg animate-pulse mb-6" />
-        <LoadingSkeleton rows={6} cols={2} />
-      </div>
-    );
-  }
 
   const getParsedSlots = (): DeliverySlot[] => {
     const raw = editingValues['delivery_slots'] ?? '';
@@ -161,10 +157,21 @@ export default function AdminSettingsPage() {
 
   const renderField = (settingKey: string) => {
     const setting = get(settingKey);
-    if (!setting) return null;
-    const label = LABELS[setting.key] ?? setting.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-    const val = editingValues[setting.key] ?? '';
+    const label = LABELS[settingKey] ?? (setting ? setting.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : settingKey.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()));
+    const val = editingValues[settingKey] ?? setting?.value ?? '';
     const disabled = saving || !editing;
+
+    const isBoolean = setting ? setting.type === 'boolean' : (settingKey.endsWith('_enabled') || settingKey === 'delivery_available');
+    const isNumber = setting ? setting.type === 'number' : (
+      settingKey === 'maintenance_fee' || settingKey === 'delivery_fee' ||
+      settingKey === 'telegram_qr_expiry_minutes' || settingKey.endsWith('_price') ||
+      settingKey.endsWith('_charge') || settingKey.endsWith('_limit') || settingKey.endsWith('_port')
+    );
+    const isTextarea = settingKey === 'store_address' || settingKey === 'store_delivery_locations' ||
+      settingKey === 'delivery_person_emails' || settingKey === 'admin_emails' ||
+      settingKey === 'dilip_da_email' || settingKey === 'delivery_unavailable_message' ||
+      settingKey === 'delivery_custom_message';
+    const isTime = settingKey === 'store_temp_close_until';
 
     return (
       <div className="space-y-2">
@@ -173,11 +180,11 @@ export default function AdminSettingsPage() {
             <label className="block text-sm font-semibold text-ztext">
               {label}
             </label>
-            {setting.description && <span className="text-xs text-ztext-lighter">{setting.description}</span>}
+            {setting?.description && <span className="text-xs text-ztext-lighter">{setting.description}</span>}
           </div>
 
           <div className="w-full sm:w-64 flex items-center justify-end shrink-0">
-            {setting.type === 'boolean' ? (
+            {isBoolean ? (
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-ztext-lighter w-8">{val === 'true' ? 'On' : 'Off'}</span>
                 <button
@@ -187,38 +194,40 @@ export default function AdminSettingsPage() {
                   disabled={disabled}
                   onClick={() => {
                     const newVal = val === 'true' ? 'false' : 'true';
-                    setVal(setting.key, newVal);
+                    setVal(settingKey, newVal);
                   }}
                   className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${val === 'true' ? 'bg-zred' : 'bg-zsurface'}`}
                 >
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${val === 'true' ? 'translate-x-5' : 'translate-x-0'}`} />
                 </button>
               </div>
-            ) : setting.type === 'number' ? (
+            ) : isNumber ? (
               <input
                 type="number"
                 value={val}
-                min={setting.key === 'telegram_qr_expiry_minutes' ? 1 : undefined}
-                max={setting.key === 'telegram_qr_expiry_minutes' ? 60 : undefined}
+                min={settingKey === 'telegram_qr_expiry_minutes' ? 1 : undefined}
+                max={settingKey === 'telegram_qr_expiry_minutes' ? 60 : undefined}
                 disabled={disabled}
-                onChange={(e) => setVal(setting.key, e.target.value)}
+                placeholder="0"
+                onChange={(e) => setVal(settingKey, e.target.value)}
                 className={`${inputClass} text-right`}
               />
-            ) : setting.key === 'store_address' || setting.key === 'store_delivery_locations' || setting.key === 'delivery_person_emails' || setting.key === 'admin_emails' || setting.key === 'dilip_da_email' || setting.key === 'delivery_unavailable_message' || setting.key === 'delivery_custom_message' ? (
+            ) : isTextarea ? (
               <textarea
                 rows={2}
                 value={val}
                 disabled={disabled}
-                onChange={(e) => setVal(setting.key, e.target.value)}
+                placeholder="—"
+                onChange={(e) => setVal(settingKey, e.target.value)}
                 className={`${inputClass} resize-none`}
               />
-            ) : setting.key === 'store_temp_close_until' ? (
+            ) : isTime ? (
               <input
                 type="time"
                 value={val}
                 disabled={disabled}
                 placeholder="Leave empty to disable"
-                onChange={(e) => setVal(setting.key, e.target.value)}
+                onChange={(e) => setVal(settingKey, e.target.value)}
                 className={inputClass}
               />
             ) : (
@@ -226,7 +235,8 @@ export default function AdminSettingsPage() {
                 type="text"
                 value={val}
                 disabled={disabled}
-                onChange={(e) => setVal(setting.key, e.target.value)}
+                placeholder="—"
+                onChange={(e) => setVal(settingKey, e.target.value)}
                 className={inputClass}
               />
             )}
@@ -339,7 +349,7 @@ export default function AdminSettingsPage() {
           </button>
         )}
         <button onClick={() => { setLoading(true); fetchSettings(); }} aria-label="Refresh settings" className="p-2.5 rounded-xl hover:bg-zgray text-ztext-lighter transition-colors">
-          {loading ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
+          {loading ? <Loader2 size={18} className="animate-spin text-zred" /> : <RefreshCw size={18} />}
         </button>
       </PageHeader>
 
@@ -351,8 +361,7 @@ export default function AdminSettingsPage() {
           keys: [
             'payment_method_wallet_enabled',
             'payment_method_razorpay_enabled',
-            'payment_method_phonepe_enabled',
-            'payment_method_gpay_enabled',
+            'payment_method_upi_enabled',
             'payment_method_cod_enabled',
           ],
         })}

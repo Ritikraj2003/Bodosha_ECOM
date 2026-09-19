@@ -1,21 +1,40 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { RefreshCw, Eye, XCircle, Clock, Bike, Loader2, QrCode } from 'lucide-react';
+import { RefreshCw, Eye, XCircle, Clock, Bike, Loader2, QrCode, CheckCircle2 } from 'lucide-react';
 import { DataTable, SearchInput, StatusFilter, PageHeader, ConfirmDialog, ToastContainer, useToast } from '@/components/ui/data-table';
 import DateFilter, { type DateFilterValue } from '@/components/ui/date-filter';
-import { getAdminOrders, forceUpdateOrderStatus, cancelOrderByAdmin, getAdminOrderById, getAvailableDeliveryPartners, assignDeliveryPartner, regenerateOrderQr } from '@/features/admin/actions';
+import { getAdminOrders, getAdminOrderTabCounts, forceUpdateOrderStatus, cancelOrderByAdmin, getAdminOrderById, getAvailableDeliveryPartners, assignDeliveryPartner, regenerateOrderQr } from '@/features/admin/actions';
 import type { AdminOrder } from '@/features/admin/types';
 import { orderTypeLabel } from '@/features/orders/types';
 import { usePolling } from '@/hooks/usePolling';
 import QRCode from 'qrcode';
 import { createClient } from '@/infrastructure/supabase/client';
 
-const ORDER_STATUSES = ['pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery', 'delivered', 'completed', 'cancelled'];
+const RUNNING_STATUS_OPTIONS = [
+  { label: 'All Running Statuses', value: 'all' },
+  { label: 'Placed', value: 'placed' },
+  { label: 'Confirmed', value: 'confirmed' },
+  { label: 'Preparing', value: 'preparing' },
+  { label: 'Ready', value: 'ready' },
+  { label: 'Assigned', value: 'assigned' },
+  { label: 'Out for Delivery', value: 'out_for_delivery' },
+];
+
+const HISTORY_STATUS_OPTIONS = [
+  { label: 'All History Statuses', value: 'all' },
+  { label: 'Delivered', value: 'delivered' },
+  { label: 'Completed', value: 'completed' },
+  { label: 'Cancelled', value: 'cancelled' },
+];
+
+const ORDER_STATUSES = ['placed', 'pending', 'confirmed', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery', 'delivered', 'completed', 'cancelled'];
 
 const POLL_INTERVAL_MS = 30_000;
 
 export default function AdminOrdersPage() {
+  const [activeTab, setActiveTab] = useState<'running' | 'history'>('running');
+  const [tabCounts, setTabCounts] = useState<{ running: number; history: number }>({ running: 0, history: 0 });
   const [orders, setOrders] = useState<AdminOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -93,23 +112,34 @@ export default function AdminOrdersPage() {
   const fetchOrders = useCallback(async (p?: number, silent = false) => {
     if (!silent) setLoading(true);
     const targetPage = p ?? pageRef.current;
-    const res = await getAdminOrders({
-      search: search || undefined,
-      status: status !== 'all' ? status : undefined,
-      ...dateRange,
-      page: targetPage,
-      pageSize: 20,
-      sortBy,
-      sortOrder,
-    });
+    const [res, countsRes] = await Promise.all([
+      getAdminOrders({
+        search: search || undefined,
+        status: status !== 'all' ? status : undefined,
+        tab: activeTab,
+        ...dateRange,
+        page: targetPage,
+        pageSize: 20,
+        sortBy,
+        sortOrder,
+      }),
+      getAdminOrderTabCounts({
+        search: search || undefined,
+        fromDate: dateRange.fromDate,
+        toDate: dateRange.toDate,
+      }),
+    ]);
     if (res.success && res.data) {
       setOrders(res.data.data as AdminOrder[]);
       setTotal(res.data.total);
       setTotalPages(res.data.totalPages);
       setPage(res.data.page);
     }
+    if (countsRes.success && countsRes.data) {
+      setTabCounts(countsRes.data);
+    }
     if (!silent) setLoading(false);
-  }, [search, status, dateRange, sortBy, sortOrder]);
+  }, [activeTab, search, status, dateRange, sortBy, sortOrder]);
 
   usePolling(() => { fetchOrders(undefined, true); }, POLL_INTERVAL_MS);
 
@@ -257,16 +287,79 @@ export default function AdminOrdersPage() {
 
   return (
     <div>
-      <PageHeader title="Orders" description={`${total} total order${total !== 1 ? 's' : ''}`} />
+      <PageHeader
+        title="Orders"
+        description={
+          activeTab === 'running'
+            ? `${total} running / in-progress order${total !== 1 ? 's' : ''}`
+            : `${total} order history record${total !== 1 ? 's' : ''}`
+        }
+      />
+
+      {/* Two Tabs: Running Orders & Order History */}
+      <div className="flex items-center gap-2 border-b border-zborder mb-4">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('running');
+            setStatus('all');
+            setPage(1);
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            activeTab === 'running'
+              ? 'border-zred text-zred bg-red-500/5'
+              : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
+          }`}
+        >
+          <Clock size={16} className={activeTab === 'running' && tabCounts.running > 0 ? 'text-amber-500 animate-pulse' : ''} />
+          <span>Running Orders</span>
+          <span
+            className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
+              activeTab === 'running'
+                ? 'bg-zred text-white'
+                : 'bg-zgray text-ztext-lighter'
+            }`}
+          >
+            {tabCounts.running}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('history');
+            setStatus('all');
+            setPage(1);
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+            activeTab === 'history'
+              ? 'border-zred text-zred bg-red-500/5'
+              : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
+          }`}
+        >
+          <CheckCircle2 size={16} className={activeTab === 'history' ? 'text-emerald-500' : ''} />
+          <span>Order History</span>
+          <span
+            className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
+              activeTab === 'history'
+                ? 'bg-zred text-white'
+                : 'bg-zgray text-ztext-lighter'
+            }`}
+          >
+            {tabCounts.history}
+          </span>
+        </button>
+      </div>
 
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="flex-1">
           <SearchInput value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search by tracking code, customer..." />
         </div>
-        <StatusFilter value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={[
-          { label: 'All status', value: 'all' },
-          ...ORDER_STATUSES.map((s) => ({ label: s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()), value: s })),
-        ]} />
+        <StatusFilter
+          value={status}
+          onChange={(v) => { setStatus(v); setPage(1); }}
+          options={activeTab === 'running' ? RUNNING_STATUS_OPTIONS : HISTORY_STATUS_OPTIONS}
+        />
         <button onClick={() => fetchOrders()} aria-label="Refresh orders" className="p-2.5 rounded-xl hover:bg-zgray text-ztext-lighter transition-colors">
           <RefreshCw size={18} />
         </button>
@@ -290,7 +383,11 @@ export default function AdminOrdersPage() {
           sortBy={sortBy}
           sortOrder={sortOrder}
           keyExtractor={(o) => (o as unknown as AdminOrder).id}
-          emptyMessage="No orders found"
+          emptyMessage={
+            activeTab === 'running'
+              ? 'No running orders at the moment'
+              : 'No order history records found'
+          }
         />
       </div>
 

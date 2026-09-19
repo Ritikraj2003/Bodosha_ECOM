@@ -5,33 +5,19 @@ import Link from 'next/link';
 import { useAuthStore } from '../store';
 import { authService } from '../services/auth-service';
 import { sendSignupOtp, verifySignupOtp } from '@/features/cit-student/actions';
-import { setupDeliveryAccount, setupAdminAccount, confirmSignupEmail, isEmailRegistered, createUserAccount } from '@/features/auth/actions';
-import { getPublicSettings } from '@/features/settings/actions';
-import { isCitStudentEmail, isDeliveryEmail, isAdminEmail, isOwnerEmail } from '@/config/auth-access';
-import { usePublicSettings } from '@/hooks/usePublicSettings';
+import { confirmSignupEmail, isEmailRegistered, createUserAccount } from '@/features/auth/actions';
+import { isCitStudentEmail } from '@/config/auth-access';
 import { showToast } from '@/components/shared/Toast';
-import { Loader2, Check, Clock, XCircle, ArrowLeft, Mail, Bike } from 'lucide-react';
+import { Loader2, Check, Clock, XCircle, ArrowLeft, Mail } from 'lucide-react';
 
 const COUNTDOWN_SECONDS = 300;
 
-type AccountType = 'student' | 'delivery' | 'admin';
-
-const accountTypes: { value: AccountType; label: string; desc: string; emoji: string }[] = [
-  { value: 'student', label: 'Student', desc: 'Create an account to order food', emoji: '🎓' },
-  { value: 'delivery', label: 'Delivery Partner', desc: 'Deliver food and earn money', emoji: '🛵' },
-  { value: 'admin', label: 'Administrator', desc: 'Manage the store dashboard', emoji: '⚙️' },
-];
-
 export default function SignupForm() {
-  const publicSettings = usePublicSettings();
   const [step, setStep] = useState<'email' | 'otp' | 'account'>('email');
-  const [accountType, setAccountType] = useState<AccountType>('student');
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [vehicleType, setVehicleType] = useState('bike');
-  const [licensePlate, setLicensePlate] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [otp, setOtp] = useState('');
@@ -68,12 +54,6 @@ export default function SignupForm() {
   async function handleSendOtp() {
     const normalizedEmail = email.toLowerCase().trim();
     if (!normalizedEmail.includes('@')) { showToast('Enter a valid email'); return; }
-    const publicConfig = await getPublicSettings().catch(() => null);
-    const deliveryEmails = publicConfig?.deliveryEmails ?? publicSettings.deliveryEmails;
-    const adminEmails = publicConfig?.adminEmails ?? publicSettings.adminEmails;
-    const ownerEmail = publicConfig?.ownerEmail ?? publicSettings.ownerEmail;
-    if (accountType === 'delivery' && !isDeliveryEmail(normalizedEmail, deliveryEmails)) { showToast('This email is not approved for delivery partners'); return; }
-    if (accountType === 'admin' && !isAdminEmail(normalizedEmail, adminEmails) && !isOwnerEmail(normalizedEmail, ownerEmail)) { showToast('This email is not approved for admin access'); return; }
     setSending(true);
     setDevOtp(null);
     const existsCheck = await isEmailRegistered(normalizedEmail).catch(() => null);
@@ -88,7 +68,7 @@ export default function SignupForm() {
     if (res.success) {
       setStep('otp');
       setCountdown(COUNTDOWN_SECONDS);
-      setIsCitEmail(accountType === 'student' && isCitStudentEmail(normalizedEmail));
+      setIsCitEmail(isCitStudentEmail(normalizedEmail));
       showToast('OTP sent to your email');
       if ('devOtp' in res && res.devOtp) setDevOtp(res.devOtp as string);
     } else {
@@ -167,33 +147,6 @@ export default function SignupForm() {
     } catch {}
 
     useAuthStore.getState().setUser(activeUser);
-
-    if (accountType === 'delivery') {
-      const formData = new FormData();
-      formData.set('vehicleType', vehicleType);
-      formData.set('licensePlate', licensePlate);
-      formData.set('phone', cleanPhone);
-      const result = await setupDeliveryAccount(formData);
-      if (result.error) { setError(result.error); return; }
-      window.location.href = result.redirect ?? '/dashboard/delivery';
-      return;
-    }
-
-    if (accountType === 'admin') {
-      const formData = new FormData();
-      formData.set('phone', cleanPhone);
-      let result: { error: string | null; redirect: string | null };
-      try {
-        result = await setupAdminAccount(formData);
-      } catch {
-        setError('Could not finish setting up your account. Please try again.');
-        return;
-      }
-      if (result.error) { setError(result.error); return; }
-      window.location.href = result.redirect ?? '/admin';
-      return;
-    }
-
     window.location.href = '/';
   }
 
@@ -234,22 +187,6 @@ export default function SignupForm() {
                 inputMode="numeric"
               />
             </div>
-            {accountType === 'delivery' && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-ztext mb-1.5">Vehicle type</label>
-                  <select className="input-z w-full" value={vehicleType} onChange={(e) => setVehicleType(e.target.value)}>
-                    <option value="bike">Bike</option>
-                    <option value="scooter">Scooter</option>
-                    <option value="car">Car</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-ztext mb-1.5">License plate <span className="text-ztext-lighter">(optional)</span></label>
-                  <input type="text" className="input-z w-full" placeholder="e.g. AS01 AB 1234" value={licensePlate} onChange={(e) => setLicensePlate(e.target.value)} />
-                </div>
-              </>
-            )}
             <div>
               <label className="block text-sm font-medium text-ztext mb-1.5">Password</label>
               <input type="password" className="input-z w-full" placeholder="At least 6 characters" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
@@ -332,16 +269,6 @@ export default function SignupForm() {
         <p className="text-ztext-light text-sm mb-6">Join Bodosa and start ordering</p>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            {accountTypes.map((t) => (
-              <button key={t.value} type="button" onClick={() => setAccountType(t.value)}
-                className={`text-left p-3 rounded-xl border-2 transition-all ${accountType === t.value ? 'border-zred bg-red-500/10' : 'border-zborder hover:border-ztext-light'}`}>
-                <div className="text-xl">{t.emoji}</div>
-                <div className="font-semibold text-ztext text-sm mt-1">{t.label}</div>
-                <div className="text-xs text-ztext-light">{t.desc}</div>
-              </button>
-            ))}
-          </div>
           <div>
             <label className="block text-sm font-medium text-ztext mb-1.5">Email</label>
             <input type="email" className="input-z w-full" placeholder="youremail@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required
@@ -350,7 +277,7 @@ export default function SignupForm() {
           <button onClick={handleSendOtp} disabled={sending || !email.trim()}
             className="button-z button-z-primary w-full h-12 text-sm flex items-center justify-center gap-2"
           >
-            {sending ? <Loader2 size={16} className="animate-spin" /> : accountType === 'delivery' ? <Bike size={16} /> : <Mail size={16} />}
+            {sending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
             {sending ? 'Sending OTP...' : 'Send OTP'}
           </button>
         </div>

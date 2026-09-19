@@ -39,6 +39,9 @@ export interface PublicStoreSettings {
   ownerEmail: string;
   walletEnabled: boolean;
   walletCreditLimit: number;
+  razorpayEnabled: boolean;
+  upiEnabled: boolean;
+  codEnabled: boolean;
   isOpen: boolean;
   bumperOffersEnabled: boolean;
   bumperOffers: BumperOfferItem[];
@@ -64,9 +67,17 @@ export async function getPublicSettings(): Promise<PublicStoreSettings> {
   const deliveryAvailableRaw = await getSetting('delivery_available');
   const deliveryFixedSlotsRaw = await getSetting('delivery_fixed_slots_enabled');
   const deliveryCustomMsgEnabledRaw = await getSetting('delivery_custom_message_enabled');
+  const razorpayEnabledRaw = await getSetting('payment_method_razorpay_enabled');
+  const upiEnabledRaw = await getSetting('payment_method_upi_enabled');
+  const codEnabledRaw = await getSetting('payment_method_cod_enabled');
+  const rzpKey = (await getSetting('razorpay_key_id')) || '';
+  const storeUpi = (await getSetting('store_upi_id')) || '';
 
   return {
-    razorpayKeyId: (await getSetting('razorpay_key_id')) || '',
+    razorpayKeyId: rzpKey,
+    razorpayEnabled: razorpayEnabledRaw !== 'false' && !!rzpKey,
+    upiEnabled: upiEnabledRaw !== 'false' && !!storeUpi,
+    codEnabled: codEnabledRaw !== 'false',
     gpayUpiId: (await getSetting('gpay_upi_id')) || '',
     gpayUpiName: (await getSetting('gpay_upi_name')) || '',
     supportPhone: (await getSetting('store_support_phone')) || '',

@@ -242,54 +242,45 @@ export default function AdminPaymentsPage() {
             />
           </div>
 
-          {/* Payment Method Group Filter Tabs */}
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-1 [scrollbar-width:none]">
-            {[
-              { value: 'all', label: 'All Methods' },
-              { value: 'online', label: 'Online Payment (Razorpay, UPI)' },
-              { value: 'wallet', label: 'Wallet' },
-              { value: 'cod', label: 'COD' },
-            ].map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => { setPaymentMethodGroup(opt.value as typeof paymentMethodGroup); setPage(1); }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
-                  paymentMethodGroup === opt.value
-                    ? 'bg-zred text-white border-zred shadow-sm'
-                    : 'bg-zcard border-zborder text-ztext-muted hover:border-ztext-light hover:text-ztext'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          {/* Filters: Status & Mode dropdowns + Date filter */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 bg-zcard/50 border border-zborder/60 p-2.5 rounded-2xl">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Status dropdown */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-ztext-lighter">Status:</span>
+                <select
+                  value={status}
+                  onChange={(e) => { setStatus(e.target.value); setPage(1); }}
+                  className="bg-zcard border border-zborder rounded-xl px-3 py-1.5 text-xs font-semibold text-ztext focus:outline-none focus:ring-2 focus:ring-zred/20 focus:border-zred cursor-pointer"
+                >
+                  <option value="all">All Status ({total})</option>
+                  <option value="confirmed">Success</option>
+                  <option value="pending">Pending</option>
+                  <option value="refunded">Refunds</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
 
-          {/* Status filter pills */}
-          <div className="flex gap-2 mb-4 overflow-x-auto pb-1 [scrollbar-width:none]">
-            {[
-              { value: 'all', label: `All Status (${total})` },
-              { value: 'confirmed', label: 'Success' },
-              { value: 'pending', label: 'Pending' },
-              { value: 'refunded', label: 'Refunds' },
-              { value: 'failed', label: 'Failed' },
-            ].map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => { setStatus(opt.value); setPage(1); }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border transition-colors ${
-                  status === opt.value
-                    ? 'bg-ztext text-zbg border-ztext'
-                    : 'bg-zcard border-zborder text-ztext-muted hover:border-ztext-light hover:text-ztext'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+              {/* Mode dropdown */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-ztext-lighter">Mode:</span>
+                <select
+                  value={paymentMethodGroup}
+                  onChange={(e) => { setPaymentMethodGroup(e.target.value as typeof paymentMethodGroup); setPage(1); }}
+                  className="bg-zcard border border-zborder rounded-xl px-3 py-1.5 text-xs font-semibold text-ztext focus:outline-none focus:ring-2 focus:ring-zred/20 focus:border-zred cursor-pointer"
+                >
+                  <option value="all">All Methods</option>
+                  <option value="online">Online Payment (Razorpay, UPI)</option>
+                  <option value="wallet">Wallet</option>
+                  <option value="cod">COD</option>
+                </select>
+              </div>
+            </div>
 
-          {/* Date filter */}
-          <div className="mb-4">
-            <DateFilter onChange={(v) => { setDateRange(v); setPage(1); }} />
+            {/* Date filter */}
+            <div className="overflow-x-auto">
+              <DateFilter onChange={(v) => { setDateRange(v); setPage(1); }} />
+            </div>
           </div>
 
           {/* Transaction list */}

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { RefreshCw, Users, ShoppingBag, IndianRupee, TrendingUp, Clock, Store, AlertTriangle, ChevronDown, Receipt } from 'lucide-react';
 import { getAdminDashboard, getAdminOrders } from '@/features/admin/actions';
 import type { DashboardStats, AdminOrder } from '@/features/admin/types';
+import DateFilter, { type DateFilterValue } from '@/components/ui/date-filter';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { createClient } from '@/infrastructure/supabase/client';
@@ -25,15 +26,28 @@ export default function AdminDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [activityOpen, setActivityOpen] = useState(false);
 
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>(() => {
+    const now = new Date();
+    const start = new Date(now);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(now);
+    end.setHours(23, 59, 59, 999);
+    return {
+      fromDate: start.toISOString(),
+      toDate: end.toISOString(),
+    };
+  });
+  const [dateLabel, setDateLabel] = useState<string>('Today');
+
   useEffect(() => {
-    fetchData();
+    fetchData(dateFilter);
     try {
       const supabase = createClient();
       if (supabase) {
         const channel = supabase
           .channel('admin-dashboard-realtime')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
-            fetchData();
+            fetchData(dateFilter);
           })
           .subscribe();
         return () => {
@@ -45,13 +59,20 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
-  async function fetchData() {
+  async function fetchData(filter: DateFilterValue = dateFilter) {
     setLoading(true);
     setError(null);
     try {
       const [statsRes, ordersRes] = await Promise.all([
-        getAdminDashboard(),
-        getAdminOrders({ page: 1, pageSize: 10, sortBy: 'created_at', sortOrder: 'desc' }),
+        getAdminDashboard(filter),
+        getAdminOrders({
+          page: 1,
+          pageSize: 10,
+          sortBy: 'created_at',
+          sortOrder: 'desc',
+          fromDate: filter.fromDate,
+          toDate: filter.toDate,
+        }),
       ]);
       if (statsRes.success && statsRes.data) {
         setStats(statsRes.data);
@@ -66,15 +87,21 @@ export default function AdminDashboardPage() {
     }
   }
 
+  function handleDateChange(val: DateFilterValue, label?: string) {
+    setDateFilter(val);
+    setDateLabel(label || 'Selected period');
+    fetchData(val);
+  }
+
   const fmt = (n: number) => '₹' + Number(n).toLocaleString('en-IN');
 
-  if (loading) return <Skeleton />;
+  if (loading && !stats) return <Skeleton />;
 
   const primaryCards = [
     { label: 'Total Customers', value: stats?.total_students ?? 0, icon: Users, desc: 'Registered customers' },
-    { label: 'Total Orders', value: stats?.total_orders ?? 0, icon: ShoppingBag, desc: 'All time' },
-    { label: 'Total Revenue', value: fmt(stats?.total_revenue ?? 0), icon: IndianRupee, desc: 'All time revenue' },
-    { label: 'Total Expense', value: fmt(stats?.total_expenses ?? 0), icon: Receipt, desc: 'All time expenses' },
+    { label: 'Total Orders', value: stats?.total_orders ?? 0, icon: ShoppingBag, desc: dateLabel },
+    { label: 'Total Revenue', value: fmt(stats?.total_revenue ?? 0), icon: IndianRupee, desc: `${dateLabel} revenue` },
+    { label: 'Total Expense', value: fmt(stats?.total_expenses ?? 0), icon: Receipt, desc: `${dateLabel} expenses` },
   ];
 
   const secondaryCards = [
@@ -94,14 +121,17 @@ export default function AdminDashboardPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold text-ztext">Dashboard</h1>
           <p className="text-sm text-ztext-light mt-0.5">Platform overview at a glance</p>
         </div>
-        <button onClick={fetchData} className="p-2 rounded-xl hover:bg-zgray text-ztext-lighter transition-colors" aria-label="Refresh">
-          <RefreshCw size={18} />
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <DateFilter onChange={handleDateChange} initialPreset="today" />
+          <button onClick={() => fetchData(dateFilter)} className="p-2 rounded-xl hover:bg-zgray text-ztext-lighter transition-colors shrink-0" aria-label="Refresh">
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -110,7 +140,7 @@ export default function AdminDashboardPage() {
             <AlertTriangle size={18} className="shrink-0" />
             <span>{error}</span>
           </div>
-          <button onClick={fetchData} className="px-3 py-1 bg-zred text-white text-xs font-bold rounded-lg hover:bg-red-600 transition-colors shrink-0">
+          <button onClick={() => fetchData(dateFilter)} className="px-3 py-1 bg-zred text-white text-xs font-bold rounded-lg hover:bg-red-600 transition-colors shrink-0">
             Retry
           </button>
         </div>
@@ -120,7 +150,7 @@ export default function AdminDashboardPage() {
         {primaryCards.map((card) => (
           <div key={card.label} className="bg-zcard rounded-xl shadow-z p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-ztext-lighter">{card.desc}</p>
+              <p className="text-xs text-ztext-lighter capitalize">{card.desc}</p>
               <card.icon size={18} className="text-ztext-muted" />
             </div>
             <p className="text-2xl font-bold text-ztext">{card.value}</p>
@@ -151,7 +181,9 @@ export default function AdminDashboardPage() {
 
       <div className="bg-zcard rounded-xl border border-zborder mb-6">
         <div className="flex items-center justify-between px-5 py-4 border-b border-zborder">
-          <h2 className="text-sm font-bold text-ztext">Recent Orders</h2>
+          <h2 className="text-sm font-bold text-ztext">
+            Recent Orders <span className="text-xs font-normal text-ztext-muted">({dateLabel})</span>
+          </h2>
           <Link href="/dashboard/admin/orders" className="text-xs font-medium text-zred hover:underline">View all</Link>
         </div>
         <div className="overflow-x-auto">

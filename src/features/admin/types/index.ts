@@ -247,6 +247,8 @@ export interface AdminFilter {
   paymentMethodGroup?: 'online' | 'wallet' | 'cod' | 'all';
   fromDate?: string;
   toDate?: string;
+  tab?: 'running' | 'history' | 'all';
+  statuses?: string[];
 }
 
 export type EntityType = 'user' | 'student' | 'merchant' | 'restaurant' | 'order' | 'payment' | 'credit_account' | 'credit_transaction' | 'system_setting' | 'audit_log';

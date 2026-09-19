@@ -8,7 +8,7 @@ export interface DateFilterValue {
   toDate?: string;
 }
 
-type Preset = 'all' | 'today' | 'yesterday' | '7d' | 'month' | 'custom';
+export type Preset = 'all' | 'today' | 'yesterday' | '7d' | 'month' | 'custom';
 
 const PRESETS: { value: Exclude<Preset, 'custom'>; label: string }[] = [
   { value: 'all', label: 'All time' },
@@ -38,8 +38,14 @@ function iso(d: Date): string {
  * Date range filter with quick presets (Today / Yesterday / Last 7 days /
  * This month) and a custom From–To range. Emits ISO date bounds via onChange.
  */
-export default function DateFilter({ onChange }: { onChange: (value: DateFilterValue) => void }) {
-  const [preset, setPreset] = useState<Preset>('all');
+export default function DateFilter({
+  onChange,
+  initialPreset = 'all',
+}: {
+  onChange: (value: DateFilterValue, label?: string) => void;
+  initialPreset?: Preset;
+}) {
+  const [preset, setPreset] = useState<Preset>(initialPreset);
   const [fromInput, setFromInput] = useState('');
   const [toInput, setToInput] = useState('');
 
@@ -47,29 +53,32 @@ export default function DateFilter({ onChange }: { onChange: (value: DateFilterV
     if (preset !== 'custom') return;
     const from = fromInput ? iso(new Date(`${fromInput}T00:00:00`)) : undefined;
     const to = toInput ? iso(new Date(`${toInput}T23:59:59.999`)) : undefined;
-    onChange({ fromDate: from, toDate: to });
+    const label = fromInput && toInput ? `${fromInput} to ${toInput}` : fromInput ? `From ${fromInput}` : toInput ? `Until ${toInput}` : 'Custom';
+    onChange({ fromDate: from, toDate: to }, label);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromInput, toInput, preset]);
 
   function applyPreset(p: Exclude<Preset, 'custom'>) {
     setPreset(p);
+    setFromInput('');
+    setToInput('');
     if (p === 'all') {
-      onChange({});
+      onChange({}, 'All time');
       return;
     }
     const now = new Date();
     const from = new Date(now);
     const to = new Date(now);
     if (p === 'today') {
-      onChange({ fromDate: iso(startOfDay(from)), toDate: iso(endOfDay(to)) });
+      onChange({ fromDate: iso(startOfDay(from)), toDate: iso(endOfDay(to)) }, 'Today');
     } else if (p === 'yesterday') {
       from.setDate(from.getDate() - 1);
-      onChange({ fromDate: iso(startOfDay(from)), toDate: iso(endOfDay(from)) });
+      onChange({ fromDate: iso(startOfDay(from)), toDate: iso(endOfDay(from)) }, 'Yesterday');
     } else if (p === '7d') {
       from.setDate(from.getDate() - 6);
-      onChange({ fromDate: iso(startOfDay(from)), toDate: iso(endOfDay(to)) });
+      onChange({ fromDate: iso(startOfDay(from)), toDate: iso(endOfDay(to)) }, 'Last 7 days');
     } else if (p === 'month') {
-      onChange({ fromDate: iso(startOfDay(new Date(now.getFullYear(), now.getMonth(), 1))), toDate: iso(endOfDay(to)) });
+      onChange({ fromDate: iso(startOfDay(new Date(now.getFullYear(), now.getMonth(), 1))), toDate: iso(endOfDay(to)) }, 'This month');
     }
   }
 
@@ -89,7 +98,12 @@ export default function DateFilter({ onChange }: { onChange: (value: DateFilterV
 
       <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
         {PRESETS.map((opt) => (
-          <button key={opt.value} onClick={() => applyPreset(opt.value)} className={pillCls(preset === opt.value)}>
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => applyPreset(opt.value)}
+            className={pillCls(preset === opt.value)}
+          >
             {opt.label}
           </button>
         ))}
