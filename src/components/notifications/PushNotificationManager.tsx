@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { savePushSubscription } from '@/features/notifications/actions/push';
+import { useAuthStore } from '@/features/auth/store';
 
 function urlBase64ToUint8Array(base64String: string): BufferSource {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -15,6 +16,9 @@ function urlBase64ToUint8Array(base64String: string): BufferSource {
 }
 
 export default function PushNotificationManager() {
+  const user = useAuthStore((s) => s.user);
+  const userId = user?.id;
+
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -31,10 +35,20 @@ export default function PushNotificationManager() {
 
         let sub = await reg.pushManager.getSubscription();
         if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-          });
+          try {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            });
+          } catch (subErr) {
+            console.warn('Push subscription retry with fresh key:', subErr);
+            const oldSub = await reg.pushManager.getSubscription();
+            if (oldSub) await oldSub.unsubscribe();
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+            });
+          }
         }
 
         if (sub) {
@@ -57,7 +71,7 @@ export default function PushNotificationManager() {
       }
     }
 
-    // 1. If already granted, sync silently in background
+    // 1. If already granted, sync silently in background (including when userId changes)
     if (Notification.permission === 'granted') {
       subscribeUser();
       return;
@@ -96,7 +110,7 @@ export default function PushNotificationManager() {
         window.removeEventListener('touchstart', handleFirstInteraction);
       };
     }
-  }, []);
+  }, [userId]);
 
   // No custom popup or UI rendered at all — 100% native browser behavior
   return null;

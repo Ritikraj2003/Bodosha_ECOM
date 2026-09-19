@@ -1,7 +1,7 @@
 'use server';
 
 import { getServerSession } from '@/features/auth/actions';
-import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 
 export interface PushSubscriptionKeys {
   p256dh: string;
@@ -15,7 +15,7 @@ export interface PushSubscriptionPayload {
 
 /**
  * Save or update a browser push subscription for the authenticated user.
- * Handled via UPSERT on endpoint so multiple devices are supported without duplicates.
+ * Handled via UPSERT on endpoint in PostgreSQL.
  */
 export async function savePushSubscription(
   subscription: PushSubscriptionPayload,
@@ -23,37 +23,24 @@ export async function savePushSubscription(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { user } = await getServerSession();
-    if (!user) {
-      return { success: false, error: 'Unauthorized: User not signed in' };
-    }
+    const userId = user?.id || null;
 
     if (!subscription?.endpoint || !subscription.keys?.p256dh || !subscription.keys?.auth) {
       return { success: false, error: 'Invalid subscription payload' };
     }
 
-    const supabase = createServiceClient();
-    if (!supabase) {
-      return { success: false, error: 'Database service client unavailable' };
-    }
-
-    const { error } = await supabase
-      .from('user_push_subscriptions')
-      .upsert(
-        {
-          user_id: user.id,
-          endpoint: subscription.endpoint,
-          p256dh: subscription.keys.p256dh,
-          auth: subscription.keys.auth,
-          user_agent: userAgent || null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'endpoint' }
-      );
-
-    if (error) {
-      console.error('savePushSubscription upsert error:', error.message);
-      return { success: false, error: error.message };
-    }
+    await query(
+      `INSERT INTO public.user_push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (endpoint)
+       DO UPDATE SET
+         user_id = COALESCE(EXCLUDED.user_id, public.user_push_subscriptions.user_id),
+         p256dh = EXCLUDED.p256dh,
+         auth = EXCLUDED.auth,
+         user_agent = COALESCE(EXCLUDED.user_agent, public.user_push_subscriptions.user_agent),
+         updated_at = NOW()`,
+      [userId, subscription.endpoint, subscription.keys.p256dh, subscription.keys.auth, userAgent || null]
+    );
 
     return { success: true };
   } catch (err: unknown) {
@@ -76,20 +63,10 @@ export async function removePushSubscription(
       return { success: true };
     }
 
-    const supabase = createServiceClient();
-    if (!supabase) {
-      return { success: false, error: 'Database service client unavailable' };
-    }
-
-    const { error } = await supabase
-      .from('user_push_subscriptions')
-      .delete()
-      .eq('endpoint', endpoint);
-
-    if (error) {
-      console.error('removePushSubscription delete error:', error.message);
-      return { success: false, error: error.message };
-    }
+    await query(
+      `DELETE FROM public.user_push_subscriptions WHERE endpoint = $1`,
+      [endpoint]
+    );
 
     return { success: true };
   } catch (err: unknown) {

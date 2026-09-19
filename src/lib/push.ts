@@ -1,6 +1,5 @@
 import webpush from 'web-push';
-import { createServiceClient } from '@/infrastructure/supabase/service';
-import { getServerSession } from '@/features/auth/actions';
+import { query } from '@/infrastructure/db';
 
 export interface PushPayload {
   title: string;
@@ -15,7 +14,7 @@ export interface PushPayload {
 // Configure VAPID keys once
 const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
-const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:support@dilipda.com';
+const vapidSubject = process.env.VAPID_SUBJECT || 'mailto:ane.services';
 
 let vapidConfigured = false;
 if (vapidPublicKey && vapidPrivateKey) {
@@ -45,22 +44,13 @@ export async function sendPushToUser(
     return { success: false, sentCount: 0, error: 'userId is required' };
   }
 
-  const supabase = createServiceClient();
-  if (!supabase) {
-    return { success: false, sentCount: 0, error: 'Database service client unavailable' };
-  }
-
   try {
     // 1. Fetch all active subscriptions for this specific user
-    const { data: subscriptions, error } = await supabase
-      .from('user_push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .eq('user_id', userId);
-
-    if (error) {
-      console.error(`Error querying push subscriptions for user ${userId}:`, error.message);
-      return { success: false, sentCount: 0, error: error.message };
-    }
+    const res = await query<{ endpoint: string; p256dh: string; auth: string }>(
+      `SELECT endpoint, p256dh, auth FROM public.user_push_subscriptions WHERE user_id = $1`,
+      [userId]
+    );
+    const subscriptions = res.rows;
 
     if (!subscriptions || subscriptions.length === 0) {
       // User has not subscribed on any device yet
@@ -82,7 +72,7 @@ export async function sendPushToUser(
 
     // 2. Dispatch to each registered device
     await Promise.all(
-      subscriptions.map(async (sub: any) => {
+      subscriptions.map(async (sub) => {
         try {
           const pushSubscription = {
             endpoint: sub.endpoint,
@@ -108,10 +98,10 @@ export async function sendPushToUser(
 
     // 3. Clean up dead/expired endpoints automatically
     if (expiredEndpoints.length > 0) {
-      await supabase
-        .from('user_push_subscriptions')
-        .delete()
-        .in('endpoint', expiredEndpoints);
+      await query(
+        `DELETE FROM public.user_push_subscriptions WHERE endpoint = ANY($1::text[])`,
+        [expiredEndpoints]
+      );
     }
 
     return { success: true, sentCount };
@@ -219,11 +209,6 @@ export async function sendPushToAdmins(
     return { success: false, sentCount: 0, error: 'Web Push not configured' };
   }
 
-  const supabase = createServiceClient();
-  if (!supabase) {
-    return { success: false, sentCount: 0, error: 'Database service client unavailable' };
-  }
-
   try {
     // 1. Fetch all admin/owner user IDs
     const { getAdminEmails, getOwnerEmail } = await import('@/lib/settings');
@@ -232,38 +217,26 @@ export async function sendPushToAdmins(
     const allEmails = [...adminEmails];
     if (ownerEmail) allEmails.push(ownerEmail.toLowerCase());
 
-    const { data: roleProfiles } = await supabase
-      .from('profiles')
-      .select('id, email, role')
-      .or('role.in.(admin,super_admin,owner)');
+    const adminUsersRes = await query<{ id: string }>(
+      `SELECT id FROM public.profiles 
+       WHERE role IN ('admin', 'super_admin', 'owner')
+          OR LOWER(email) = ANY($1::text[])`,
+      [allEmails.length > 0 ? allEmails : ['__none__']]
+    );
 
-    let emailProfiles: Array<{ id: string }> = [];
-    if (allEmails.length > 0) {
-      const { data: matched } = await supabase
-        .from('profiles')
-        .select('id')
-        .in('email', allEmails);
-      if (matched) emailProfiles = matched;
-    }
+    const adminUserIds = adminUsersRes.rows.map((r) => r.id);
 
-    const adminUserIds = new Set<string>();
-    (roleProfiles || []).forEach((p: any) => adminUserIds.add(p.id));
-    (emailProfiles || []).forEach((p: any) => adminUserIds.add(p.id));
-
-    if (adminUserIds.size === 0) {
+    if (adminUserIds.length === 0) {
       return { success: true, sentCount: 0 };
     }
 
     // 2. Fetch all active subscriptions belonging to these admins
-    const { data: subscriptions, error } = await supabase
-      .from('user_push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .in('user_id', Array.from(adminUserIds));
+    const subsRes = await query<{ endpoint: string; p256dh: string; auth: string }>(
+      `SELECT endpoint, p256dh, auth FROM public.user_push_subscriptions WHERE user_id = ANY($1::uuid[])`,
+      [adminUserIds]
+    );
 
-    if (error) {
-      console.error('Error fetching admin push subscriptions:', error.message);
-      return { success: false, sentCount: 0, error: error.message };
-    }
+    const subscriptions = subsRes.rows;
 
     if (!subscriptions || subscriptions.length === 0) {
       return { success: true, sentCount: 0 };
@@ -284,7 +257,7 @@ export async function sendPushToAdmins(
 
     // 3. Dispatch to all admin devices simultaneously
     await Promise.all(
-      subscriptions.map(async (sub: any) => {
+      subscriptions.map(async (sub) => {
         try {
           const pushSubscription = {
             endpoint: sub.endpoint,
@@ -308,10 +281,10 @@ export async function sendPushToAdmins(
 
     // 4. Auto-clean expired endpoints
     if (expiredEndpoints.length > 0) {
-      await supabase
-        .from('user_push_subscriptions')
-        .delete()
-        .in('endpoint', expiredEndpoints);
+      await query(
+        `DELETE FROM public.user_push_subscriptions WHERE endpoint = ANY($1::text[])`,
+        [expiredEndpoints]
+      );
     }
 
     return { success: true, sentCount };
@@ -337,56 +310,31 @@ export async function sendPushToDeliveryPartners(
     return { success: false, sentCount: 0, error: 'Web Push not configured' };
   }
 
-  const supabase = createServiceClient();
-  if (!supabase) {
-    return { success: false, sentCount: 0, error: 'Database service client unavailable' };
-  }
-
   try {
     // 1. Fetch all delivery partner user IDs
     const { getDeliveryEmails } = await import('@/lib/settings');
     const deliveryEmails = await getDeliveryEmails();
 
-    // From profiles table where role = 'delivery'
-    const { data: roleProfiles } = await supabase
-      .from('profiles')
-      .select('id, email, role')
-      .eq('role', 'delivery');
+    const deliveryUsersRes = await query<{ id: string }>(
+      `SELECT id FROM public.profiles WHERE role = 'delivery' OR LOWER(email) = ANY($1::text[])
+       UNION
+       SELECT user_id AS id FROM public.delivery_partners WHERE user_id IS NOT NULL`,
+      [deliveryEmails.length > 0 ? deliveryEmails : ['__none__']]
+    );
 
-    // From delivery_partners table
-    const { data: partnerRows } = await supabase
-      .from('delivery_partners')
-      .select('id');
+    const deliveryUserIds = deliveryUsersRes.rows.map((r) => r.id).filter(Boolean);
 
-    // From configured delivery emails
-    let emailProfiles: Array<{ id: string }> = [];
-    if (deliveryEmails.length > 0) {
-      const { data: matched } = await supabase
-        .from('profiles')
-        .select('id')
-        .in('email', deliveryEmails);
-      if (matched) emailProfiles = matched;
-    }
-
-    const deliveryUserIds = new Set<string>();
-    (roleProfiles || []).forEach((p: any) => deliveryUserIds.add(p.id));
-    (partnerRows || []).forEach((p: any) => deliveryUserIds.add(p.id));
-    (emailProfiles || []).forEach((p: any) => deliveryUserIds.add(p.id));
-
-    if (deliveryUserIds.size === 0) {
+    if (deliveryUserIds.length === 0) {
       return { success: true, sentCount: 0 };
     }
 
     // 2. Fetch all active subscriptions belonging to delivery partners
-    const { data: subscriptions, error } = await supabase
-      .from('user_push_subscriptions')
-      .select('endpoint, p256dh, auth')
-      .in('user_id', Array.from(deliveryUserIds));
+    const subsRes = await query<{ endpoint: string; p256dh: string; auth: string }>(
+      `SELECT endpoint, p256dh, auth FROM public.user_push_subscriptions WHERE user_id = ANY($1::uuid[])`,
+      [deliveryUserIds]
+    );
 
-    if (error) {
-      console.error('Error fetching delivery push subscriptions:', error.message);
-      return { success: false, sentCount: 0, error: error.message };
-    }
+    const subscriptions = subsRes.rows;
 
     if (!subscriptions || subscriptions.length === 0) {
       return { success: true, sentCount: 0 };
@@ -407,7 +355,7 @@ export async function sendPushToDeliveryPartners(
 
     // 3. Dispatch to all delivery partner devices
     await Promise.all(
-      subscriptions.map(async (sub: any) => {
+      subscriptions.map(async (sub) => {
         try {
           const pushSubscription = {
             endpoint: sub.endpoint,
@@ -431,10 +379,10 @@ export async function sendPushToDeliveryPartners(
 
     // 4. Auto-clean expired endpoints
     if (expiredEndpoints.length > 0) {
-      await supabase
-        .from('user_push_subscriptions')
-        .delete()
-        .in('endpoint', expiredEndpoints);
+      await query(
+        `DELETE FROM public.user_push_subscriptions WHERE endpoint = ANY($1::text[])`,
+        [expiredEndpoints]
+      );
     }
 
     return { success: true, sentCount };
