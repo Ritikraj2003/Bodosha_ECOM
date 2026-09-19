@@ -222,7 +222,7 @@ export class AdminRepository {
   async getUsers(filter: AdminFilter = {}): Promise<PaginatedResponse<AdminUser>> {
     const { search, status, role, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc' } = filter;
     
-    const whereClauses: string[] = ['deleted_at IS NULL'];
+    const whereClauses: string[] = ['deleted_at IS NULL AND COALESCE(is_deleted, false) = false'];
     const params: any[] = [];
     let paramIdx = 1;
 
@@ -230,6 +230,8 @@ export class AdminRepository {
       whereClauses.push(`is_active = true`);
     } else if (status === 'suspended') {
       whereClauses.push(`is_active = false`);
+    } else if (status === 'deleted') {
+      whereClauses[0] = '(is_deleted = true OR deleted_at IS NOT NULL)';
     }
 
     if (role && role !== 'all') {
@@ -257,7 +259,7 @@ export class AdminRepository {
     const offset = (page - 1) * pageSize;
     const dataParams = [...params, pageSize, offset];
     const dataRes = await query(`
-      SELECT id, email, full_name, phone, role, is_active, created_at
+      SELECT id, email, full_name, phone, role, is_active, is_deleted, deleted_at, created_at
       FROM public.users
       ${whereStr}
       ORDER BY ${safeSort} ${safeOrder}

@@ -51,7 +51,7 @@ export async function loginWithCredentials(
         id, email, full_name, phone, avatar_url, role, is_active,
         (password_hash IS NOT NULL AND password_hash = crypt($2, password_hash)) AS password_match
       FROM public.users
-      WHERE LOWER(email) = LOWER($1)
+      WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false
       LIMIT 1;
       `,
       [email, password]

@@ -5,6 +5,8 @@ export interface AdminUser {
   phone: string | null;
   role: string;
   is_active: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string | null;
   created_at: string;
 }
 

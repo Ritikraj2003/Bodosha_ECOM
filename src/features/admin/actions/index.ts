@@ -812,19 +812,83 @@ export async function getAdminUsers(filter: AdminFilter = {}) {
   }
 }
 
-export async function deleteUser(userId: string) {
+export async function deleteUser(userId: string, softDelete: boolean = false) {
   try {
     await authorizeAdmin();
 
+    if (softDelete) {
+      await query(
+        `UPDATE public.users 
+         SET is_deleted = true, isdeleted = true, deleted_at = NOW(), is_active = false, updated_at = NOW() 
+         WHERE id = $1`,
+        [userId]
+      );
+      await query(
+        `UPDATE public.profiles 
+         SET is_deleted = true, isdeleted = true, deleted_at = NOW(), is_active = false, updated_at = NOW() 
+         WHERE id = $1`,
+        [userId]
+      );
+      return { success: true, mode: 'soft' };
+    }
+
+    // Hard delete: Clean up relations and cascade-remove records
+    // 1. Unlink references in orders & restaurants
     await query('UPDATE public.orders SET user_id = null WHERE user_id = $1', [userId]);
     await query('UPDATE public.orders SET delivery_partner_id = null WHERE delivery_partner_id = $1', [userId]);
-    await query('UPDATE public.payments SET user_id = null WHERE user_id = $1', [userId]);
     await query('UPDATE public.restaurants SET owner_id = null WHERE owner_id = $1', [userId]);
+
+    // 2. Set null on audit & system logs
     await query('UPDATE public.audit_logs SET user_id = null WHERE user_id = $1', [userId]);
-    await query('UPDATE public.restaurant_settings SET created_by = null WHERE created_by = $1', [userId]);
+    await query('UPDATE public.activity_logs SET user_id = null WHERE user_id = $1', [userId]);
+    await query('UPDATE public.credit_audit_logs SET actor_id = null WHERE actor_id = $1', [userId]);
+    await query('UPDATE public.system_settings SET updated_by = null WHERE updated_by = $1', [userId]);
+    await query('UPDATE public.inventory_logs SET created_by = null WHERE created_by = $1', [userId]);
+    await query('UPDATE public.reports SET created_by = null WHERE created_by = $1', [userId]);
+    await query('UPDATE public.wallet_transactions SET created_by = null WHERE created_by = $1', [userId]);
+
+    // 3. Clean up dependent records
+    await query('DELETE FROM public.user_roles WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.addresses WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.favorites WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.notifications WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.user_push_subscriptions WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.cit_otp_requests WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.delivery_assignments WHERE delivery_partner_id = $1', [userId]);
+    await query('DELETE FROM public.delivery_partners WHERE id = $1', [userId]);
+    await query('DELETE FROM public.reviews WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.ratings WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.wallet_transactions WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.wallets WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.credit_accounts WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.expense_transactions WHERE user_id = $1', [userId]);
+    await query('DELETE FROM public.expense_settings WHERE user_id = $1', [userId]);
+
+    // 4. Finally remove user and profile
     await query('DELETE FROM public.profiles WHERE id = $1', [userId]);
     await query('DELETE FROM public.users WHERE id = $1', [userId]);
 
+    return { success: true, mode: 'hard' };
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function restoreUser(userId: string) {
+  try {
+    await authorizeAdmin();
+    await query(
+      `UPDATE public.users 
+       SET is_deleted = false, isdeleted = false, deleted_at = null, is_active = true, updated_at = NOW() 
+       WHERE id = $1`,
+      [userId]
+    );
+    await query(
+      `UPDATE public.profiles 
+       SET is_deleted = false, isdeleted = false, deleted_at = null, is_active = true, updated_at = NOW() 
+       WHERE id = $1`,
+      [userId]
+    );
     return { success: true };
   } catch (e) {
     return { success: false, error: (e as Error).message };

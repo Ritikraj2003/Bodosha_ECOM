@@ -8,11 +8,24 @@ import ForgotPasswordForm from './ForgotPasswordForm';
 import type { Role } from '../types';
 
 export default function LoginForm() {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('email') || '';
+    }
+    return '';
+  });
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [registeredNotice, setRegisteredNotice] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return new URLSearchParams(window.location.search).get('registered') === 'true'
+        ? 'Account created successfully! Please sign in.'
+        : '';
+    }
+    return '';
+  });
   const next = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -81,6 +94,13 @@ export default function LoginForm() {
           <>
             <h1 className="text-2xl font-bold text-ztext mb-1">Welcome back</h1>
             <p className="text-ztext-light text-sm mb-6">Sign in to your Bodosa account</p>
+
+            {registeredNotice && (
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-medium mb-4 flex items-center gap-2">
+                <span className="font-bold">✓</span>
+                <span>{registeredNotice}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>

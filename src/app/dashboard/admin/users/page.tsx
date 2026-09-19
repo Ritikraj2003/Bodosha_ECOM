@@ -7,6 +7,9 @@ import {
   Trash2,
   Shield,
   ShieldOff,
+  ShieldAlert,
+  RotateCcw,
+  AlertTriangle,
   UserPlus,
   KeyRound,
   X,
@@ -22,11 +25,10 @@ import {
   SearchInput,
   StatusFilter,
   PageHeader,
-  ConfirmDialog,
   ToastContainer,
   useToast,
 } from '@/components/ui/data-table';
-import { getAdminUsers, deleteUser } from '@/features/admin/actions';
+import { getAdminUsers, deleteUser, restoreUser } from '@/features/admin/actions';
 import {
   assignUserRole,
   createAdminUser,
@@ -38,21 +40,11 @@ import type { AdminUser } from '@/features/admin/types';
 import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 import { useAuthStore } from '@/features/auth/store';
 
-const roleOptions = [
-  { label: 'All roles', value: 'all' },
-  { label: 'Staff / Employee', value: 'staff' },
-  { label: 'Manager', value: 'manager' },
-  { label: 'Admin', value: 'admin' },
-  { label: 'Super Admin', value: 'super_admin' },
-  { label: 'Delivery', value: 'delivery' },
-  { label: 'Merchant', value: 'merchant' },
-  { label: 'Student', value: 'student' },
-];
-
 const statusOptions = [
   { label: 'All status', value: 'all' },
   { label: 'Active', value: 'active' },
   { label: 'Suspended', value: 'suspended' },
+  { label: 'Soft Deleted', value: 'deleted' },
 ];
 
 const roleBadge: Record<string, string> = {
@@ -77,7 +69,9 @@ export default function AdminUsersPage() {
   const [status, setStatus] = useState('all');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [confirmAction, setConfirmAction] = useState<{ type: string; id?: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState<string | null>(null);
   const { toasts, addToast, removeToast } = useToast();
 
   const currentUser = useAuthStore((s) => s.user);
@@ -89,8 +83,16 @@ export default function AdminUsersPage() {
   const canDeleteEmployee = hasPermission(userPermissions, [PERMISSION_CODES.USER_EMP_DEL, 'USERS_MANAGE', 'users.manage'], userRole);
   const canManageUsers = canAddEmployee || canEditEmployee || canDeleteEmployee;
 
-  // Roles cache for modals
+  // Roles cache for modals and filters (loaded from public.roles)
   const [availableRoles, setAvailableRoles] = useState<RoleWithPermissions[]>([]);
+
+  const roleOptions = [
+    { label: 'All roles', value: 'all' },
+    ...availableRoles.map((r) => ({
+      label: r.name || r.slug,
+      value: r.slug,
+    })),
+  ];
 
   // Create user modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -115,6 +117,10 @@ export default function AdminUsersPage() {
     getRolesWithPermissions().then((res) => {
       if (res.success && res.data) {
         setAvailableRoles(res.data);
+        if (res.data.length > 0) {
+          const defaultRole = res.data.find((r) => r.slug === 'staff')?.slug || res.data[0].slug;
+          setCreateRole((prev) => (res.data!.some((r) => r.slug === prev) ? prev : defaultRole));
+        }
       }
     });
   }, []);
@@ -147,13 +153,33 @@ export default function AdminUsersPage() {
     return () => clearTimeout(timer);
   }, [search, role, status, sortBy, sortOrder, page, fetchUsers]);
 
-  const handleDelete = async (id: string) => {
-    const res = await deleteUser(id);
+  const handleDelete = async (id: string, softDelete: boolean) => {
+    setDeleteLoading(true);
+    const res = await deleteUser(id, softDelete);
+    setDeleteLoading(false);
     if (res.success) {
-      addToast('User deleted permanently', 'success');
+      addToast(
+        softDelete
+          ? 'User soft-deleted successfully (is_deleted set to true)'
+          : 'User permanently deleted from database',
+        'success'
+      );
+      setDeleteTarget(null);
       fetchUsers();
     } else {
       addToast(res.error ?? 'Failed to delete user', 'error');
+    }
+  };
+
+  const handleRestore = async (id: string) => {
+    setRestoreLoading(id);
+    const res = await restoreUser(id);
+    setRestoreLoading(null);
+    if (res.success) {
+      addToast('User restored successfully', 'success');
+      fetchUsers();
+    } else {
+      addToast(res.error ?? 'Failed to restore user', 'error');
     }
   };
 
@@ -270,37 +296,42 @@ export default function AdminUsersPage() {
             roleBadge[u.role] ?? 'text-ztext border-zborder'
           }`}
         >
-          <option value="staff">Staff / Employee</option>
-          <option value="manager">Manager</option>
-          <option value="delivery">Delivery</option>
-          <option value="merchant">Merchant</option>
-          <option value="admin">Admin</option>
-          <option value="super_admin">Super Admin</option>
-          <option value="owner">Store Owner</option>
-          <option value="student">Student</option>
-          {availableRoles
-            .filter((r) => !['staff', 'manager', 'delivery', 'merchant', 'admin', 'super_admin', 'owner', 'student'].includes(r.slug))
-            .map((r) => (
-              <option key={r.id} value={r.slug}>
-                {r.name}
-              </option>
-            ))}
+          {availableRoles.map((r) => (
+            <option key={r.id} value={r.slug}>
+              {r.name || r.slug}
+            </option>
+          ))}
+          {u.role && !availableRoles.some((r) => r.slug === u.role) && (
+            <option value={u.role}>
+              {u.role}
+            </option>
+          )}
         </select>
       ),
     },
     {
       key: 'status',
       header: 'Status',
-      render: (u: AdminUser) => (
-        <span
-          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-            u.is_active ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
-          }`}
-        >
-          {u.is_active ? <Shield size={12} /> : <ShieldOff size={12} />}
-          {u.is_active ? 'Active' : 'Suspended'}
-        </span>
-      ),
+      render: (u: AdminUser) => {
+        if (u.is_deleted) {
+          return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              <AlertTriangle size={12} />
+              Soft Deleted
+            </span>
+          );
+        }
+        return (
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+              u.is_active ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'
+            }`}
+          >
+            {u.is_active ? <Shield size={12} /> : <ShieldOff size={12} />}
+            {u.is_active ? 'Active' : 'Suspended'}
+          </span>
+        );
+      },
     },
     {
       key: 'created',
@@ -318,7 +349,7 @@ export default function AdminUsersPage() {
       header: 'Actions',
       render: (u: AdminUser) => (
         <div className="flex items-center gap-1">
-          {canEditEmployee && (
+          {canEditEmployee && !u.is_deleted && (
             <button
               onClick={() => openInspectModal(u)}
               className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-500/10 transition-colors"
@@ -327,11 +358,25 @@ export default function AdminUsersPage() {
               <KeyRound size={16} />
             </button>
           )}
+          {u.is_deleted && canEditEmployee && (
+            <button
+              onClick={() => handleRestore(u.id)}
+              disabled={restoreLoading === u.id}
+              className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-500/10 transition-colors disabled:opacity-50"
+              title="Restore user"
+            >
+              {restoreLoading === u.id ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <RotateCcw size={16} />
+              )}
+            </button>
+          )}
           {canDeleteEmployee && (
             <button
-              onClick={() => setConfirmAction({ type: 'delete', id: u.id })}
+              onClick={() => setDeleteTarget(u)}
               className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
-              title="Delete user"
+              title={u.is_deleted ? 'Delete permanently' : 'Delete user (Soft / Hard)'}
             >
               <Trash2 size={16} />
             </button>
@@ -521,19 +566,11 @@ export default function AdminUsersPage() {
                   onChange={(e) => setCreateRole(e.target.value)}
                   className="input-z w-full font-medium"
                 >
-                  <option value="staff">Store Staff / Employee (Kitchen, Orders, Products)</option>
-                  <option value="manager">Store Manager (Orders, Expenses, Inventory, Users)</option>
-                  <option value="delivery">Delivery Partner (Fulfill & deliver orders)</option>
-                  <option value="admin">Store Administrator (Full store admin)</option>
-                  <option value="merchant">Merchant / Partner Restaurant</option>
-                  <option value="student">Student / Customer</option>
-                  {availableRoles
-                    .filter((r) => !['staff', 'manager', 'delivery', 'merchant', 'admin', 'super_admin', 'owner', 'student'].includes(r.slug))
-                    .map((r) => (
-                      <option key={r.id} value={r.slug}>
-                        {r.name}
-                      </option>
-                    ))}
+                  {availableRoles.map((r) => (
+                    <option key={r.id} value={r.slug}>
+                      {r.name || r.slug}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -626,21 +663,16 @@ export default function AdminUsersPage() {
                     onChange={(e) => setInspectRole(e.target.value)}
                     className="input-z flex-1 font-medium text-xs"
                   >
-                    <option value="staff">Staff / Employee</option>
-                    <option value="manager">Manager</option>
-                    <option value="delivery">Delivery Partner</option>
-                    <option value="merchant">Merchant</option>
-                    <option value="admin">Admin</option>
-                    <option value="super_admin">Super Admin</option>
-                    <option value="owner">Store Owner</option>
-                    <option value="student">Student</option>
-                    {availableRoles
-                      .filter((r) => !['staff', 'manager', 'delivery', 'merchant', 'admin', 'super_admin', 'owner', 'student'].includes(r.slug))
-                      .map((r) => (
-                        <option key={r.id} value={r.slug}>
-                          {r.name}
-                        </option>
-                      ))}
+                    {availableRoles.map((r) => (
+                      <option key={r.id} value={r.slug}>
+                        {r.name || r.slug}
+                      </option>
+                    ))}
+                    {inspectRole && !availableRoles.some((r) => r.slug === inspectRole) && (
+                      <option value={inspectRole}>
+                        {inspectRole}
+                      </option>
+                    )}
                   </select>
                   <button
                     onClick={handleInspectRoleSave}
@@ -701,17 +733,93 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      <ConfirmDialog
-        open={!!confirmAction}
-        onClose={() => setConfirmAction(null)}
-        onConfirm={() => {
-          if (!confirmAction) return;
-          if (confirmAction.type === 'delete' && confirmAction.id) handleDelete(confirmAction.id);
-        }}
-        title="Delete user"
-        message="This will permanently delete the user account, profile, and all associated data. This action cannot be undone."
-        confirmLabel="Delete permanently"
-      />
+      {/* DELETE MODAL: SOFT DELETE VS HARD DELETE */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-zcard border border-zborder rounded-2xl max-w-md w-full p-6 shadow-z-modal animate-scale-up">
+            <div className="flex items-center justify-between pb-3.5 border-b border-zborder mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500">
+                  <Trash2 size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ztext">Delete User</h3>
+                  <p className="text-xs text-ztext-light font-medium truncate max-w-[240px]">
+                    {deleteTarget.full_name} ({deleteTarget.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zsurface transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p className="text-xs text-ztext-light mb-4 leading-relaxed">
+              Choose how you would like to delete this user account. You can choose a safe <strong>Soft Delete</strong> or perform a permanent <strong>Hard Delete</strong> from the database.
+            </p>
+
+            <div className="space-y-3 mb-6">
+              {/* Soft Delete Option Card */}
+              <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-500 flex items-center gap-1.5">
+                    <ShieldAlert size={14} /> Soft Delete (Recommended)
+                  </span>
+                </div>
+                <p className="text-[11px] text-ztext-light leading-relaxed">
+                  Sets <code className="text-[10px] bg-zsurface px-1 py-0.5 rounded border border-zborder">is_deleted = true</code> and deactivates the user. Account cannot log in, but historical orders, payments and reports are safely preserved.
+                </p>
+              </div>
+
+              {/* Hard Delete Option Card */}
+              <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/5 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-red-500 flex items-center gap-1.5">
+                    <Trash2 size={14} /> Hard Delete (Permanent)
+                  </span>
+                </div>
+                <p className="text-[11px] text-ztext-light leading-relaxed">
+                  Permanently deletes the user record and profile from the database. <strong>This action cannot be undone.</strong>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zborder">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="button-z button-z-secondary text-xs px-3.5 h-9"
+                disabled={deleteLoading}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDelete(deleteTarget.id, true)}
+                className="px-3.5 h-9 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? <Loader2 size={13} className="animate-spin" /> : <ShieldAlert size={13} />}
+                Soft Delete
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDelete(deleteTarget.id, false)}
+                className="px-3.5 h-9 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                disabled={deleteLoading}
+              >
+                {deleteLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ToastContainer toasts={toasts} removeToast={removeToast} />
     </div>

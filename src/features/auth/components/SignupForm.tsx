@@ -126,11 +126,6 @@ export default function SignupForm() {
       await confirmSignupEmail(created.id).catch(() => null);
     }
 
-    // Establish an active session immediately so the user isn't forced to
-    // sign in again. Email ownership was already proven by the OTP step.
-    const { user: activeUser } = await authService.signIn(email, password);
-    if (!activeUser) { setError('Account created. Please sign in.'); return; }
-
     try {
       const supabase = (await import('@/infrastructure/supabase/service')).createServiceClient();
       if (supabase) {
@@ -139,15 +134,18 @@ export default function SignupForm() {
         };
         if (isCitEmail) {
           profileUpdates.is_cit_student = true;
-          profileUpdates.student_email = email.toLowerCase();
+          profileUpdates.student_email = email.toLowerCase().trim();
           profileUpdates.student_verified_at = new Date().toISOString();
         }
-        await supabase.from('profiles').update(profileUpdates).eq('id', activeUser.id);
+        await supabase.from('profiles').update(profileUpdates).eq('id', created.id);
       }
     } catch {}
 
-    useAuthStore.getState().setUser(activeUser);
-    window.location.href = '/';
+    // Account created successfully - redirect to login page
+    showToast('Account created successfully! Please sign in.');
+    const next = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('next') : null;
+    const loginUrl = `/auth/login?registered=true&email=${encodeURIComponent(email.toLowerCase().trim())}${next ? `&next=${encodeURIComponent(next)}` : ''}`;
+    window.location.href = loginUrl;
   }
 
   if (step === 'account') {

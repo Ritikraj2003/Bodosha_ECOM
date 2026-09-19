@@ -33,7 +33,9 @@ create table if not exists public.users (
   student_verified_at  timestamptz,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now(),
-  deleted_at           timestamptz
+  deleted_at           timestamptz,
+  is_deleted           boolean not null default false,
+  isdeleted            boolean not null default false
 );
 
 create index if not exists idx_users_email on public.users(email);
@@ -424,7 +426,7 @@ create table if not exists public.wallets (
   id                    uuid primary key default gen_random_uuid(),
   restaurant_id         uuid references public.restaurants(id) on delete set null,
   user_id               uuid not null references public.users(id) on delete cascade unique,
-  balance               numeric(12,2) not null default 0.00 check (balance >= 0),
+  balance               numeric(12,2) not null default 0.00,
   total_credit          numeric(12,2) not null default 0.00,
   total_debit           numeric(12,2) not null default 0.00,
   credit_limit          numeric(12,2) not null default 0.00 check (credit_limit >= 0),
