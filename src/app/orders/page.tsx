@@ -68,7 +68,7 @@ function OrderCard({ order, index, onCancel, cancellationWindowMs }: { order: Or
   const [cancelReason, setCancelReason] = useState('');
   const remaining = useCountdown(order.created_at, cancellationWindowMs);
   const timeCanCancel = canCancelByTime(order.created_at, cancellationWindowMs);
-  const canCancel = timeCanCancel && (order.status === 'pending' || order.status === 'accepted');
+  const canCancel = timeCanCancel && (order.status === 'pending' || order.status === 'accepted' || order.status === 'placed');
   const items = order.order_items ?? [];
   const first = items[0];
   const firstImg = foodImageFor(first?.product_name);
@@ -171,7 +171,7 @@ function OrderCard({ order, index, onCancel, cancellationWindowMs }: { order: Or
           </div>
         )}
 
-        {(order.status === 'pending' || order.status === 'accepted') && (
+        {(order.status === 'pending' || order.status === 'accepted' || order.status === 'placed') && (
           <p className="text-[10px] text-ztext-lighter flex items-center gap-1 mt-2">
             <Clock size={9} />
             {timeCanCancel

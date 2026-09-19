@@ -3,12 +3,30 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { PackageSearch, Bike, MapPin, Loader2, Phone, CheckCircle2, Clock, KeyRound, Search, BadgeCheck } from 'lucide-react';
+import {
+  PackageSearch,
+  Bike,
+  MapPin,
+  Loader2,
+  Phone,
+  CheckCircle2,
+  Clock,
+  KeyRound,
+  Search,
+  BadgeCheck,
+  Timer,
+  AlertTriangle,
+  X,
+  Wallet,
+  CreditCard,
+  ShieldCheck,
+} from 'lucide-react';
 import HamsterLoader from '@/components/ui/HamsterLoader';
-import { getOrderTrackingByCode } from '@/features/orders/actions/customer';
+import { getOrderTrackingByCode, cancelUserOrder } from '@/features/orders/actions/customer';
 import type { Order, OrderItem } from '@/features/orders/types';
 import { orderTypeLabel } from '@/features/orders/types';
 import { usePolling } from '@/hooks/usePolling';
+import { usePublicSettings } from '@/hooks/usePublicSettings';
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -52,6 +70,19 @@ function TrackContent() {
   const [showOtp, setShowOtp] = useState(false);
   const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
 
+  // Cancellation & Timer states
+  const publicSettings = usePublicSettings();
+  const cancellationWindowMinutes = publicSettings.cancellationWindowMinutes || 2;
+  const cancellationWindowMs = cancellationWindowMinutes * 60_000;
+
+  const [remainingMs, setRemainingMs] = useState<number>(0);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [refundChoice, setRefundChoice] = useState<'wallet' | 'original'>('wallet');
+  const [cancelSuccessMsg, setCancelSuccessMsg] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
   const lookup = useCallback(async (silent = false) => {
     if (!code) return;
     if (!silent) { setLoading(true); setError(''); }
@@ -81,6 +112,70 @@ function TrackContent() {
     return () => clearInterval(id);
   }, [data?.assignment?.otpExpiresAt]);
 
+  useEffect(() => {
+    const orderStatus = data?.order?.status;
+    if (!data?.order?.created_at || orderStatus === 'cancelled' || orderStatus === 'declined') {
+      setRemainingMs(0);
+      return;
+    }
+
+    const elapsed = Date.now() - new Date(data.order.created_at).getTime();
+    const initialRemaining = Math.max(0, cancellationWindowMs - elapsed);
+    setRemainingMs(initialRemaining);
+
+    if (initialRemaining <= 0) return;
+
+    const interval = setInterval(() => {
+      setRemainingMs((prev) => {
+        if (prev <= 1000) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1000;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [data?.order?.created_at, data?.order?.status, cancellationWindowMs]);
+
+  const handleConfirmCancel = async () => {
+    if (!data?.order || cancelling) return;
+    setCancelling(true);
+    setCancelError(null);
+
+    const res = await cancelUserOrder(data.order.id, cancelReason, refundChoice);
+    setCancelling(false);
+
+    if (res.success) {
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              order: {
+                ...prev.order,
+                status: 'cancelled',
+                cancellation_reason: cancelReason || 'Cancelled by customer',
+              },
+            }
+          : null
+      );
+      setShowCancelModal(false);
+      setRemainingMs(0);
+
+      let msg = 'Your order has been cancelled.';
+      if (res.refunded) {
+        if (res.refundTarget === 'wallet') {
+          msg = `Your order has been cancelled and ₹${data.order.total} has been instantly refunded to your Bodosa Wallet!`;
+        } else {
+          msg = `Your order has been cancelled and a refund of ₹${data.order.total} has been initiated back to your original payment source.`;
+        }
+      }
+      setCancelSuccessMsg(msg);
+    } else {
+      setCancelError(res.error || 'Failed to cancel order. Please try again.');
+    }
+  };
+
   async function handleTrack() {
     const trimmed = input.trim().toUpperCase();
     if (!trimmed) return;
@@ -98,6 +193,21 @@ function TrackContent() {
   const isCancelled = rawStatus === 'cancelled' || rawStatus === 'declined';
   const isDelivered = rawStatus === 'delivered' || rawStatus === 'completed';
   const address = data?.order?.delivery_address as Record<string, string> | null;
+
+  const isCancellable =
+    !isCancelled &&
+    data?.order &&
+    (data.order.status === 'pending' || data.order.status === 'accepted' || data.order.status === 'placed') &&
+    remainingMs > 0;
+
+  const mins = Math.floor(remainingMs / 60000);
+  const secs = Math.floor((remainingMs % 60000) / 1000);
+  const formattedCountdown = `${mins}:${secs.toString().padStart(2, '0')}`;
+  const progressPercent = Math.min(100, Math.max(0, (remainingMs / cancellationWindowMs) * 100));
+
+  const isOnlinePayment = data?.order?.payment_method === 'razorpay' || data?.order?.payment_method === 'upi';
+  const isWalletPayment = data?.order?.payment_method === 'wallet';
+  const isCod = data?.order?.payment_method === 'cod';
 
   return (
     <div className="page-pad">
@@ -153,6 +263,57 @@ function TrackContent() {
                 <p className="text-xs text-ztext-muted mt-1 font-medium">{orderTypeLabel(data.order.order_type)} • {data.order.payment_method?.toUpperCase()}</p>
               )}
             </div>
+
+            {/* Cancel Success Message */}
+            {cancelSuccessMsg && (
+              <div className="mt-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-left text-xs space-y-1 animate-fade-in">
+                <p className="font-bold text-amber-500 flex items-center gap-1.5 text-sm">
+                  <CheckCircle2 size={16} /> Order Cancelled Successfully
+                </p>
+                <p className="text-ztext leading-relaxed font-medium">{cancelSuccessMsg}</p>
+              </div>
+            )}
+
+            {/* LIVE CANCELLATION TIMER CARD ON TRACK PAGE */}
+            {!isCancelled && isCancellable && (
+              <div className="bg-amber-500/10 border border-amber-500/25 rounded-2xl p-4 mt-4 text-left shadow-sm animate-fade-in">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
+                      <Timer size={20} className="animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-amber-500 uppercase tracking-wider">
+                        Cancellation Window
+                      </p>
+                      <p className="text-xs sm:text-sm font-semibold text-ztext">
+                        You can cancel within <span className="font-mono text-amber-500 font-bold">{formattedCountdown}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setCancelError(null);
+                      setShowCancelModal(true);
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-red-500/15 text-red-500 hover:bg-red-500 hover:text-white border border-red-500/30 text-xs font-bold transition-all shrink-0 cursor-pointer"
+                  >
+                    Cancel Order
+                  </button>
+                </div>
+
+                <div className="w-full bg-amber-500/20 h-1.5 rounded-full mt-3 overflow-hidden">
+                  <div
+                    className="bg-amber-500 h-full rounded-full transition-all duration-1000 ease-linear"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+
+                <p className="text-[11px] text-ztext-light mt-2 leading-relaxed">
+                  Need to cancel? You can cancel within the store's cancellation window.
+                </p>
+              </div>
+            )}
 
             {isCancelled ? (
               <div className="mt-4 bg-red-500/5 rounded-xl border border-red-500/20 p-5 text-center">
@@ -259,7 +420,7 @@ function TrackContent() {
                       <span className="font-medium text-ztext">{isDelivered ? 'Delivered' : 'Will be assigned when your order is ready'}</span>
                     </div>
                   )}
-                  {data.assignment && (
+                  {data.assignment?.status && (
                     <div className="flex justify-between text-ztext-light">
                       <span>Status</span>
                       <span className="font-medium text-ztext capitalize">{data.assignment.status.replace(/_/g, ' ')}</span>
@@ -337,6 +498,167 @@ function TrackContent() {
           <Link href="/orders" className="button-z button-z-primary flex-1 h-12 flex items-center justify-center">My orders</Link>
           <Link href="/" className="button-z button-z-outline flex-1 h-12 flex items-center justify-center">Back home</Link>
         </div>
+
+        {/* CANCELLATION MODAL ON TRACK PAGE */}
+        {showCancelModal && data?.order && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in text-left">
+            <div className="bg-zcard border border-zborder rounded-2xl max-w-md w-full p-6 shadow-z-modal animate-scale-up">
+              <div className="flex items-center justify-between pb-3.5 border-b border-zborder mb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500">
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-ztext">Cancel Order</h3>
+                    <p className="text-xs text-ztext-light">Order #{data.order.tracking_code} • ₹{data.order.total}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCancelModal(false)}
+                  className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zsurface transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {cancelError && (
+                <div className="p-3 mb-4 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-500 font-medium">
+                  {cancelError}
+                </div>
+              )}
+
+              <p className="text-xs text-ztext-light mb-4 leading-relaxed">
+                Are you sure you want to cancel this order? Once cancelled, preparation will immediately stop.
+              </p>
+
+              {/* REFUND SELECTION SECTION */}
+              <div className="space-y-3 mb-4">
+                {isWalletPayment && (
+                  <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 flex items-start gap-2.5">
+                    <Wallet size={18} className="text-emerald-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-bold text-emerald-500">Instant Wallet Refund</p>
+                      <p className="text-[11px] text-ztext-light mt-0.5 leading-relaxed">
+                        The amount of <strong className="text-ztext">₹{data.order.total}</strong> will be instantly refunded back to your Bodosa Wallet balance.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {isOnlinePayment && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-ztext">
+                      Choose where to receive your refund:
+                    </label>
+
+                    {/* Option 1: Bodosa Wallet */}
+                    <label
+                      onClick={() => setRefundChoice('wallet')}
+                      className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+                        refundChoice === 'wallet'
+                          ? 'border-zred bg-zred/5 shadow-sm'
+                          : 'border-zborder bg-zsurface hover:border-zborder-strong'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="refundDestTrack"
+                        checked={refundChoice === 'wallet'}
+                        onChange={() => setRefundChoice('wallet')}
+                        className="mt-1 accent-zred"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <Wallet size={14} className="text-emerald-500" />
+                          <span className="text-xs font-bold text-ztext">Bodosa Wallet (Instant)</span>
+                          <span className="text-[10px] bg-emerald-500/15 text-emerald-500 font-bold px-1.5 py-0.2 rounded-full">
+                            Recommended
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-ztext-light mt-0.5 leading-relaxed">
+                          Instant refund of <strong>₹{data.order.total}</strong> credited to your wallet balance for immediate re-ordering.
+                        </p>
+                      </div>
+                    </label>
+
+                    {/* Option 2: Original Payment Source */}
+                    <label
+                      onClick={() => setRefundChoice('original')}
+                      className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
+                        refundChoice === 'original'
+                          ? 'border-zred bg-zred/5 shadow-sm'
+                          : 'border-zborder bg-zsurface hover:border-zborder-strong'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="refundDestTrack"
+                        checked={refundChoice === 'original'}
+                        onChange={() => setRefundChoice('original')}
+                        className="mt-1 accent-zred"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <CreditCard size={14} className="text-blue-500" />
+                          <span className="text-xs font-bold text-ztext">Original Payment Source</span>
+                        </div>
+                        <p className="text-[11px] text-ztext-light mt-0.5 leading-relaxed">
+                          Refund of <strong>₹{data.order.total}</strong> sent back to your original bank/UPI via Razorpay (typically 3–5 business days).
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                )}
+
+                {isCod && (
+                  <div className="p-3 rounded-xl border border-zborder bg-zsurface text-xs text-ztext-light">
+                    Cash on Delivery order. No payment was deducted, so no monetary refund is required.
+                  </div>
+                )}
+              </div>
+
+              {/* Optional Reason Input */}
+              <div className="mb-5">
+                <label className="block text-xs font-semibold text-ztext mb-1.5">
+                  Reason for cancellation (optional)
+                </label>
+                <input
+                  type="text"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  placeholder="e.g. Ordered by mistake, change in plans..."
+                  className="input-z w-full text-xs"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-zborder">
+                <button
+                  type="button"
+                  onClick={() => setShowCancelModal(false)}
+                  className="button-z button-z-secondary text-xs px-4 h-9"
+                  disabled={cancelling}
+                >
+                  Keep Order
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmCancel}
+                  className="button-z button-z-primary text-xs px-4 h-9 font-bold bg-red-600 hover:bg-red-700 flex items-center gap-1.5 disabled:opacity-50"
+                  disabled={cancelling}
+                >
+                  {cancelling ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Cancelling...
+                    </>
+                  ) : (
+                    'Confirm Cancellation'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

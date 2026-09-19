@@ -31,7 +31,7 @@ export async function authorizeAdmin() {
         VALUES ($1, $2, $3, $4, true)
         ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
       `, [user.id, user.email, user.fullName, user.role || 'admin']);
-    } catch {}
+    } catch { }
   }
 
   const effectiveRole = profile?.role || user.role;
@@ -127,7 +127,7 @@ export async function verifyStudent(id: string, creditLimit: number = 0) {
     if (!student) return { success: false, error: 'Student not found' };
     const w = Array.isArray(student.wallet) ? student.wallet[0] : student.wallet;
     if (!w) return { success: false, error: 'No wallet account' };
-    
+
     await query(`UPDATE public.wallets SET status = 'active', credit_limit = $1, updated_at = NOW() WHERE id = $2`, [creditLimit, w.id]);
 
     await adminRepository.createAuditLog({
@@ -355,7 +355,7 @@ export async function regenerateOrderQr(orderId: string) {
     // Persisting the token is best-effort (needs the pickup_qr_token column).
     try {
       await query(`UPDATE public.orders SET pickup_qr_token = $1 WHERE id = $2`, [token, orderId]);
-    } catch {}
+    } catch { }
 
     await adminRepository.createAuditLog({
       table_name: 'orders',
@@ -363,7 +363,7 @@ export async function regenerateOrderQr(orderId: string) {
       action: 'regenerate_pickup_qr',
       new_data: { expires_at: expiresAt },
       changed_by: user.id,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return { success: true, data: { token, expiresAt } };
   } catch (e) {
@@ -610,7 +610,7 @@ export async function updateSystemSetting(id: string, value: string) {
     if (!setting) {
       const settingType = id.endsWith('_slots') || id.includes('locations') ? 'json'
         : id.includes('enabled') || id.includes('available') ? 'boolean'
-        : 'string';
+          : 'string';
       const createdRes = await query(`
         INSERT INTO public.system_settings (key, value, type)
         VALUES ($1, $2, $3)

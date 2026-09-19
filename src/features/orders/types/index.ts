@@ -1,6 +1,6 @@
-export type OrderStatus = 'pending' | 'accepted' | 'declined' | 'preparing' | 'ready' | 'assigned' | 'out_for_delivery' | 'delivered' | 'completed' | 'cancelled';
+export type OrderStatus = 'placed' | 'pending' | 'accepted' | 'declined' | 'preparing' | 'ready' | 'assigned' | 'out_for_delivery' | 'delivered' | 'completed' | 'cancelled';
 
-export const ACTIVE_ORDER_STATUSES: OrderStatus[] = ['pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery'];
+export const ACTIVE_ORDER_STATUSES: OrderStatus[] = ['placed', 'pending', 'accepted', 'preparing', 'ready', 'assigned', 'out_for_delivery'];
 
 export function isActiveOrder(status: OrderStatus): boolean {
   return ACTIVE_ORDER_STATUSES.includes(status);
@@ -101,6 +101,7 @@ export interface OrdersResponse {
 }
 
 export const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  placed: ['accepted', 'preparing', 'cancelled'],
   pending: ['accepted', 'declined'],
   accepted: ['preparing', 'cancelled'],
   declined: [],
@@ -119,6 +120,7 @@ export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
 
 export function getOrderTimelineEvent(status: OrderStatus): string {
   const map: Record<OrderStatus, string> = {
+    placed: 'Order placed',
     pending: 'Order placed',
     accepted: 'Order accepted',
     declined: 'Order declined',

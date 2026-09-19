@@ -11,8 +11,8 @@ export class AdminRepository {
   async getDashboardStats(filter?: { fromDate?: string; toDate?: string }): Promise<DashboardStats | null> {
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay()); weekStart.setHours(0,0,0,0);
-      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+      const weekStart = new Date(); weekStart.setDate(weekStart.getDate() - weekStart.getDay()); weekStart.setHours(0, 0, 0, 0);
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
 
       const fromDate = filter?.fromDate || null;
       const toDate = filter?.toDate || null;
@@ -167,7 +167,7 @@ export class AdminRepository {
 
   async getStudents(filter: AdminFilter = {}): Promise<PaginatedResponse<AdminStudent>> {
     const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc' } = filter;
-    
+
     const whereClauses: string[] = ["u.deleted_at IS NULL", "u.role = 'student'"];
     const params: any[] = [];
     let paramIdx = 1;
@@ -221,8 +221,8 @@ export class AdminRepository {
 
   async getUsers(filter: AdminFilter = {}): Promise<PaginatedResponse<AdminUser>> {
     const { search, status, role, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc' } = filter;
-    
-    const whereClauses: string[] = ['deleted_at IS NULL AND COALESCE(is_deleted, false) = false'];
+
+    const whereClauses: string[] = ["deleted_at IS NULL AND COALESCE(is_deleted, false) = false AND role != 'student'"];
     const params: any[] = [];
     let paramIdx = 1;
 
@@ -231,7 +231,7 @@ export class AdminRepository {
     } else if (status === 'suspended') {
       whereClauses.push(`is_active = false`);
     } else if (status === 'deleted') {
-      whereClauses[0] = '(is_deleted = true OR deleted_at IS NOT NULL)';
+      whereClauses[0] = "(is_deleted = true OR deleted_at IS NOT NULL) AND role != 'student'";
     }
 
     if (role && role !== 'all') {
@@ -301,7 +301,7 @@ export class AdminRepository {
 
   async getMerchants(filter: AdminFilter = {}): Promise<PaginatedResponse<AdminMerchant>> {
     const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc' } = filter;
-    
+
     const whereClauses: string[] = ["u.deleted_at IS NULL", "u.role = 'merchant'"];
     const params: any[] = [];
     let paramIdx = 1;
@@ -498,7 +498,7 @@ export class AdminRepository {
 
   async getOrders(filter: AdminFilter & { restaurantId?: string } = {}): Promise<PaginatedResponse<AdminOrder>> {
     const { search, status, page = 1, pageSize = 20, sortBy = 'created_at', sortOrder = 'desc', fromDate, toDate, restaurantId, tab, statuses } = filter;
-    
+
     const whereClauses: string[] = ['o.deleted_at IS NULL'];
     const params: any[] = [];
     let paramIdx = 1;
@@ -706,13 +706,13 @@ export class AdminRepository {
             `UPDATE public.delivery_assignments SET status = $1, delivered_at = NOW() WHERE id = $2`,
             [assignmentStatus, assignment.id]
           );
-          
+
           await query(
             `UPDATE public.delivery_partners SET is_available = true WHERE id = $1`,
             [assignment.delivery_partner_id]
           );
         }
-      } catch {}
+      } catch { }
     }
   }
 
@@ -1044,7 +1044,7 @@ export class AdminRepository {
 
   async getAuditLogs(filter: AdminFilter & { tableName?: string } = {}): Promise<PaginatedResponse<AuditEntry>> {
     const { search, page = 1, pageSize = 50, sortBy = 'created_at', sortOrder = 'desc', fromDate, toDate, tableName } = filter;
-    
+
     const whereClauses: string[] = [];
     const params: any[] = [];
     let paramIdx = 1;

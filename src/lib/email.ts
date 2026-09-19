@@ -103,6 +103,10 @@ export async function sendPasswordResetLinkEmail(to: string, resetLink: string):
     return true;
   } catch (err) {
     console.error('Failed to send password reset email via SMTP:', err);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[DEV EMAIL FALLBACK] Password reset link for ${to}: ${resetLink}`);
+      return true;
+    }
     return false;
   }
 }

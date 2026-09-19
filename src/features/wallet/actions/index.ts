@@ -332,8 +332,16 @@ export async function refundWalletOrder(
       'SELECT * FROM public.wallets WHERE user_id = $1 LIMIT 1',
       [userId]
     );
-    const existingWallet = existingRes.rows[0];
-    if (!existingWallet) return { success: false, error: 'Wallet not found' };
+    let existingWallet = existingRes.rows[0];
+    if (!existingWallet) {
+      const createRes = await query<Wallet>(
+        `INSERT INTO public.wallets (user_id, balance, status, created_at, updated_at)
+         VALUES ($1, 0, 'unverified', NOW(), NOW())
+         RETURNING *`,
+        [userId]
+      );
+      existingWallet = createRes.rows[0];
+    }
 
     const balanceBefore = Number(existingWallet.balance) || 0;
     const balanceAfter = balanceBefore + amount;

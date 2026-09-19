@@ -70,6 +70,7 @@ export default function AdminUsersPage() {
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [deleteMode, setDeleteMode] = useState<'soft' | 'hard'>('soft');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [restoreLoading, setRestoreLoading] = useState<string | null>(null);
   const { toasts, addToast, removeToast } = useToast();
@@ -88,10 +89,12 @@ export default function AdminUsersPage() {
 
   const roleOptions = [
     { label: 'All roles', value: 'all' },
-    ...availableRoles.map((r) => ({
-      label: r.name || r.slug,
-      value: r.slug,
-    })),
+    ...availableRoles
+      .filter((r) => r.slug !== 'student')
+      .map((r) => ({
+        label: r.name || r.slug,
+        value: r.slug,
+      })),
   ];
 
   // Create user modal
@@ -116,10 +119,11 @@ export default function AdminUsersPage() {
   useEffect(() => {
     getRolesWithPermissions().then((res) => {
       if (res.success && res.data) {
-        setAvailableRoles(res.data);
-        if (res.data.length > 0) {
-          const defaultRole = res.data.find((r) => r.slug === 'staff')?.slug || res.data[0].slug;
-          setCreateRole((prev) => (res.data!.some((r) => r.slug === prev) ? prev : defaultRole));
+        const empRoles = res.data.filter((r) => r.slug !== 'student');
+        setAvailableRoles(empRoles);
+        if (empRoles.length > 0) {
+          const defaultRole = empRoles.find((r) => r.slug === 'staff')?.slug || empRoles[0].slug;
+          setCreateRole((prev) => (empRoles.some((r) => r.slug === prev) ? prev : defaultRole));
         }
       }
     });
@@ -349,7 +353,7 @@ export default function AdminUsersPage() {
       header: 'Actions',
       render: (u: AdminUser) => (
         <div className="flex items-center gap-1">
-          {canEditEmployee && !u.is_deleted && (
+          {canEditEmployee && !u.is_deleted && u.role !== 'student' && (
             <button
               onClick={() => openInspectModal(u)}
               className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-500/10 transition-colors"
@@ -374,7 +378,10 @@ export default function AdminUsersPage() {
           )}
           {canDeleteEmployee && (
             <button
-              onClick={() => setDeleteTarget(u)}
+              onClick={() => {
+                setDeleteMode(u.is_deleted ? 'hard' : 'soft');
+                setDeleteTarget(u);
+              }}
               className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
               title={u.is_deleted ? 'Delete permanently' : 'Delete user (Soft / Hard)'}
             >
@@ -389,8 +396,8 @@ export default function AdminUsersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="All Users"
-        description={`${total} user${total === 1 ? '' : 's'} registered across store`}
+        title="Employees"
+        description={`${total} employee${total === 1 ? '' : 's'} registered across store`}
       >
         <div className="flex items-center gap-2">
           {canAddEmployee && (
@@ -402,7 +409,7 @@ export default function AdminUsersPage() {
               className="button-z button-z-primary h-9 px-3.5 text-xs flex items-center gap-1.5 font-bold shadow-sm"
             >
               <UserPlus size={15} />
-              Add Employee / User
+              Add Employee
             </button>
           )}
           <button
@@ -736,86 +743,142 @@ export default function AdminUsersPage() {
       {/* DELETE MODAL: SOFT DELETE VS HARD DELETE */}
       {deleteTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-zcard border border-zborder rounded-2xl max-w-md w-full p-6 shadow-z-modal animate-scale-up">
-            <div className="flex items-center justify-between pb-3.5 border-b border-zborder mb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500">
+          <div className="bg-zcard border border-zborder rounded-2xl max-w-lg w-full p-6 shadow-z-modal animate-scale-up">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-zborder mb-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-500 shrink-0">
                   <Trash2 size={20} />
                 </div>
-                <div>
-                  <h3 className="text-base font-bold text-ztext">Delete User</h3>
-                  <p className="text-xs text-ztext-light font-medium truncate max-w-[240px]">
-                    {deleteTarget.full_name} ({deleteTarget.email})
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-ztext leading-tight">Delete User Account</h3>
+                  <p className="text-xs text-ztext-light font-medium truncate mt-0.5">
+                    {deleteTarget.full_name}{' '}
+                    <span className="text-ztext-lighter font-normal">({deleteTarget.email})</span>
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setDeleteTarget(null)}
-                className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zsurface transition-colors"
+                className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zsurface transition-colors shrink-0 ml-2"
+                title="Close"
               >
                 <X size={16} />
               </button>
             </div>
 
             <p className="text-xs text-ztext-light mb-4 leading-relaxed">
-              Choose how you would like to delete this user account. You can choose a safe <strong>Soft Delete</strong> or perform a permanent <strong>Hard Delete</strong> from the database.
+              Please choose how you would like to handle deleting this user account:
             </p>
 
+            {/* Option Cards */}
             <div className="space-y-3 mb-6">
               {/* Soft Delete Option Card */}
-              <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/5 flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-amber-500 flex items-center gap-1.5">
-                    <ShieldAlert size={14} /> Soft Delete (Recommended)
-                  </span>
+              <div
+                onClick={() => setDeleteMode('soft')}
+                className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3.5 ${
+                  deleteMode === 'soft'
+                    ? 'border-amber-500 bg-amber-500/[0.08] shadow-sm ring-1 ring-amber-500/30'
+                    : 'border-zborder bg-zsurface/50 hover:border-amber-500/40 hover:bg-amber-500/[0.02]'
+                }`}
+              >
+                <div className="mt-0.5">
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                      deleteMode === 'soft' ? 'border-amber-500' : 'border-zborder'
+                    }`}
+                  >
+                    {deleteMode === 'soft' && <div className="w-2 h-2 rounded-full bg-amber-500" />}
+                  </div>
                 </div>
-                <p className="text-[11px] text-ztext-light leading-relaxed">
-                  Sets <code className="text-[10px] bg-zsurface px-1 py-0.5 rounded border border-zborder">is_deleted = true</code> and deactivates the user. Account cannot log in, but historical orders, payments and reports are safely preserved.
-                </p>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-xs font-bold text-ztext flex items-center gap-1.5">
+                      <ShieldAlert size={14} className="text-amber-500 shrink-0" />
+                      Soft Delete
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+                      Recommended
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-ztext-light leading-relaxed">
+                    Sets <code className="text-[10px] bg-zcard px-1.5 py-0.5 rounded border border-zborder font-mono">is_deleted = true</code> and disables login. All historical orders, payments, and activity logs are safely preserved.
+                  </p>
+                </div>
               </div>
 
               {/* Hard Delete Option Card */}
-              <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-500/5 flex flex-col gap-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-red-500 flex items-center gap-1.5">
-                    <Trash2 size={14} /> Hard Delete (Permanent)
-                  </span>
+              <div
+                onClick={() => setDeleteMode('hard')}
+                className={`p-4 rounded-xl border-2 transition-all cursor-pointer flex items-start gap-3.5 ${
+                  deleteMode === 'hard'
+                    ? 'border-red-500 bg-red-500/[0.08] shadow-sm ring-1 ring-red-500/30'
+                    : 'border-zborder bg-zsurface/50 hover:border-red-500/40 hover:bg-red-500/[0.02]'
+                }`}
+              >
+                <div className="mt-0.5">
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                      deleteMode === 'hard' ? 'border-red-500' : 'border-zborder'
+                    }`}
+                  >
+                    {deleteMode === 'hard' && <div className="w-2 h-2 rounded-full bg-red-500" />}
+                  </div>
                 </div>
-                <p className="text-[11px] text-ztext-light leading-relaxed">
-                  Permanently deletes the user record and profile from the database. <strong>This action cannot be undone.</strong>
-                </p>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-xs font-bold text-ztext flex items-center gap-1.5">
+                      <Trash2 size={14} className="text-red-500 shrink-0" />
+                      Hard Delete
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/20 whitespace-nowrap">
+                      Permanent
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-ztext-light leading-relaxed">
+                    Permanently purges the user record and linked profile from the database.{' '}
+                    <strong className="text-red-500">This action is irreversible.</strong>
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-zborder">
+            {/* Modal Footer */}
+            <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-4 border-t border-zborder">
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="button-z button-z-secondary text-xs px-3.5 h-9"
+                className="button-z button-z-secondary text-xs px-4 h-10 font-semibold whitespace-nowrap justify-center"
                 disabled={deleteLoading}
               >
                 Cancel
               </button>
 
-              <button
-                type="button"
-                onClick={() => handleDelete(deleteTarget.id, true)}
-                className="px-3.5 h-9 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                disabled={deleteLoading}
-              >
-                {deleteLoading ? <Loader2 size={13} className="animate-spin" /> : <ShieldAlert size={13} />}
-                Soft Delete
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleDelete(deleteTarget.id, false)}
-                className="px-3.5 h-9 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                disabled={deleteLoading}
-              >
-                {deleteLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                Delete Permanently
-              </button>
+              <div className="flex items-center gap-2">
+                {deleteMode === 'soft' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(deleteTarget.id, true)}
+                    className="flex-1 sm:flex-initial h-10 px-5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
+                    disabled={deleteLoading}
+                  >
+                    {deleteLoading ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />}
+                    <span>Confirm Soft Delete</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(deleteTarget.id, false)}
+                    className="flex-1 sm:flex-initial h-10 px-5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 active:scale-[0.98] text-white transition-all shadow-sm flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
+                    disabled={deleteLoading}
+                  >
+                    {deleteLoading ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                    <span>Permanently Delete User</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

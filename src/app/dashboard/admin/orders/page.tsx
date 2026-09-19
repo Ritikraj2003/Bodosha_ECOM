@@ -206,97 +206,118 @@ export default function AdminOrdersPage() {
     if (!qrToken) return;
     QRCode.toDataURL(qrToken, { width: 384, margin: 2 })
       .then((url) => { if (active) setQrDataUrl(url); })
-      .catch(() => {});
+      .catch(() => { });
     return () => { active = false; };
   }, [qrToken]);
 
   const columns = [
-    { key: 'tracking', header: 'Tracking', render: (o: AdminOrder) => (
-      <span className="font-mono text-xs font-medium text-ztext">{o.tracking_code}</span>
-    )},
-    { key: 'customer', header: 'Customer', render: (o: AdminOrder) => (
-      <div>
-        <p className="text-sm font-medium text-ztext-light">{o.user?.full_name ?? o.customer_name ?? 'Guest'}</p>
-        <p className="text-xs text-ztext-lighter">{o.user?.email ?? o.customer_email ?? ''}</p>
-      </div>
-    )},
-    { key: 'phone', header: 'Phone-No', render: (o: AdminOrder) => {
-      const phone = o.customer_phone || o.user?.phone || (o.delivery_address as Record<string, unknown> | null)?.phone as string | undefined;
-      return <span className="text-xs font-mono text-ztext-light">{phone || '—'}</span>;
-    }, hideOnMobile: true},
-    { key: 'restaurant', header: 'Restaurant', render: (o: AdminOrder) => (
-      <span className="text-sm text-ztext-light">{o.restaurant?.name ?? 'Unknown'}</span>
-    ), hideOnMobile: true},
-    { key: 'total', header: 'Total', sortable: true, render: (o: AdminOrder) => (
-      <span className="font-medium text-ztext">₹{Number(o.total).toLocaleString('en-IN')}</span>
-    )},
-    { key: 'orderType', header: 'Order Type', render: (o: AdminOrder) => (
-      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-        o.order_type === 'in_store' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'text-ztext-light'
-      }`}>
-        {o.order_type ? orderTypeLabel(o.order_type) : '-'}
-      </span>
-    ), hideOnMobile: true},
-    { key: 'payment', header: 'Payment', render: (o: AdminOrder) => (
-      <div className="flex flex-col gap-0.5">
-        <span className="text-xs text-ztext-lighter capitalize">{o.payment_method ?? 'N/A'}</span>
-        <span className={`text-[10px] font-medium ${o.payment_status === 'confirmed' ? 'text-emerald-600' : o.payment_status === 'failed' ? 'text-red-400' : 'text-amber-400'}`}>
-          {o.payment_status}
-        </span>
-      </div>
-    ), hideOnMobile: true},
-    { key: 'status', header: 'Status', render: (o: AdminOrder) => {
-      const colors: Record<string, string> = {
-        pending: 'bg-amber-500/10 text-amber-400', accepted: 'bg-blue-500/10 text-blue-400',
-        preparing: 'bg-indigo-500/10 text-indigo-400', ready: 'bg-green-500/10 text-green-400',
-        assigned: 'bg-purple-500/10 text-purple-400', out_for_delivery: 'bg-orange-500/10 text-orange-400',
-        delivered: 'bg-emerald-500/10 text-emerald-400', completed: 'bg-emerald-500/10 text-emerald-400',
-        cancelled: 'bg-red-500/10 text-red-400',
-      };
-      return <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${colors[o.status] ?? 'bg-zgray text-ztext-light'}`}>{o.status.replace(/_/g, ' ')}</span>;
-    }},
-    { key: 'deliveredBy', header: 'Delivered by', render: (o: AdminOrder) => (
-      o.delivery_partner && (o.status === 'delivered' || o.status === 'completed') ? (
-        <div>
-          <p className="text-sm font-medium text-ztext-light">{o.delivery_partner.full_name ?? 'Delivery partner'}</p>
-          {o.delivery_partner.phone && <p className="text-xs text-ztext-lighter">{o.delivery_partner.phone}</p>}
-        </div>
-      ) : (
-        <span className="text-xs text-ztext-lighter">—</span>
+    {
+      key: 'tracking', header: 'Tracking', render: (o: AdminOrder) => (
+        <span className="font-mono text-xs font-medium text-ztext">{o.tracking_code}</span>
       )
-    ), hideOnMobile: true},
-    { key: 'date', header: 'Date', sortable: true, render: (o: AdminOrder) => (
-      <span className="text-xs text-ztext-lighter">{new Date(o.created_at).toLocaleString()}</span>
-    ), hideOnMobile: true},
-    { key: 'actions', header: 'Actions', render: (o: AdminOrder) => (
-      <div className="flex items-center gap-1">
-        <button onClick={() => viewOrderDetails(o.id)} className="p-1.5 hover:bg-zgray rounded-lg text-ztext-muted hover:text-ztext-light transition-colors" title="View details">
-          <Eye size={14} />
-        </button>
-        {o.status !== 'cancelled' && o.status !== 'completed' && o.status !== 'delivered' && (
-          <>
-            {(!o.order_type || o.order_type === 'room_delivery') && (
-              <>
-                <button onClick={() => openQr(o)} className="p-1.5 hover:bg-purple-500/10 rounded-lg text-ztext-muted hover:text-purple-600 transition-colors" title="Show pickup QR">
-                  <QrCode size={14} />
-                </button>
-                {o.status === 'ready' && (
-                  <button onClick={() => openAssign(o)} className="p-1.5 hover:bg-green-500/10 rounded-lg text-ztext-muted hover:text-green-600 transition-colors" title="Assign delivery partner">
-                    <Bike size={14} />
+    },
+    {
+      key: 'customer', header: 'Customer', render: (o: AdminOrder) => (
+        <div>
+          <p className="text-sm font-medium text-ztext-light">{o.user?.full_name ?? o.customer_name ?? 'Guest'}</p>
+          <p className="text-xs text-ztext-lighter">{o.user?.email ?? o.customer_email ?? ''}</p>
+        </div>
+      )
+    },
+    {
+      key: 'phone', header: 'Phone-No', render: (o: AdminOrder) => {
+        const phone = o.customer_phone || o.user?.phone || (o.delivery_address as Record<string, unknown> | null)?.phone as string | undefined;
+        return <span className="text-xs font-mono text-ztext-light">{phone || '—'}</span>;
+      }, hideOnMobile: true
+    },
+    {
+      key: 'restaurant', header: 'Restaurant', render: (o: AdminOrder) => (
+        <span className="text-sm text-ztext-light">{o.restaurant?.name ?? 'Unknown'}</span>
+      ), hideOnMobile: true
+    },
+    {
+      key: 'total', header: 'Total', sortable: true, render: (o: AdminOrder) => (
+        <span className="font-medium text-ztext">₹{Number(o.total).toLocaleString('en-IN')}</span>
+      )
+    },
+    {
+      key: 'orderType', header: 'Order Type', render: (o: AdminOrder) => (
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${o.order_type === 'in_store' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'text-ztext-light'
+          }`}>
+          {o.order_type ? orderTypeLabel(o.order_type) : '-'}
+        </span>
+      ), hideOnMobile: true
+    },
+    {
+      key: 'payment', header: 'Payment', render: (o: AdminOrder) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-ztext-lighter capitalize">{o.payment_method ?? 'N/A'}</span>
+          <span className={`text-[10px] font-medium ${o.payment_status === 'confirmed' ? 'text-emerald-600' : o.payment_status === 'failed' ? 'text-red-400' : 'text-amber-400'}`}>
+            {o.payment_status}
+          </span>
+        </div>
+      ), hideOnMobile: true
+    },
+    {
+      key: 'status', header: 'Status', render: (o: AdminOrder) => {
+        const colors: Record<string, string> = {
+          pending: 'bg-amber-500/10 text-amber-400', accepted: 'bg-blue-500/10 text-blue-400',
+          preparing: 'bg-indigo-500/10 text-indigo-400', ready: 'bg-green-500/10 text-green-400',
+          assigned: 'bg-purple-500/10 text-purple-400', out_for_delivery: 'bg-orange-500/10 text-orange-400',
+          delivered: 'bg-emerald-500/10 text-emerald-400', completed: 'bg-emerald-500/10 text-emerald-400',
+          cancelled: 'bg-red-500/10 text-red-400',
+        };
+        return <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${colors[o.status] ?? 'bg-zgray text-ztext-light'}`}>{o.status.replace(/_/g, ' ')}</span>;
+      }
+    },
+    {
+      key: 'deliveredBy', header: 'Delivered by', render: (o: AdminOrder) => (
+        o.delivery_partner && (o.status === 'delivered' || o.status === 'completed') ? (
+          <div>
+            <p className="text-sm font-medium text-ztext-light">{o.delivery_partner.full_name ?? 'Delivery partner'}</p>
+            {o.delivery_partner.phone && <p className="text-xs text-ztext-lighter">{o.delivery_partner.phone}</p>}
+          </div>
+        ) : (
+          <span className="text-xs text-ztext-lighter">—</span>
+        )
+      ), hideOnMobile: true
+    },
+    {
+      key: 'date', header: 'Date', sortable: true, render: (o: AdminOrder) => (
+        <span className="text-xs text-ztext-lighter">{new Date(o.created_at).toLocaleString()}</span>
+      ), hideOnMobile: true
+    },
+    {
+      key: 'actions', header: 'Actions', render: (o: AdminOrder) => (
+        <div className="flex items-center gap-1">
+          <button onClick={() => viewOrderDetails(o.id)} className="p-1.5 hover:bg-zgray rounded-lg text-ztext-muted hover:text-ztext-light transition-colors" title="View details">
+            <Eye size={14} />
+          </button>
+          {o.status !== 'cancelled' && o.status !== 'completed' && o.status !== 'delivered' && (
+            <>
+              {(!o.order_type || o.order_type === 'room_delivery') && (
+                <>
+                  <button onClick={() => openQr(o)} className="p-1.5 hover:bg-purple-500/10 rounded-lg text-ztext-muted hover:text-purple-600 transition-colors" title="Show pickup QR">
+                    <QrCode size={14} />
                   </button>
-                )}
-              </>
-            )}
-            <button onClick={() => setConfirmAction({ type: 'force', id: o.id })} className="p-1.5 hover:bg-blue-500/10 rounded-lg text-ztext-muted hover:text-blue-600 transition-colors" title="Force update">
-              <Clock size={14} />
-            </button>
-            <button onClick={() => setConfirmAction({ type: 'cancel', id: o.id })} className="p-1.5 hover:bg-red-500/10 rounded-lg text-ztext-muted hover:text-red-400 transition-colors" title="Cancel order">
-              <XCircle size={14} />
-            </button>
-          </>
-        )}
-      </div>
-    )},
+                  {o.status === 'ready' && (
+                    <button onClick={() => openAssign(o)} className="p-1.5 hover:bg-green-500/10 rounded-lg text-ztext-muted hover:text-green-600 transition-colors" title="Assign delivery partner">
+                      <Bike size={14} />
+                    </button>
+                  )}
+                </>
+              )}
+              <button onClick={() => setConfirmAction({ type: 'force', id: o.id })} className="p-1.5 hover:bg-blue-500/10 rounded-lg text-ztext-muted hover:text-blue-600 transition-colors" title="Force update">
+                <Clock size={14} />
+              </button>
+              <button onClick={() => setConfirmAction({ type: 'cancel', id: o.id })} className="p-1.5 hover:bg-red-500/10 rounded-lg text-ztext-muted hover:text-red-400 transition-colors" title="Cancel order">
+                <XCircle size={14} />
+              </button>
+            </>
+          )}
+        </div>
+      )
+    },
   ];
 
   return (
@@ -320,20 +341,18 @@ export default function AdminOrdersPage() {
               setStatus('all');
               setPage(1);
             }}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
-              activeTab === 'running'
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${activeTab === 'running'
                 ? 'border-zred text-zred bg-red-500/5'
                 : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
-            }`}
+              }`}
           >
             <Clock size={16} className={activeTab === 'running' && tabCounts.running > 0 ? 'text-amber-500 animate-pulse' : ''} />
             <span>Running Orders</span>
             <span
-              className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
-                activeTab === 'running'
+              className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${activeTab === 'running'
                   ? 'bg-zred text-white'
                   : 'bg-zgray text-ztext-lighter'
-              }`}
+                }`}
             >
               {tabCounts.running}
             </span>
@@ -348,20 +367,18 @@ export default function AdminOrdersPage() {
               setStatus('all');
               setPage(1);
             }}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${
-              activeTab === 'history'
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold border-b-2 transition-all cursor-pointer ${activeTab === 'history'
                 ? 'border-zred text-zred bg-red-500/5'
                 : 'border-transparent text-ztext-light hover:text-ztext hover:border-zborder'
-            }`}
+              }`}
           >
             <CheckCircle2 size={16} className={activeTab === 'history' ? 'text-emerald-500' : ''} />
             <span>Order History</span>
             <span
-              className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${
-                activeTab === 'history'
+              className={`px-2 py-0.5 text-xs rounded-full font-bold transition-colors ${activeTab === 'history'
                   ? 'bg-zred text-white'
                   : 'bg-zgray text-ztext-lighter'
-              }`}
+                }`}
             >
               {tabCounts.history}
             </span>

@@ -2,99 +2,87 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/infrastructure/supabase/client';
 import { Loader2, Check } from 'lucide-react';
+import { verifyResetTokenAction, resetPasswordWithToken } from '@/features/auth/actions';
 
 export default function ResetPasswordForm() {
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [ready, setReady] = useState(false);
+  const [token, setToken] = useState<string | null>(null);
+  const [email, setEmail] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    const supabase = createClient();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any) => {
-      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN') {
-        setReady(true);
-      }
-    });
-
     const searchParams = new URLSearchParams(window.location.search);
-    const code = searchParams.get('code');
-    const tokenHash = searchParams.get('token_hash');
+    const tokenParam = searchParams.get('token') || searchParams.get('token_hash') || searchParams.get('code');
 
-    if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ error: codeErr }: any) => {
-        if (!codeErr) {
+    if (!tokenParam) {
+      setError('Invalid or missing password reset link. Please request a new one.');
+      return;
+    }
+
+    setToken(tokenParam);
+    verifyResetTokenAction(tokenParam)
+      .then((res) => {
+        if (res.valid) {
           setReady(true);
+          if (res.email) setEmail(res.email);
         } else {
-          setError('Invalid or expired reset link. Please request a new one.');
+          setError(res.error || 'Invalid or expired reset link. Please request a new one.');
         }
+      })
+      .catch(() => {
+        setError('Failed to verify reset link. Please try again.');
       });
-      return () => { subscription.unsubscribe(); };
-    }
-
-    if (tokenHash) {
-      supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' }).then(({ error: otpErr }: any) => {
-        if (!otpErr) {
-          setReady(true);
-        } else {
-          setError('Invalid or expired reset link. Please request a new one.');
-        }
-      });
-      return () => { subscription.unsubscribe(); };
-    }
-
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const accessToken = params.get('access_token');
-    const refreshToken = params.get('refresh_token');
-    const type = params.get('type');
-
-    if (accessToken && refreshToken && type === 'recovery') {
-      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).then(({ error: sessionError }: any) => {
-        if (!sessionError) setReady(true);
-        else setError('Invalid or expired reset link. Please request a new one.');
-      });
-    } else {
-      supabase.auth.getSession().then(({ data: { session } }: any) => {
-        if (session) setReady(true);
-        else setError('Invalid or expired reset link. Please request a new one.');
-      });
-    }
-
-    return () => { subscription.unsubscribe(); };
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+    if (confirmPassword && password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+    if (!token) {
+      setError('Missing reset token. Please request a new reset link.');
+      return;
+    }
 
     setError('');
     setLoading(true);
 
-    const supabase = createClient();
-    const { error: err } = await supabase.auth.updateUser({ password });
+    try {
+      const res = await resetPasswordWithToken(token, password);
+      setLoading(false);
 
-    setLoading(false);
+      if (!res.success) {
+        setError(res.error || 'Failed to reset password');
+        return;
+      }
 
-    if (err) { setError(err.message); return; }
-
-    setDone(true);
-    setTimeout(() => router.push('/auth/login'), 3000);
+      setDone(true);
+      setTimeout(() => router.push('/auth/login'), 2500);
+    } catch (err: unknown) {
+      setLoading(false);
+      setError(err instanceof Error ? err.message : 'An error occurred while resetting your password');
+    }
   }
 
   if (done) {
     return (
       <div className="w-full max-w-md mx-auto">
-        <div className="bg-zcard rounded-xl shadow-z p-8 text-center">
-          <div className="w-12 h-12 rounded-full bg-zgreen/10 flex items-center justify-center mx-auto mb-3">
-            <Check size={24} className="text-zgreen" />
+        <div className="bg-zcard rounded-xl shadow-z p-8 text-center border border-zborder">
+          <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mx-auto mb-3">
+            <Check size={24} className="text-emerald-500" />
           </div>
-          <h1 className="text-xl font-bold text-ztext mb-1">Password reset!</h1>
+          <h1 className="text-xl font-bold text-ztext mb-1">Password reset successful!</h1>
           <p className="text-sm text-ztext-light mb-4">Your password has been updated. Redirecting to sign in...</p>
         </div>
       </div>
@@ -103,9 +91,11 @@ export default function ResetPasswordForm() {
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <div className="bg-zcard rounded-xl shadow-z p-8">
+      <div className="bg-zcard rounded-xl shadow-z p-8 border border-zborder">
         <h1 className="text-xl font-bold text-ztext mb-1">Set new password</h1>
-        <p className="text-ztext-light text-sm mb-6">Enter your new password below.</p>
+        <p className="text-ztext-light text-sm mb-6">
+          {email ? `Enter a new password for ${email}.` : 'Enter your new password below.'}
+        </p>
 
         {!ready && !error && (
           <div className="flex items-center justify-center gap-2 py-8">
@@ -117,7 +107,11 @@ export default function ResetPasswordForm() {
         {error && (
           <div className="text-center py-4">
             <p className="text-sm text-zred mb-4">{error}</p>
-            <button onClick={() => router.push('/auth/login')} className="text-sm text-zred hover:underline font-semibold">
+            <button
+              type="button"
+              onClick={() => router.push('/auth/login')}
+              className="text-sm text-zred hover:underline font-semibold"
+            >
               Back to sign in
             </button>
           </div>
@@ -126,7 +120,9 @@ export default function ResetPasswordForm() {
         {ready && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="new-password" className="block text-sm font-medium text-ztext mb-1.5">New password</label>
+              <label htmlFor="new-password" className="block text-sm font-medium text-ztext mb-1.5">
+                New password
+              </label>
               <input
                 id="new-password"
                 type="password"
@@ -139,10 +135,29 @@ export default function ResetPasswordForm() {
                 autoFocus
               />
             </div>
+            <div>
+              <label htmlFor="confirm-password" className="block text-sm font-medium text-ztext mb-1.5">
+                Confirm new password
+              </label>
+              <input
+                id="confirm-password"
+                type="password"
+                className="input-z w-full"
+                placeholder="Re-enter your new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={6}
+              />
+            </div>
             {error && <p className="text-sm text-zred">{error}</p>}
-            <button type="submit" className="button-z button-z-primary w-full h-12 text-sm flex items-center justify-center gap-2" disabled={loading}>
+            <button
+              type="submit"
+              className="button-z button-z-primary w-full h-12 text-sm flex items-center justify-center gap-2"
+              disabled={loading}
+            >
               {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-              {loading ? 'Resetting...' : 'Reset password'}
+              {loading ? 'Resetting password...' : 'Reset password'}
             </button>
           </form>
         )}

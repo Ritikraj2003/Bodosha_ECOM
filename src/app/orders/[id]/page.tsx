@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, MapPin, Clock, Loader2, ShoppingBag, XCircle, Timer, Bike, KeyRound, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, Loader2, ShoppingBag, XCircle, Timer, Bike, KeyRound, BadgeCheck, Wallet, CreditCard } from 'lucide-react';
 import HamsterLoader from '@/components/ui/HamsterLoader';
 import Link from 'next/link';
 import { getUserOrder, cancelUserOrder } from '@/features/orders/actions/customer';
@@ -40,6 +40,7 @@ export default function OrderDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [showCancelInput, setShowCancelInput] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [refundChoice, setRefundChoice] = useState<'wallet' | 'original'>('wallet');
   const [remaining, setRemaining] = useState(0);
   const [deliveryInfo, setDeliveryInfo] = useState<DeliveryInfo | null>(null);
   const [showOtp, setShowOtp] = useState(false);
@@ -94,9 +95,15 @@ export default function OrderDetailPage() {
   async function handleCancel() {
     if (!order || cancelling) return;
     setCancelling(true);
-    const res = await cancelUserOrder(order.id, cancelReason);
+    const res = await cancelUserOrder(order.id, cancelReason, refundChoice);
     if (res.success) {
-      showToast('Order cancelled');
+      showToast(
+        res.refunded
+          ? res.refundTarget === 'wallet'
+            ? `Order cancelled. ₹${order.total} refunded to wallet!`
+            : `Order cancelled. Refund initiated to original source.`
+          : 'Order cancelled'
+      );
       setOrder({ ...order, status: 'cancelled', cancellation_reason: cancelReason || null });
       setShowCancelInput(false);
     } else {
@@ -141,7 +148,9 @@ export default function OrderDetailPage() {
             <p className="text-xs text-ztext-light mt-0.5">{order.tracking_code}</p>
           </div>
           <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-green-500/15 text-green-500">
-            {order.status === 'pending' ? 'Placed' : order.status.charAt(0).toUpperCase() + order.status.slice(1).replace(/_/g, ' ')}
+            {order.status === 'pending' || order.status === 'placed'
+              ? 'Placed'
+              : (order.status ? order.status.charAt(0).toUpperCase() + order.status.slice(1).replace(/_/g, ' ') : 'Placed')}
           </span>
         </div>
 
@@ -175,7 +184,7 @@ export default function OrderDetailPage() {
             <div className="flex justify-between text-ztext-light"><span>Payment</span><span className="font-medium text-ztext capitalize">{order.payment_method ?? '-'}</span></div>
             <div className="flex justify-between text-ztext-light"><span>Status</span>
               <span className={`font-medium ${order.payment_status === 'confirmed' ? 'text-green-500' : order.payment_status === 'failed' ? 'text-red-500' : 'text-yellow-500'}`}>
-                {order.payment_status.charAt(0).toUpperCase() + order.payment_status.slice(1)}
+                {order.payment_status ? (order.payment_status.charAt(0).toUpperCase() + order.payment_status.slice(1)) : 'Pending'}
               </span>
             </div>
           </div>
@@ -212,7 +221,7 @@ export default function OrderDetailPage() {
                   </span>
                 </div>
               )}
-              {deliveryInfo.assignment && (
+              {deliveryInfo.assignment?.status && (
                 <div className="flex justify-between text-ztext-light">
                   <span>Status</span>
                   <span className="font-medium text-ztext capitalize">{deliveryInfo.assignment.status.replace(/_/g, ' ')}</span>
@@ -270,7 +279,7 @@ export default function OrderDetailPage() {
 
         {timeline.length > 0 && (
         <div className="bg-zcard rounded-xl border border-zborder p-5 mt-4">
-          {(order.status === 'pending' || order.status === 'accepted') && (
+          {(order.status === 'pending' || order.status === 'accepted' || order.status === 'placed') && (
             <div className="flex items-center gap-2 text-sm mb-4 pb-4 border-b border-zborder">
               <Timer size={16} className="text-zred shrink-0" />
               <div>
@@ -305,7 +314,7 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {(order.status === 'pending' || order.status === 'accepted') && remaining > 0 && !showCancelInput && (
+        {(order.status === 'pending' || order.status === 'accepted' || order.status === 'placed') && remaining > 0 && !showCancelInput && (
           <button onClick={() => setShowCancelInput(true)} className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-red-500/30 text-sm font-medium text-red-400 hover:bg-red-500/5 transition-colors">
             <XCircle size={16} /> Cancel order
           </button>
@@ -313,7 +322,56 @@ export default function OrderDetailPage() {
 
         {showCancelInput && (
           <div className="mt-4 bg-zcard rounded-xl border border-red-500/30 p-4">
-            <p className="text-xs font-semibold text-ztext mb-2">Reason for cancellation (optional)</p>
+            <p className="text-xs font-semibold text-ztext mb-2">Cancel Order Confirmation</p>
+
+            {(order.payment_method === 'razorpay' || order.payment_method === 'upi') && (
+              <div className="space-y-2 mb-3">
+                <label className="block text-xs font-bold text-ztext">
+                  Choose where to receive your refund:
+                </label>
+                <label
+                  onClick={() => setRefundChoice('wallet')}
+                  className={`p-2.5 rounded-xl border flex items-center gap-2.5 cursor-pointer text-xs ${
+                    refundChoice === 'wallet' ? 'border-zred bg-zred/5 font-semibold' : 'border-zborder bg-zsurface'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="detailRefundDest"
+                    checked={refundChoice === 'wallet'}
+                    onChange={() => setRefundChoice('wallet')}
+                    className="accent-zred"
+                  />
+                  <Wallet size={14} className="text-emerald-500" />
+                  <span>Bodosa Wallet (Instant refund of ₹{order.total})</span>
+                </label>
+                <label
+                  onClick={() => setRefundChoice('original')}
+                  className={`p-2.5 rounded-xl border flex items-center gap-2.5 cursor-pointer text-xs ${
+                    refundChoice === 'original' ? 'border-zred bg-zred/5 font-semibold' : 'border-zborder bg-zsurface'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="detailRefundDest"
+                    checked={refundChoice === 'original'}
+                    onChange={() => setRefundChoice('original')}
+                    className="accent-zred"
+                  />
+                  <CreditCard size={14} className="text-blue-500" />
+                  <span>Original Payment Source (via Razorpay, 3–5 days)</span>
+                </label>
+              </div>
+            )}
+
+            {order.payment_method === 'wallet' && (
+              <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium mb-3 flex items-center gap-2">
+                <Wallet size={14} />
+                <span>₹{order.total} will be instantly refunded to your Bodosa Wallet balance.</span>
+              </div>
+            )}
+
+            <p className="text-xs font-semibold text-ztext mb-1.5">Reason for cancellation (optional)</p>
             <input
               value={cancelReason}
               onChange={(e) => setCancelReason(e.target.value)}

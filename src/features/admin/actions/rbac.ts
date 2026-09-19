@@ -55,6 +55,7 @@ export async function getRolesWithPermissions(): Promise<{ success: boolean; dat
         COALESCE(array_agg(rp.permission_id) FILTER (WHERE rp.permission_id IS NOT NULL), '{}') AS permission_ids
       FROM public.roles r
       LEFT JOIN public.role_permissions rp ON rp.role_id = r.id
+      WHERE r.slug != 'student'
       GROUP BY r.id, r.name, r.slug, r.description, r.is_system, r.created_at
       ORDER BY r.is_system DESC, r.name ASC;
     `);

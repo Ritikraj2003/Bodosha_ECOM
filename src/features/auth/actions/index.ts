@@ -399,14 +399,9 @@ export async function createUserAccount(input: {
 }
 
 import { sendPasswordResetLinkEmail } from '@/lib/email';
+import { createPasswordResetToken, verifyPasswordResetToken } from '@/lib/session';
 
 async function resolveSiteUrl(): Promise<string> {
-  if (process.env.NEXT_PUBLIC_SITE_URL) {
-    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/+$/, '');
-  }
-  if (process.env.NEXT_PUBLIC_APP_URL) {
-    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
-  }
   try {
     const { headers } = await import('next/headers');
     const headerList = await headers();
@@ -418,7 +413,13 @@ async function resolveSiteUrl(): Promise<string> {
   } catch {
     // headers() might not be available in all execution contexts
   }
-  return 'https://www.dilipda.in';
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, '');
+  }
+  if (process.env.NEXT_PUBLIC_SITE_URL) {
+    return process.env.NEXT_PUBLIC_SITE_URL.replace(/\/+$/, '');
+  }
+  return 'http://localhost:3000';
 }
 
 export async function sendPasswordResetEmail(email: string) {
@@ -428,68 +429,80 @@ export async function sendPasswordResetEmail(email: string) {
       return { error: 'Please enter a valid email address' };
     }
 
-    // Check if account exists in database
-    const serviceClient = createServiceClient();
-    if (serviceClient) {
-      const { data: profile } = await serviceClient
-        .from('profiles')
-        .select('id')
-        .ilike('email', normalizedEmail)
-        .maybeSingle();
+    // 1. Check if user exists in database (public.users)
+    const userRes = await query<{ id: string; email: string; full_name: string }>(
+      `SELECT id, email, full_name FROM public.users WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false LIMIT 1`,
+      [normalizedEmail]
+    );
 
-      if (!profile) {
-        return { error: 'No account found with this email address. Please sign up first.' };
-      }
+    if (userRes.rows.length === 0) {
+      return { error: 'No account found with this email address. Please sign up first.' };
     }
 
+    const user = userRes.rows[0];
     const siteUrl = await resolveSiteUrl();
-    const redirectTo = `${siteUrl}/auth/reset-password`;
+    const token = await createPasswordResetToken(user.email, user.id);
+    const resetLink = `${siteUrl}/auth/reset-password?token=${encodeURIComponent(token)}`;
 
-    // 1. Try sending via Supabase Auth client directly
-    const supabase = await createServerSupabaseClient();
-    if (supabase) {
-      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-        redirectTo,
-      });
-
-      if (!error) {
-        return { error: null };
-      }
-
-      // If Supabase rate limit is hit, try fallback to Admin generateLink + Custom SMTP
-      if (error.message?.toLowerCase().includes('rate limit')) {
-        try {
-          const admin = createAdminClient();
-          const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-            type: 'recovery',
-            email: normalizedEmail,
-            options: { redirectTo },
-          });
-
-          if (!linkError && linkData?.properties?.action_link) {
-            const sent = await sendPasswordResetLinkEmail(normalizedEmail, linkData.properties.action_link);
-            if (sent) {
-              return { error: null };
-            }
-          }
-        } catch (adminErr) {
-          console.warn('generateLink fallback error:', adminErr);
-        }
-
-        return {
-          error: 'Email rate limit reached by Supabase. Please wait a few minutes before requesting another link.',
-        };
-      }
-
-      return { error: error.message };
+    // 2. Send email via SMTP (with dev fallback logger)
+    const sent = await sendPasswordResetLinkEmail(user.email, resetLink);
+    if (!sent) {
+      return { error: 'Failed to send password reset email. Please try again later.' };
     }
 
-    return { error: 'Authentication service unavailable. Please try again later.' };
+    return { error: null };
   } catch (err: unknown) {
     console.error('sendPasswordResetEmail action exception:', err);
     return {
       error: err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.',
     };
+  }
+}
+
+export async function verifyResetTokenAction(token: string): Promise<{ valid: boolean; email?: string; error?: string }> {
+  if (!token) return { valid: false, error: 'Reset token is required.' };
+  const payload = await verifyPasswordResetToken(token);
+  if (!payload) {
+    return { valid: false, error: 'Invalid or expired reset link. Please request a new one.' };
+  }
+  return { valid: true, email: payload.email };
+}
+
+export async function resetPasswordWithToken(token: string, newPassword: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!token) return { success: false, error: 'Reset token is required.' };
+    if (!newPassword || newPassword.length < 6) {
+      return { success: false, error: 'Password must be at least 6 characters.' };
+    }
+
+    const payload = await verifyPasswordResetToken(token);
+    if (!payload) {
+      return { success: false, error: 'Invalid or expired reset link. Please request a new one.' };
+    }
+
+    // Update password_hash in public.users using pgcrypto crypt
+    const res = await query(
+      `
+      UPDATE public.users
+      SET password_hash = crypt($1, gen_salt('bf')), updated_at = NOW()
+      WHERE id = $2 AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false
+      RETURNING id, email
+      `,
+      [newPassword, payload.userId]
+    );
+
+    if (res.rows.length === 0) {
+      return { success: false, error: 'User not found or account is deactivated.' };
+    }
+
+    try {
+      await query(`UPDATE public.profiles SET updated_at = NOW() WHERE id = $1`, [payload.userId]);
+    } catch {}
+
+    return { success: true };
+  } catch (err: unknown) {
+    console.error('resetPasswordWithToken error:', err);
+    return { success: false, error: 'Failed to reset password. Please try again.' };
   }
 }
 

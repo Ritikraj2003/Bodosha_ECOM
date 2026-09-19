@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/infrastructure/supabase/service';
+import { query } from '@/infrastructure/db';
 import type { DeliveryAssignment, DeliveryPartnerRow } from '../types';
 import type { Order } from '@/features/orders/types';
 
@@ -14,14 +15,15 @@ function sanitizeAssignment<T extends { otp_value?: unknown; otp_hash?: unknown 
 
 export const deliveryRepository = {
   async getPartnerByUserId(userId: string) {
-    const supabase = createServiceClient();
-    if (!supabase) return null;
-    const { data } = await supabase
-      .from('delivery_partners')
-      .select('*')
-      .eq('id', userId)
-      .maybeSingle();
-    return data as DeliveryPartnerRow | null;
+    try {
+      const res = await query<DeliveryPartnerRow>(
+        `SELECT * FROM public.delivery_partners WHERE id = $1 LIMIT 1`,
+        [userId]
+      );
+      return res.rows[0] || null;
+    } catch {
+      return null;
+    }
   },
 
   async getActiveAssignments(partnerId: string) {
@@ -115,24 +117,26 @@ export const deliveryRepository = {
   },
 
   async getAssignmentByOrderId(orderId: string) {
-    const supabase = createServiceClient();
-    if (!supabase) return null;
-    const { data } = await supabase
-      .from('delivery_assignments')
-      .select('*')
-      .eq('order_id', orderId)
-      .maybeSingle();
-    return data as DeliveryAssignment | null;
+    try {
+      const res = await query<DeliveryAssignment>(
+        `SELECT * FROM public.delivery_assignments WHERE order_id = $1 LIMIT 1`,
+        [orderId]
+      );
+      return res.rows[0] || null;
+    } catch {
+      return null;
+    }
   },
 
   async getOrderByTrackingCode(trackingCode: string) {
-    const supabase = createServiceClient();
-    if (!supabase) return null;
-    const { data } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('tracking_code', trackingCode)
-      .maybeSingle();
-    return data as Order | null;
+    try {
+      const res = await query<Order>(
+        `SELECT * FROM public.orders WHERE tracking_code = $1 LIMIT 1`,
+        [trackingCode]
+      );
+      return res.rows[0] || null;
+    } catch {
+      return null;
+    }
   },
 };

@@ -945,27 +945,33 @@ export async function getUserOrders(page = 1, pageSize = 10) {
 /**
  * Process automatic refund for an order if and ONLY if it was paid via Wallet or Razorpay/UPI.
  * Cash on Delivery (COD) and unpaid orders are strictly excluded from refunds.
+ * For Razorpay/UPI, customers can choose whether the refund goes to their Bodosa Wallet (instant) or back to Original Source.
  */
-export async function processOrderRefundIfEligible(order: {
-  id: string;
-  user_id?: string | null;
-  payment_method?: string | null;
-  payment_status?: string | null;
-  total: number;
-  tracking_code: string;
-}, reason = 'Order cancelled'): Promise<{ refunded: boolean; method: string | null }> {
+export async function processOrderRefundIfEligible(
+  order: {
+    id: string;
+    user_id?: string | null;
+    payment_method?: string | null;
+    payment_status?: string | null;
+    total: number;
+    tracking_code: string;
+  },
+  reason = 'Order cancelled',
+  refundDestination?: 'wallet' | 'original'
+): Promise<{ refunded: boolean; method: string | null; refundTarget: 'wallet' | 'original' | null }> {
   if (!order || order.payment_status !== 'confirmed') {
-    return { refunded: false, method: order?.payment_method ?? null };
+    return { refunded: false, method: order?.payment_method ?? null, refundTarget: null };
   }
 
   // Strictly ignore COD - COD NEVER issues refunds
   if (order.payment_method === 'cod') {
-    return { refunded: false, method: 'cod' };
+    return { refunded: false, method: 'cod', refundTarget: null };
   }
 
   let refunded = false;
+  let refundTarget: 'wallet' | 'original' | null = null;
 
-  // 1. Wallet Refund: ONLY if paid via Wallet
+  // 1. Wallet Payment: ALWAYS refund directly back to customer's Wallet
   if (order.payment_method === 'wallet' && order.user_id) {
     try {
       const { refundWalletOrder } = await import('@/features/wallet/actions');
@@ -976,35 +982,55 @@ export async function processOrderRefundIfEligible(order: {
         reason
       );
       refunded = true;
+      refundTarget = 'wallet';
     } catch (err) {
       console.error('Wallet automatic refund error:', err);
     }
   }
 
-  // 2. Razorpay / Online UPI Refund: ONLY if paid via Razorpay/UPI
+  // 2. Razorpay / Online UPI Payment: Check customer preference
   if (order.payment_method === 'razorpay' || order.payment_method === 'upi') {
-    try {
-      const { refundRazorpayPayment } = await import('@/features/payments/actions');
-      const payRes = await query<{ id: string; gateway_payment_id: string }>(
-        `SELECT id, gateway_payment_id FROM public.payments WHERE order_id = $1 LIMIT 1`,
-        [order.id]
-      );
-      const payment = payRes.rows[0];
-
-      if (payment?.gateway_payment_id) {
-        await refundRazorpayPayment(
-          payment.gateway_payment_id,
+    if (refundDestination === 'wallet' && order.user_id) {
+      // Customer chose to refund into Bodosa Wallet
+      try {
+        const { refundWalletOrder } = await import('@/features/wallet/actions');
+        await refundWalletOrder(
+          order.user_id,
           Number(order.total) || 0,
-          {
-            order_id: order.id,
-            tracking_code: order.tracking_code,
-            reason,
-          }
+          order.tracking_code,
+          `Online payment refunded to wallet (${reason})`
         );
         refunded = true;
+        refundTarget = 'wallet';
+      } catch (err) {
+        console.error('Refund to wallet error for online payment:', err);
       }
-    } catch (err) {
-      console.error('Razorpay automatic refund error:', err);
+    } else {
+      // Default / chosen Original Source: Refund via Razorpay gateway
+      try {
+        const { refundRazorpayPayment } = await import('@/features/payments/actions');
+        const payRes = await query<{ id: string; gateway_payment_id: string }>(
+          `SELECT id, gateway_payment_id FROM public.payments WHERE order_id = $1 LIMIT 1`,
+          [order.id]
+        );
+        const payment = payRes.rows[0];
+
+        if (payment?.gateway_payment_id) {
+          await refundRazorpayPayment(
+            payment.gateway_payment_id,
+            Number(order.total) || 0,
+            {
+              order_id: order.id,
+              tracking_code: order.tracking_code,
+              reason,
+            }
+          );
+          refunded = true;
+          refundTarget = 'original';
+        }
+      } catch (err) {
+        console.error('Razorpay automatic refund error:', err);
+      }
     }
   }
 
@@ -1020,46 +1046,68 @@ export async function processOrderRefundIfEligible(order: {
     console.error('Error updating payment status to refunded:', pErr);
   }
 
-  return { refunded, method: order.payment_method ?? null };
+  return { refunded, method: order.payment_method ?? null, refundTarget };
 }
 
-export async function cancelUserOrder(orderId: string, reason: string) {
+export async function cancelUserOrder(
+  orderId: string,
+  reason: string,
+  refundDestination?: 'wallet' | 'original'
+): Promise<{
+  success: boolean;
+  error?: string;
+  refunded?: boolean;
+  refundTarget?: 'wallet' | 'original' | null;
+}> {
   try {
     const { user } = await getServerSession();
     if (!user) return { success: false, error: 'Not authenticated' };
 
     const orderRes = await query<any>(
-      `SELECT id, user_id, status, status_history, created_at, payment_method, payment_status, total, tracking_code 
+      `SELECT id, user_id, customer_email, customer_phone, status, status_history, created_at, payment_method, payment_status, COALESCE(total, total_amount, 0) AS total, tracking_code 
        FROM public.orders WHERE id = $1 LIMIT 1`,
       [orderId]
     );
     const order = orderRes.rows[0];
 
     if (!order) return { success: false, error: 'Order not found' };
-    if (order.user_id !== user.id && user.role !== 'admin' && user.role !== 'superadmin') {
+    const isStaffOrAdmin = user.role ? ['admin', 'superadmin', 'manager', 'staff', 'delivery'].includes(user.role) : false;
+    const isOwner = order.user_id === user.id || order.customer_email === user.email || order.customer_phone === user.phone;
+    if (!isStaffOrAdmin && !isOwner) {
       return { success: false, error: 'Unauthorized' };
     }
-    if (order.status !== 'pending' && order.status !== 'accepted') {
+    const cancellableStatuses = ['placed', 'pending', 'accepted'];
+    if (!cancellableStatuses.includes(order.status)) {
       return { success: false, error: 'Order can no longer be cancelled' };
     }
 
     const elapsed = Date.now() - new Date(order.created_at).getTime();
+    // Dynamically fetch from General Settings
     const cancellationWindowMinutes = await getNumericSetting('cancellation_window_minutes', 2);
     const cancellationWindowMs = cancellationWindowMinutes * 60_000;
-    if (elapsed > cancellationWindowMs) {
+    if (!isStaffOrAdmin && elapsed > cancellationWindowMs) {
       return { success: false, error: `Cancellation window has expired (${cancellationWindowMinutes} minute${cancellationWindowMinutes === 1 ? '' : 's'})` };
     }
 
-    const historyEntry = { status: 'cancelled', timestamp: new Date().toISOString(), note: reason || 'Cancelled by customer' };
+    const historyEntry = {
+      status: 'cancelled',
+      timestamp: new Date().toISOString(),
+      note: reason || 'Cancelled by customer',
+      refundDestination: refundDestination ?? null,
+    };
     const existingHistory = (order.status_history ?? []) as Array<Record<string, unknown>>;
     const statusHistory = [...existingHistory, historyEntry];
 
     // Process refund: ONLY for confirmed Wallet or Razorpay/UPI payments; COD never refunds
     const isCod = order.payment_method === 'cod';
     let newPaymentStatus = isCod ? 'failed' : order.payment_status;
+    let refundResult: { refunded: boolean; refundTarget: 'wallet' | 'original' | null } = {
+      refunded: false,
+      refundTarget: null,
+    };
 
     if (order.payment_status === 'confirmed' && !isCod) {
-      const refundResult = await processOrderRefundIfEligible(order, reason || 'Cancelled by customer');
+      refundResult = await processOrderRefundIfEligible(order, reason || 'Cancelled by customer', refundDestination);
       if (refundResult.refunded) {
         newPaymentStatus = 'refunded';
       }
@@ -1077,7 +1125,11 @@ export async function cancelUserOrder(orderId: string, reason: string) {
       [newPaymentStatus, reason || 'Cancelled by customer', JSON.stringify(statusHistory), orderId]
     );
 
-    return { success: true, refunded: !isCod && order.payment_status === 'confirmed' };
+    return {
+      success: true,
+      refunded: refundResult.refunded,
+      refundTarget: refundResult.refundTarget,
+    };
   } catch (err: any) {
     console.error('cancelUserOrder error:', err);
     return { success: false, error: 'Failed to cancel order' };
