@@ -6,6 +6,7 @@ import { clearSettingsCache, getOwnerEmail } from '@/lib/settings';
 import { revalidatePath } from 'next/cache';
 import { isOwnerEmail } from '@/config/auth-access';
 import type { AdminFilter, SystemSetting } from '../types';
+import type { Restaurant } from '@/features/restaurants/types';
 
 import { getAdminEmails } from '@/lib/settings';
 import { isAdminEmail } from '@/config/auth-access';
@@ -825,6 +826,129 @@ export async function deleteUser(userId: string) {
     await query('DELETE FROM public.users WHERE id = $1', [userId]);
 
     return { success: true };
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function getAdminRestaurant(): Promise<{ success: boolean; data?: Restaurant | null; error?: string }> {
+  try {
+    await authorizeAdmin();
+    const res = await query(`
+      SELECT * FROM public.restaurants
+      WHERE deleted_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT 1
+    `);
+    if (res.rows.length > 0) {
+      return { success: true, data: res.rows[0] as Restaurant };
+    }
+
+    // Fallback: If table is empty, auto-create default store record
+    const { user } = await getServerSession();
+    const ownerId = user?.id || '5c262804-b3d8-4815-a41f-2ce1cab12fa1';
+    const newRest = await query(`
+      INSERT INTO public.restaurants (
+        id, owner_id, name, slug, address_line1, city, state, postal_code, is_active, is_open
+      ) VALUES (
+        'd1111111-1111-1111-1111-111111111111',
+        $1,
+        'Bodosa Main Store',
+        'dilip-da-main',
+        'Near CIT Kokrajhar Campus',
+        'Kokrajhar',
+        'Assam',
+        '783370',
+        true,
+        true
+      )
+      ON CONFLICT (id) DO UPDATE SET is_active = true, deleted_at = NULL
+      RETURNING *;
+    `, [ownerId]);
+    return { success: true, data: newRest.rows[0] as Restaurant };
+  } catch (e) {
+    return { success: false, error: (e as Error).message, data: null };
+  }
+}
+
+export async function updateAdminRestaurant(
+  id: string,
+  updates: Partial<Restaurant>
+): Promise<{ success: boolean; data?: Restaurant | null; error?: string }> {
+  try {
+    const { user } = await authorizeAdmin();
+    const allowedKeys = [
+      'name', 'slug', 'description', 'cuisine_type', 'phone', 'email',
+      'address_line1', 'address_line2', 'city', 'state', 'postal_code',
+      'latitude', 'longitude',
+      'opening_time', 'closing_time', 'is_open', 'is_active', 'status'
+    ] as const;
+
+    const filteredUpdates: Record<string, unknown> = {};
+    for (const key of allowedKeys) {
+      if (key in updates) {
+        let val = updates[key as keyof typeof updates];
+        if (key === 'latitude' || key === 'longitude') {
+          if (val === '' || val === null || val === undefined) {
+            val = null;
+          } else {
+            const num = Number(val);
+            val = Number.isFinite(num) ? num : null;
+          }
+        }
+        filteredUpdates[key] = val;
+      }
+    }
+
+    if (Object.keys(filteredUpdates).length === 0) {
+      return { success: true };
+    }
+
+    if (filteredUpdates.name !== undefined && typeof filteredUpdates.name === 'string' && !filteredUpdates.name.trim()) {
+      return { success: false, error: 'Store name cannot be empty' };
+    }
+    if (filteredUpdates.address_line1 !== undefined && typeof filteredUpdates.address_line1 === 'string' && !filteredUpdates.address_line1.trim()) {
+      return { success: false, error: 'Address Line 1 cannot be empty' };
+    }
+
+    const setClauses: string[] = [];
+    const values: unknown[] = [id];
+    let paramIdx = 2;
+
+    for (const [key, val] of Object.entries(filteredUpdates)) {
+      setClauses.push(`${key} = $${paramIdx++}`);
+      values.push(val);
+    }
+
+    const sql = `
+      UPDATE public.restaurants
+      SET ${setClauses.join(', ')}, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
+    const res = await query(sql, values);
+
+    if (res.rows.length === 0) {
+      return { success: false, error: 'Restaurant not found' };
+    }
+
+    try {
+      await adminRepository.createAuditLog({
+        changed_by: user.id,
+        action: 'update',
+        table_name: 'restaurants',
+        record_id: id,
+        new_data: filteredUpdates,
+      });
+    } catch (auditErr) {
+      console.warn('Failed to create audit log for restaurant update:', auditErr);
+    }
+
+    clearSettingsCache();
+    revalidatePath('/dashboard/admin/settings');
+    revalidatePath('/');
+
+    return { success: true, data: res.rows[0] as Restaurant };
   } catch (e) {
     return { success: false, error: (e as Error).message };
   }
