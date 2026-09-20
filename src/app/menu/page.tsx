@@ -13,7 +13,7 @@ export default async function MenuPage() {
   return (
     <div className="page-pad">
       <div className="container-z mx-auto max-w-5xl">
-        {/* Menu hero banner */}
+        {/*  Menu hero banner */}
         <div className="relative h-[140px] sm:h-44 rounded-2xl overflow-hidden mb-4 mt-2 shadow-z border border-zborder bg-slate-900 group">
           <Image
             src="/images/Chicken Curry.jpg"
