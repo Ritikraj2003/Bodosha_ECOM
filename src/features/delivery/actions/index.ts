@@ -182,19 +182,33 @@ async function claimOrderForPickup(
 
   const now = new Date().toISOString();
 
+  // Automatically generate 6-digit OTP for customer upon pickup
+  const autoOtp = assignment?.otp_value || generateDeliveryOtp();
+  const autoOtpHash = assignment?.otp_hash || hashDeliveryOtp(autoOtp);
+  const autoOtpExpiresAt = assignment?.otp_expires_at || new Date(Date.now() + DELIVERY_OTP_TTL_MS).toISOString();
+
   // Try direct Postgres update first
   try {
     if (!assignment) {
       await query(
-        `INSERT INTO public.delivery_assignments (order_id, delivery_partner_id, status, assigned_at, qr_token_hash)
-         VALUES ($1, $2, 'assigned', $3, $4)`,
-        [order.id, user.id, now, qrTokenHash || null]
+        `INSERT INTO public.delivery_assignments (
+           order_id, delivery_partner_id, status, assigned_at, picked_up_at, qr_token_hash,
+           otp_value, otp_hash, otp_expires_at, otp_attempts
+         )
+         VALUES ($1, $2, 'picked_up', $3, $3, $4, $5, $6, $7, 0)`,
+        [order.id, user.id, now, qrTokenHash || null, autoOtp, autoOtpHash, autoOtpExpiresAt]
+      );
+    } else {
+      await query(
+        `UPDATE public.delivery_assignments 
+         SET status = 'picked_up', picked_up_at = $1,
+             otp_value = COALESCE(otp_value, $4),
+             otp_hash = COALESCE(otp_hash, $5),
+             otp_expires_at = COALESCE(otp_expires_at, $6)
+         WHERE order_id = $2 AND delivery_partner_id = $3`,
+        [now, order.id, user.id, autoOtp, autoOtpHash, autoOtpExpiresAt]
       );
     }
-    await query(
-      `UPDATE public.delivery_assignments SET status = 'picked_up', picked_up_at = $1 WHERE order_id = $2 AND delivery_partner_id = $3`,
-      [now, order.id, user.id]
-    );
     await query(
       `UPDATE public.orders SET status = 'out_for_delivery', delivery_partner_id = $1, picked_up_at = $2 WHERE id = $3`,
       [user.id, now, order.id]
@@ -203,6 +217,32 @@ async function claimOrderForPickup(
       `UPDATE public.delivery_partners SET is_online = true, is_available = false WHERE user_id = $1 OR id = $1`,
       [user.id]
     );
+
+    // Send the auto-generated OTP to the customer's email immediately
+    try {
+      let recipient = (order as any).customer_email ?? null;
+      let trCode = (order as any).tracking_code ?? null;
+      if (!recipient || !trCode) {
+        const oRes = await query<{ customer_email: string | null; user_id: string | null; tracking_code: string }>(
+          `SELECT customer_email, user_id, tracking_code FROM public.orders WHERE id = $1 LIMIT 1`,
+          [order.id]
+        );
+        if (oRes.rows[0]) {
+          recipient = oRes.rows[0].customer_email;
+          trCode = oRes.rows[0].tracking_code;
+          if (!recipient && oRes.rows[0].user_id) {
+            const uRes = await query<{ email: string }>(`SELECT email FROM public.users WHERE id = $1 LIMIT 1`, [oRes.rows[0].user_id]);
+            recipient = uRes.rows[0]?.email ?? null;
+          }
+        }
+      }
+      if (recipient && trCode) {
+        sendDeliveryOtpEmail(recipient, autoOtp, trCode).catch((e) => console.error('Auto OTP email on claim error:', e));
+      }
+    } catch (mailErr) {
+      console.error('Error sending auto OTP email on claim:', mailErr);
+    }
+
     return { success: true, data: { orderId: order.id } };
   } catch (dbErr) {
     console.error('Postgres claimOrderForPickup error:', dbErr);

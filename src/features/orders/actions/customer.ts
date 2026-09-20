@@ -884,6 +884,15 @@ export async function getUserOrders(page = 1, pageSize = 10) {
         COALESCE(o.subtotal, 0) AS subtotal,
         COALESCE(o.delivery_fee, 0) AS delivery_fee,
         COALESCE(o.tax_amount, 0) AS tax_amount,
+        (
+          SELECT da.otp_value 
+          FROM public.delivery_assignments da 
+          WHERE da.order_id = o.id 
+            AND da.status IN ('assigned', 'picked_up', 'in_transit')
+            AND da.otp_verified_at IS NULL
+            AND o.status NOT IN ('delivered', 'completed', 'cancelled')
+          LIMIT 1
+        ) AS delivery_otp,
         COALESCE(
           (
             SELECT json_agg(json_build_object(
@@ -917,6 +926,7 @@ export async function getUserOrders(page = 1, pageSize = 10) {
       delivery_fee: Number(row.delivery_fee) || 0,
       tax_amount: Number(row.tax_amount) || 0,
       total: Number(row.total) || 0,
+      delivery_otp: (row.status === 'delivered' || row.status === 'completed' || row.status === 'cancelled') ? null : (row.delivery_otp ?? null),
       delivery_address: row.delivery_address || row.delivery_address_json || null,
       order_items: (row.order_items || []).map((item: any) => ({
         ...item,
@@ -1147,6 +1157,15 @@ export async function getUserOrder(orderId: string) {
         COALESCE(o.subtotal, 0) AS subtotal,
         COALESCE(o.delivery_fee, 0) AS delivery_fee,
         COALESCE(o.tax_amount, 0) AS tax_amount,
+        (
+          SELECT da.otp_value 
+          FROM public.delivery_assignments da 
+          WHERE da.order_id = o.id 
+            AND da.status IN ('assigned', 'picked_up', 'in_transit')
+            AND da.otp_verified_at IS NULL
+            AND o.status NOT IN ('delivered', 'completed', 'cancelled')
+          LIMIT 1
+        ) AS delivery_otp,
         COALESCE(
           (
             SELECT json_agg(json_build_object(
@@ -1188,6 +1207,7 @@ export async function getUserOrder(orderId: string) {
       delivery_fee: Number(row.delivery_fee) || 0,
       tax_amount: Number(row.tax_amount) || 0,
       total: Number(row.total) || 0,
+      delivery_otp: (row.status === 'delivered' || row.status === 'completed' || row.status === 'cancelled') ? null : (row.delivery_otp ?? null),
       delivery_address: row.delivery_address || row.delivery_address_json || null,
       order_items: (row.order_items || []).map((item: any) => ({
         ...item,

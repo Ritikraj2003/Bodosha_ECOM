@@ -81,6 +81,7 @@ export interface Order {
   created_at: string;
   updated_at: string;
   order_items?: OrderItem[];
+  delivery_otp?: string | null;
 }
 
 export interface OrdersFilter {
