@@ -105,22 +105,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [pathname]);
 
   useEffect(() => {
+    if (authUser) {
+      setAdminName(authUser.fullName || 'Admin');
+      setAdminRole(authUser.role || '');
+      setPermissions((authUser as any).permissions || []);
+      setIsLoaded(true);
+      return;
+    }
+
     let mounted = true;
     (async () => {
       try {
-        const res = await fetch('/api/auth/session', { cache: 'no-store' });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.user && mounted) {
-            setAdminName(data.user.fullName || 'Admin');
-            const role = data.user.role || '';
-            setAdminRole(role);
-            setPermissions(data.user.permissions || []);
-            setIsLoaded(true);
-            return;
-          }
-        }
-
         const { user } = await getServerSession();
         if (user && mounted) {
           setAdminName(user.fullName);
@@ -134,7 +129,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [authUser]);
 
   const isActive = useCallback((href: string) => {
     if (href === '/dashboard/admin') return pathname === '/dashboard/admin';
@@ -315,15 +310,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Bell size={18} className="text-ztext-lighter" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-zred rounded-full" />
               </button>
-              <div className="flex items-center gap-2.5 pl-3 border-l border-zborder">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-zred to-red-400 flex items-center justify-center text-white text-xs font-bold">
+              <Link
+                href="/admin/profile"
+                className="flex items-center gap-2.5 pl-3 border-l border-zborder hover:opacity-80 transition-opacity cursor-pointer"
+                title="View Profile"
+              >
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-zred to-red-400 flex items-center justify-center text-white text-xs font-bold ring-2 ring-transparent hover:ring-zred/40 transition-all">
                   {adminName.charAt(0).toUpperCase()}
                 </div>
                 <div className="hidden sm:block">
                   <p className="text-sm font-medium text-ztext leading-tight">{adminName}</p>
                   <p className="text-[11px] text-ztext-lighter leading-tight capitalize">{adminRole ? adminRole.replace(/_/g, ' ') : 'Staff'}</p>
                 </div>
-              </div>
+              </Link>
             </div>
           </div>
         </header>

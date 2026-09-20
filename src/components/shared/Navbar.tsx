@@ -1,20 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { UserRound, Home, UtensilsCrossed, ClipboardList, Heart, ChevronLeft, LayoutDashboard, ShoppingBag } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { UserRound, Home, UtensilsCrossed, ClipboardList, ChevronLeft, LayoutDashboard, ShoppingBag, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/store';
 import { useCartStore } from '@/features/cart/store';
-import { useRouter } from 'next/navigation';
 import ThemeToggle from '@/components/shared/ThemeToggle';
-
-const customerLinks = [
-  { label: 'Home', href: '/', icon: Home },
-  { label: 'Menu', href: '/menu', icon: UtensilsCrossed },
-  { label: 'Cart', href: '/cart', icon: ShoppingBag },
-  { label: 'Orders', href: '/orders', icon: ClipboardList },
-  { label: 'Profile', href: '/profile', icon: UserRound },
-];
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -22,22 +13,49 @@ export default function Navbar() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isLoading = useAuthStore((s) => s.isLoading);
   const user = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
   const items = useCartStore((s) => s.items);
   const cartCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
-  const isStaff = user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'owner';
-  const staffDashboard = user?.role === 'owner' ? '/dashboard/owner' : '/dashboard/admin';
-  const navLinks = isStaff
-    ? [
-        { label: 'Profile', href: '/profile', icon: UserRound },
-        { label: 'Dashboard', href: staffDashboard, icon: LayoutDashboard },
-      ]
-    : customerLinks;
+  const role = user?.role?.toLowerCase() || '';
+  const isStaff = ['admin', 'super_admin', 'owner', 'employee', 'staff', 'manager'].includes(role);
+
+  // Dynamic Navigation Links based on authentication & role
+  let navLinks: Array<{ label: string; href: string; icon: React.ElementType }> = [];
+
+  if (!isAuthenticated) {
+    // Logged Out visitors only see public browsing links
+    navLinks = [
+      { label: 'Home', href: '/', icon: Home },
+      { label: 'Menu', href: '/menu', icon: UtensilsCrossed },
+    ];
+  } else if (isStaff) {
+    // Admin / Staff portal links
+    navLinks = [
+      { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
+      { label: 'Admin Profile', href: '/admin/profile', icon: UserRound },
+    ];
+  } else {
+    // Customer / Student links
+    navLinks = [
+      { label: 'Home', href: '/home/student', icon: Home },
+      { label: 'Menu', href: '/student/menu', icon: UtensilsCrossed },
+      { label: 'Cart', href: '/student/cart', icon: ShoppingBag },
+      { label: 'Orders', href: '/student/orders', icon: ClipboardList },
+      { label: 'Profile', href: '/student/profile', icon: UserRound },
+    ];
+  }
 
   function isActive(href: string): boolean {
-    if (href === '/') return pathname === '/';
+    if (href === '/home/student') return pathname === '/home/student' || pathname === '/' || pathname === '/home';
+    if (href === '/') return pathname === '/' || pathname === '/browser';
     return pathname.startsWith(href);
   }
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.push('/auth/login');
+  };
 
   return (
     <header className="nav-z relative z-50">
@@ -48,7 +66,7 @@ export default function Navbar() {
             <ChevronLeft size={20} /> Back
           </button>
         ) : (
-          <Link href="/" className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
+          <Link href={isStaff ? '/admin/dashboard' : (isAuthenticated ? '/home/student' : '/')} className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
             <span className="text-xl sm:text-2xl font-semibold tracking-tight">
               <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
             </span>
@@ -78,39 +96,57 @@ export default function Navbar() {
         </nav>
 
         {/* Desktop right icons */}
-        <div className="hidden sm:flex items-center gap-1">
+        <div className="hidden sm:flex items-center gap-1.5 ml-2">
           <ThemeToggle className="icon-button-z" />
-          <Link href="/cart" className="icon-button-z relative text-ztext hover:text-zred transition-colors" aria-label="Cart">
-            <ShoppingBag size={20} />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-zred text-white text-[10px] font-bold flex items-center justify-center">
-                {cartCount}
-              </span>
-            )}
-          </Link>
+
+          {/* Cart Icon: Only shown for authenticated customers */}
+          {isAuthenticated && !isStaff && (
+            <Link href="/student/cart" className="icon-button-z relative text-ztext hover:text-zred transition-colors" aria-label="Cart">
+              <ShoppingBag size={20} />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-zred text-white text-[10px] font-bold flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </Link>
+          )}
+
           {isLoading ? (
             <div className="w-8 h-8 rounded-full bg-zgray animate-pulse" />
           ) : !isAuthenticated ? (
             <Link href="/auth/login" className="button-z button-z-primary text-sm px-4">
               Sign in
             </Link>
-          ) : null}
+          ) : (
+            <button
+              onClick={handleSignOut}
+              className="button-z button-z-ghost text-xs text-ztext-light hover:text-zred flex items-center gap-1 px-2.5 py-1.5 ml-1"
+              title="Sign out"
+            >
+              <LogOut size={14} />
+              <span>Sign out</span>
+            </button>
+          )}
         </div>
 
-        {/* Mobile: logo + theme + favorites + cart (bottom nav also handles navigation) */}
-        <div className="flex items-center gap-1 sm:hidden ml-auto">
+        {/* Mobile: logo + theme + (cart if logged in) + Sign In button */}
+        <div className="flex items-center gap-1.5 sm:hidden ml-auto">
           <ThemeToggle className="icon-button-z" />
-          <Link href="/cart" className="icon-button-z relative text-ztext hover:text-zred transition-colors" aria-label="Cart">
-            <ShoppingBag size={20} />
-            {cartCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-zred text-white text-[10px] font-bold flex items-center justify-center">
-                {cartCount}
-              </span>
-            )}
-          </Link>
-          <Link href="/favorites" prefetch={false} className="icon-button-z text-zred" aria-label="Favorites">
-            <Heart size={20} className="fill-zred/20" />
-          </Link>
+          {isAuthenticated && !isStaff && (
+            <Link href="/student/cart" className="icon-button-z relative text-ztext hover:text-zred transition-colors" aria-label="Cart">
+              <ShoppingBag size={20} />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-zred text-white text-[10px] font-bold flex items-center justify-center">
+                  {cartCount}
+                </span>
+              )}
+            </Link>
+          )}
+          {!isAuthenticated && !isLoading && (
+            <Link href="/auth/login" className="button-z button-z-primary text-xs px-3 py-1.5">
+              Sign in
+            </Link>
+          )}
         </div>
       </div>
     </header>

@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { AuthUser, SessionState } from './types';
 import { authService } from './services/auth-service';
 
@@ -13,39 +14,70 @@ interface AuthStore extends SessionState {
 
 let initPromise: Promise<void> | null = null;
 
-export const useAuthStore = create<AuthStore>((set) => ({
-  user: null,
-  isLoading: true,
-  isAuthenticated: false,
+const dummyStorage = {
+  getItem: () => null,
+  setItem: () => {},
+  removeItem: () => {},
+};
 
-  setUser: (user) => set({ user, isAuthenticated: !!user, isLoading: false }),
+export const useAuthStore = create<AuthStore>()(
+  persist(
+    (set, get) => ({
+      user: null,
+      isLoading: true,
+      isAuthenticated: false,
 
-  initialize: async () => {
-    if (initPromise) return initPromise;
-    initPromise = (async () => {
-      try {
-        const { user } = await authService.getSession();
-        set({ user, isAuthenticated: !!user, isLoading: false });
-      } catch {
+      setUser: (user) => set({ user, isAuthenticated: !!user, isLoading: false }),
+
+      initialize: async () => {
+        const current = get();
+        if (current.user) {
+          set({ isLoading: false, isAuthenticated: true });
+          return;
+        }
+
+        if (initPromise) return initPromise;
+        initPromise = (async () => {
+          try {
+            const { user } = await authService.getSession();
+            set({ user, isAuthenticated: !!user, isLoading: false });
+          } catch {
+            set({ user: null, isAuthenticated: false, isLoading: false });
+          } finally {
+            initPromise = null;
+          }
+        })();
+        return initPromise;
+      },
+
+      signOut: async () => {
+        await authService.signOut();
         set({ user: null, isAuthenticated: false, isLoading: false });
-      } finally {
-        initPromise = null;
-      }
-    })();
-    return initPromise;
-  },
+        if (typeof window !== 'undefined') {
+          try {
+            window.sessionStorage.removeItem('bodosa-auth');
+          } catch {}
+        }
+      },
 
-  signOut: async () => {
-    await authService.signOut();
-    set({ user: null, isAuthenticated: false });
-  },
-
-  refresh: async () => {
-    try {
-      const { user } = await authService.getSession();
-      set({ user, isAuthenticated: !!user, isLoading: false });
-    } catch {
-      set({ user: null, isAuthenticated: false, isLoading: false });
+      refresh: async () => {
+        try {
+          const { user } = await authService.getSession();
+          set({ user, isAuthenticated: !!user, isLoading: false });
+        } catch {
+          set({ user: null, isAuthenticated: false, isLoading: false });
+        }
+      },
+    }),
+    {
+      name: 'bodosa-auth',
+      storage: createJSONStorage(() => (typeof window !== 'undefined' ? window.sessionStorage : dummyStorage)),
+      partialize: (state) => ({ user: state.user, isAuthenticated: state.isAuthenticated }),
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.isLoading = false;
+        }
+      },
     }
-  },
-}));
+  )
+);

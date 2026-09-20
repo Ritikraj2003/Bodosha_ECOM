@@ -4,14 +4,20 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useCartStore } from '@/features/cart/store';
+import { useAuthStore } from '@/features/auth/store';
 import { useMaintenance } from '@/hooks/useMaintenance';
 
 export default function FloatingCartBar() {
   const pathname = usePathname();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const user = useAuthStore((s) => s.user);
   const items = useCartStore((s) => s.items);
   const total = useCartStore((s) => s.total);
   const [nearBottom, setNearBottom] = useState(false);
   const { enabled } = useMaintenance();
+
+  const role = user?.role?.toLowerCase() || '';
+  const isStaff = ['admin', 'super_admin', 'owner', 'employee', 'staff', 'manager'].includes(role);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -29,6 +35,8 @@ export default function FloatingCartBar() {
 
   const count = items.reduce((sum, i) => sum + i.quantity, 0);
 
+  if (!isAuthenticated) return null;
+  if (isStaff) return null;
   if (count === 0) return null;
   if (enabled) return null;
   if (nearBottom) return null;
@@ -37,13 +45,14 @@ export default function FloatingCartBar() {
     pathname?.startsWith('/orders') ||
     pathname?.startsWith('/checkout') ||
     pathname?.startsWith('/profile') ||
-    pathname?.startsWith('/dashboard')
+    pathname?.startsWith('/dashboard') ||
+    pathname?.startsWith('/admin')
   ) return null;
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 px-4 pb-4 sticky-above-nav pointer-events-none">
       <Link
-        href="/cart"
+        href="/student/cart"
         className="mx-auto max-w-7xl flex items-center justify-between gap-3 rounded-2xl bg-slate-900 text-white px-4 py-3 border border-white/10 shadow-z-modal hover:brightness-125 transition-[filter] pointer-events-auto"
       >
         <div>

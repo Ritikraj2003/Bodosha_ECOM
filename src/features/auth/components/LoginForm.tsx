@@ -68,7 +68,7 @@ export default function LoginForm() {
       } else if (role === 'merchant') {
         defaultTarget = '/dashboard/merchant';
       } else if (role === 'student') {
-        defaultTarget = '/dashboard/student';
+        defaultTarget = '/home/student';
       }
 
       if (role) {
