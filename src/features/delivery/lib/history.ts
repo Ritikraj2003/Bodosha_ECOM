@@ -33,7 +33,7 @@ export function groupDeliveriesByDay(entries: DeliveryHistoryEntry[]): DayGroup[
     const at = entry.assignment.delivered_at;
     if (!at) continue;
     const key = dayKey(new Date(at));
-    const value = Number(entry.order?.total ?? 0);
+    const value = Number(entry.order?.delivery_fee ?? entry.order?.total ?? 0);
     const existing = groups.get(key);
     if (existing) {
       existing.entries.push(entry);

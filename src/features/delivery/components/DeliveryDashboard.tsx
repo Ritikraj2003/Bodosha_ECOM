@@ -206,9 +206,9 @@ export default function DeliveryDashboard() {
         <div className="mt-5 grid gap-3 grid-cols-2">
           {[
             { icon: Clock, label: 'Active now', value: String(data.active.length), sub: 'deliveries in progress' },
-            { icon: CheckCircle2, label: 'Today', value: String(data.stats.today.count), sub: `₹${data.stats.today.value.toLocaleString('en-IN')}` },
-            { icon: TrendingUp, label: 'This week', value: String(data.stats.week.count), sub: `₹${data.stats.week.value.toLocaleString('en-IN')}` },
-            { icon: Wallet, label: 'All time', value: String(data.stats.total.count), sub: `₹${data.stats.total.value.toLocaleString('en-IN')}` },
+            { icon: CheckCircle2, label: 'Today', value: `₹${data.stats.today.value.toLocaleString('en-IN')}`, sub: `${data.stats.today.count} ${data.stats.today.count === 1 ? 'delivery' : 'deliveries'}` },
+            { icon: TrendingUp, label: 'This week', value: `₹${data.stats.week.value.toLocaleString('en-IN')}`, sub: `${data.stats.week.count} ${data.stats.week.count === 1 ? 'delivery' : 'deliveries'}` },
+            { icon: Wallet, label: 'All time', value: `₹${data.stats.total.value.toLocaleString('en-IN')}`, sub: `${data.stats.total.count} ${data.stats.total.count === 1 ? 'delivery' : 'deliveries'}` },
           ].map((s) => (
             <div key={s.label} className="bg-zcard rounded-xl shadow-z p-3.5">
               <div className="flex items-center gap-2.5">
@@ -1041,7 +1041,7 @@ function HistorySection() {
                         <span className="font-semibold text-ztext">{g.label}</span>
                         <span className="text-ztext-lighter">
                           {g.entries.length} delivery{g.entries.length === 1 ? '' : 'ies'} •{' '}
-                          <span className="font-bold text-ztext">₹{g.totalValue.toLocaleString('en-IN')}</span>
+                          <span className="font-bold text-ztext">₹{g.totalValue.toLocaleString('en-IN')} fee earned</span>
                         </span>
                       </div>
                       <div className="mt-1.5 space-y-1.5">
@@ -1063,9 +1063,9 @@ function HistorySection() {
                               </p>
                             </div>
                             <div className="text-right shrink-0 pl-3">
-                              <p className="font-bold text-ztext">₹{Number(order?.total ?? 0).toLocaleString('en-IN')}</p>
-                              <p className="text-ztext-lighter">
-                                {assignment.delivered_at ? new Date(assignment.delivered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                              <p className="font-bold text-ztext">₹{Number(order?.delivery_fee ?? order?.total ?? 0).toLocaleString('en-IN')}</p>
+                              <p className="text-[10px] text-ztext-lighter">
+                                {assignment.delivered_at ? new Date(assignment.delivered_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'fee earned'}
                               </p>
                             </div>
                           </div>

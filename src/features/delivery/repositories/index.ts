@@ -197,7 +197,7 @@ export const deliveryRepository = {
       const res = await query<{ delivered_at: string | null; total: number | string }>(
         `SELECT 
            COALESCE(da.delivered_at, da.completed_at) AS delivered_at,
-           COALESCE(o.total, o.total_amount, 0) AS total
+           COALESCE(o.delivery_fee, 0) AS total
          FROM public.delivery_assignments da
          LEFT JOIN public.orders o ON o.id = da.order_id
          WHERE da.delivery_partner_id = $1
