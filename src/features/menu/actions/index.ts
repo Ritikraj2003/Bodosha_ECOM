@@ -67,6 +67,7 @@ export async function getPublicMenu(): Promise<{ success: boolean; sections: Men
         packagingBigQty: prod.packaging_big_qty != null ? Number(prod.packaging_big_qty) : 0,
         packagingSmallQty: prod.packaging_small_qty != null ? Number(prod.packaging_small_qty) : 0,
         isAvailable: prod.is_available ?? true,
+        compare_at_price: prod.compare_at_price != null ? Number(prod.compare_at_price) : (prod.compare_price != null ? Number(prod.compare_price) : null),
       };
 
       sectionsMap.get(categoryName)!.push(item);

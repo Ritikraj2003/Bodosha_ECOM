@@ -182,6 +182,9 @@ export default function FoodDetailModal({ dish, isOpen, onClose }: FoodDetailMod
               </h2>
               <div className="mt-1 flex items-baseline gap-2">
                 <span className="text-xl sm:text-2xl font text-white">₹{dish.price}</span>
+                {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
+                  <span className="text-sm text-zinc-400 line-through">₹{dish.compare_at_price}</span>
+                )}
               </div>
             </div>
 

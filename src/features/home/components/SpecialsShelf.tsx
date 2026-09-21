@@ -69,7 +69,12 @@ export default function SpecialsShelf() {
                   </div>
                   <div className="p-2.5">
                     <h3 className="text-xs font-bold text-ztext truncate group-hover:text-zred transition-colors">{dish.name}</h3>
-                    <p className="text-[11px] font-bold text-ztext mt-0.5">₹{dish.price}</p>
+                    <div className="flex items-baseline gap-1.5 mt-0.5">
+                      <span className="text-[11px] font-bold text-ztext">₹{dish.price}</span>
+                      {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
+                        <span className="text-[10px] text-ztext-muted line-through">₹{dish.compare_at_price}</span>
+                      )}
+                    </div>
                     <div onClick={(e) => e.stopPropagation()}>
                       {qty === 0 ? (
                         <button

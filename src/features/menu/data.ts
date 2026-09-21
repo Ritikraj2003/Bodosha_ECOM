@@ -22,6 +22,7 @@ export interface MenuItem {
   packagingBigQty?: number;
   packagingSmallQty?: number;
   isAvailable?: boolean;
+  compare_at_price?: number | null;
 }
 
 export interface MenuSection {

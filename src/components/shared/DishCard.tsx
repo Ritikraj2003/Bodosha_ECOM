@@ -18,6 +18,7 @@ export interface DishCardItem extends Partial<MenuItem> {
   popular: boolean;
   img: string;
   rating?: number;
+  compare_at_price?: number | null;
 }
 
 interface DishCardProps {
@@ -41,6 +42,7 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
     ...dish,
     img: displayImg,
     rating,
+    compare_at_price: dish.compare_at_price ?? menu?.compare_at_price,
     fullDesc: dish.fullDesc || menu?.fullDesc || dish.desc,
     includedItems: dish.includedItems || menu?.includedItems,
     servings: dish.servings || menu?.servings,
@@ -94,7 +96,12 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
               ) : (
                 <span />
               )}
-              <span className="text-[13px] font-bold text-ztext">₹{dish.price}</span>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[13px] font-bold text-ztext">₹{dish.price}</span>
+                {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
+                  <span className="text-[11px] text-ztext-muted line-through">₹{dish.compare_at_price}</span>
+                )}
+              </div>
             </div>
             <div onClick={(e) => e.stopPropagation()}>
               {qty === 0 ? (
@@ -187,7 +194,12 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
           </div>
           <h3 className="mt-1 text-sm font-bold text-ztext leading-snug line-clamp-2 min-h-[2.5em] group-hover:text-zred transition-colors">{dish.name}</h3>
           <p className="text-xs text-ztext-light mt-0.5 line-clamp-1">{dish.desc}</p>
-          <p className="mt-1.5 text-sm font-bold text-ztext">₹{dish.price}</p>
+          <div className="mt-1.5 flex items-baseline gap-1.5">
+            <span className="text-sm font-bold text-ztext">₹{dish.price}</span>
+            {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
+              <span className="text-xs text-ztext-muted line-through">₹{dish.compare_at_price}</span>
+            )}
+          </div>
         </div>
       </div>
 
