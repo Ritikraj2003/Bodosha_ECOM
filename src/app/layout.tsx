@@ -18,9 +18,18 @@ const PushNotificationManager = dynamic(() => import('@/components/notifications
 export const metadata: Metadata = {
   title: {
     template: '%s | Bodosa',
-    default: 'Bodosa — Homestyle Meals near CIT Kokrajhar',
+    default: 'Bodosa — Bodos Ethnic Kitchen near CIT Kokrajhar',
   },
-  description: 'Bodosa is a homestyle food service, serving fresh meals near CIT Kokrajhar. Order online for delivery.',
+  description: 'Bodosa · Bodos Ethnic Kitchen — fresh homestyle meals near CIT Kokrajhar. Order online for delivery or dine-in.',
+  icons: {
+    icon: [
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    apple: [
+      { url: '/logo.png', type: 'image/png' },
+    ],
+    shortcut: '/logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
