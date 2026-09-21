@@ -4,10 +4,8 @@ import { useEffect, useState } from 'react';
 import { Clock, Truck, AlertTriangle, Info } from 'lucide-react';
 import { usePublicSettings } from '@/hooks/usePublicSettings';
 import {
-  isStoreOpen,
   nextOrderByCutoff,
-  isTemporarilyClosed,
-  temporaryCloseLabel,
+  getStoreStatus,
   formatClock,
 } from '@/features/menu/lib/store-hours';
 import { getSlotAvailability, formatClock12h } from '@/features/delivery/lib/slots';
@@ -26,8 +24,10 @@ export default function StatusStrip() {
   }, []);
 
   const hours = { open: settings.hours.open, close: settings.hours.close };
-  const tempClosed = now ? isTemporarilyClosed(settings.tempReopensAt, now) : false;
-  const open = now ? !tempClosed && isStoreOpen(hours, now) : false;
+  const storeStatus = now
+    ? getStoreStatus(settings.isOpen, settings.tempReopensAt, hours, now)
+    : { isOpen: false, statusText: '' };
+  const open = storeStatus.isOpen;
   const cutoff = now && open ? nextOrderByCutoff(settings.orderByCutoffs, now) : null;
 
   // Fixed Delivery Slots calculation
@@ -48,13 +48,7 @@ export default function StatusStrip() {
             }`}
           />
           <p className="text-xs font-semibold text-ztext truncate">
-            {now
-              ? tempClosed
-                ? temporaryCloseLabel(settings.tempReopensAt)
-                : open
-                ? `Open now · Kitchen closes ${formatClock(hours.close)}`
-                : `Closed now · Opens tomorrow ${formatClock(hours.open)}`
-              : ''}
+            {storeStatus.statusText}
           </p>
           {cutoff && (
             <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10 border border-amber-500/25 rounded-full px-2.5 py-1">

@@ -25,10 +25,7 @@ const FALLBACK: PublicStoreSettings = {
   storeUpiName: process.env.NEXT_PUBLIC_STORE_UPI_NAME ?? 'Bodosa',
   hours: { open: '10:00', close: '21:30' },
   tempReopensAt: '',
-  orderByCutoffs: [
-    { label: 'lunch', time: '10:45' },
-    { label: 'dinner', time: '18:45' },
-  ],
+  orderByCutoffs: [],
   deliveryLocations: [
     'SNM, CIT Kokrajhar',
     'SJ, CIT Kokrajhar',

@@ -2,6 +2,32 @@ import { query } from '@/infrastructure/db';
 
 type SettingRow = { key: string; value: string; type: string; is_secret: boolean };
 
+export interface StoreRestaurantInfo {
+  isOpen: boolean;
+  isActive: boolean;
+  openingTime: string;
+  closingTime: string;
+}
+
+/** Get restaurant operating settings directly from public.restaurants table. */
+export async function getStoreRestaurantInfo(): Promise<StoreRestaurantInfo | null> {
+  try {
+    const res = await query<{ is_open: boolean; is_active: boolean; opening_time: string; closing_time: string }>(
+      'SELECT is_open, is_active, opening_time, closing_time FROM public.restaurants WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1'
+    );
+    if (res.rows.length === 0) return null;
+    const r = res.rows[0];
+    return {
+      isOpen: r.is_open === true,
+      isActive: r.is_active === true,
+      openingTime: r.opening_time ? String(r.opening_time).slice(0, 5) : '09:00',
+      closingTime: r.closing_time ? String(r.closing_time).slice(0, 5) : '22:00',
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Whether the store is marked open by the merchant (Open/Closed toggle). Null when unknown/no restaurant. */
 export async function getStoreIsOpen(): Promise<boolean | null> {
   try {

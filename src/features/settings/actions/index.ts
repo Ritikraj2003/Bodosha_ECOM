@@ -1,6 +1,6 @@
 'use server';
 
-import { getSetting, getNumericSetting, getJsonSetting, getDeliveryEmails, getAdminEmails, getOwnerEmail, getStoreIsOpen } from '@/lib/settings';
+import { getSetting, getNumericSetting, getJsonSetting, getDeliveryEmails, getAdminEmails, getOwnerEmail, getStoreIsOpen, getStoreRestaurantInfo } from '@/lib/settings';
 import type { DeliverySlot } from '@/features/delivery/types/slots';
 
 export interface BumperOfferItem {
@@ -72,6 +72,13 @@ export async function getPublicSettings(): Promise<PublicStoreSettings> {
   const codEnabledRaw = await getSetting('payment_method_cod_enabled');
   const rzpKey = (await getSetting('razorpay_key_id')) || '';
   const storeUpi = (await getSetting('store_upi_id')) || '';
+  const restInfo = await getStoreRestaurantInfo();
+
+  const lunchCutoff = (await getSetting('store_order_cutoff_lunch'))?.trim();
+  const dinnerCutoff = (await getSetting('store_order_cutoff_dinner'))?.trim();
+  const orderByCutoffs: { label: string; time: string }[] = [];
+  if (lunchCutoff) orderByCutoffs.push({ label: 'lunch', time: lunchCutoff });
+  if (dinnerCutoff) orderByCutoffs.push({ label: 'dinner', time: dinnerCutoff });
 
   return {
     razorpayKeyId: rzpKey,
@@ -90,14 +97,11 @@ export async function getPublicSettings(): Promise<PublicStoreSettings> {
     storeUpiId: (await getSetting('store_upi_id')) || '',
     storeUpiName: (await getSetting('store_upi_name')) || '',
     hours: {
-      open: (await getSetting('store_hours_open')) || '10:00',
-      close: (await getSetting('store_hours_close')) || '21:30',
+      open: restInfo?.openingTime || '09:00',
+      close: restInfo?.closingTime || '22:00',
     },
     tempReopensAt: (await getSetting('store_temp_close_until')) || '',
-    orderByCutoffs: [
-      { label: 'lunch', time: (await getSetting('store_order_cutoff_lunch')) || '10:45' },
-      { label: 'dinner', time: (await getSetting('store_order_cutoff_dinner')) || '18:45' },
-    ],
+    orderByCutoffs,
     deliveryLocations: await getJsonSetting<string[]>('store_delivery_locations', [
       'SNM, CIT Kokrajhar',
       'SJ, CIT Kokrajhar',
@@ -118,7 +122,7 @@ export async function getPublicSettings(): Promise<PublicStoreSettings> {
     ownerEmail: (await getOwnerEmail()) ?? '',
     walletEnabled: (await getSetting('payment_method_wallet_enabled')) === 'true',
     walletCreditLimit: await getNumericSetting('wallet_credit_limit', 500),
-    isOpen: (await getStoreIsOpen()) ?? true,
+    isOpen: (restInfo ? restInfo.isOpen : ((await getStoreIsOpen()) ?? true)),
     bumperOffersEnabled: (await getSetting('bumper_offers_enabled')) === 'true',
     bumperOffers: await getJsonSetting<BumperOfferItem[]>('bumper_offers', []),
 

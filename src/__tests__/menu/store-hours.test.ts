@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isStoreOpen, nextOrderByCutoff, minutesOf, formatClock, isTemporarilyClosed, temporaryCloseLabel } from '@/features/menu/lib/store-hours';
+import { isStoreOpen, nextOrderByCutoff, minutesOf, formatClock, isTemporarilyClosed, temporaryCloseLabel, getStoreStatus } from '../../features/menu/lib/store-hours';
 
 const HOURS = { open: '10:00', close: '21:30' };
 const SLOTS = [
@@ -80,5 +80,47 @@ describe('isTemporarilyClosed', () => {
 describe('temporaryCloseLabel', () => {
   it('says reopens today at the given time', () => {
     expect(temporaryCloseLabel('15:30')).toBe('Temporarily closed · Reopens today at 3:30 PM');
+  });
+});
+
+describe('Overnight store hours & getStoreStatus', () => {
+  const OVERNIGHT_HOURS = { open: '09:03', close: '01:50' };
+
+  it('is open past midnight before closing time (e.g. 00:45 AM)', () => {
+    expect(isStoreOpen(OVERNIGHT_HOURS, at(0, 45))).toBe(true);
+  });
+
+  it('is open during the day (e.g. 14:00 PM)', () => {
+    expect(isStoreOpen(OVERNIGHT_HOURS, at(14, 0))).toBe(true);
+  });
+
+  it('is open at night before midnight (e.g. 23:30 PM)', () => {
+    expect(isStoreOpen(OVERNIGHT_HOURS, at(23, 30))).toBe(true);
+  });
+
+  it('is closed after closing time in early morning (e.g. 02:00 AM)', () => {
+    expect(isStoreOpen(OVERNIGHT_HOURS, at(2, 0))).toBe(false);
+  });
+
+  it('is closed before opening time in early morning (e.g. 08:30 AM)', () => {
+    expect(isStoreOpen(OVERNIGHT_HOURS, at(8, 30))).toBe(false);
+  });
+
+  it('shows kitchen closes 1:50 AM when open at 00:45 AM', () => {
+    const status = getStoreStatus(true, '', OVERNIGHT_HOURS, at(0, 45));
+    expect(status.isOpen).toBe(true);
+    expect(status.statusText).toBe('Open now · Kitchen closes 1:50 AM');
+  });
+
+  it('shows opens today at 9:03 AM when closed at 02:00 AM', () => {
+    const status = getStoreStatus(true, '', OVERNIGHT_HOURS, at(2, 0));
+    expect(status.isOpen).toBe(false);
+    expect(status.statusText).toBe('Closed now · Opens today 9:03 AM');
+  });
+
+  it('shows closed when isOpen toggle is false', () => {
+    const status = getStoreStatus(false, '', OVERNIGHT_HOURS, at(14, 0));
+    expect(status.isOpen).toBe(false);
+    expect(status.statusText).toBe('Closed now · Opens at 9:03 AM');
   });
 });

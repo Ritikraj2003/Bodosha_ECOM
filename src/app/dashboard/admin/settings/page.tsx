@@ -821,10 +821,9 @@ export default function AdminSettingsPage() {
         {renderCard({
           icon: SlidersHorizontal,
           title: 'Other',
-          subtitle: 'Storefront hours, delivery areas and platform rules.',
+          subtitle: 'Delivery areas, order cutoff times and platform rules.',
           toggleKey: 'other_enabled',
           keys: [
-            'store_hours_open', 'store_hours_close',
             'store_temp_close_until',
             'store_order_cutoff_lunch', 'store_order_cutoff_dinner',
             'store_delivery_locations',

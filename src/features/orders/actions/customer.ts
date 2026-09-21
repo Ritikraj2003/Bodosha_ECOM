@@ -308,48 +308,39 @@ export async function createOrder(params: CreateOrderParams) {
     return { success: false, error: 'The store is currently in maintenance mode. Please try again later.' };
   }
 
-  // Store hours are compared in IST (UTC+5:30)
-  const istNow = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
-  const openTime = (await getSetting('store_hours_open')) || '10:00';
-  const closeTime = (await getSetting('store_hours_close')) || '21:30';
-  const istMinutes = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
-
-  const tempReopensAt = (await getSetting('store_temp_close_until')) || '';
-  if (tempReopensAt && istMinutes < minutesOf(tempReopensAt)) {
-    return {
-      success: false,
-      error: `${temporaryCloseLabel(tempReopensAt)} — please try again later.`,
-    };
-  }
-
-  if (istMinutes < minutesOf(openTime) || istMinutes >= minutesOf(closeTime)) {
-    return {
-      success: false,
-      error: `The store is currently closed. We open at ${formatClock(openTime)} — please try again later.`,
-    };
-  }
-
+  // 1. Query restaurant directly from public.restaurants table
   let restaurantId: string;
+  let openTime = '09:00';
+  let closeTime = '22:00';
   try {
-    // Query restaurant directly via PostgreSQL (no Supabase credentials needed)
-    const restRes = await query<any>(
-      `SELECT id, is_open FROM public.restaurants WHERE deleted_at IS NULL ORDER BY is_active DESC, created_at ASC LIMIT 1`
+    const restRes = await query<{
+      id: string;
+      is_open: boolean;
+      is_active: boolean;
+      opening_time: string;
+      closing_time: string;
+    }>(
+      `SELECT id, is_open, is_active, opening_time, closing_time FROM public.restaurants WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1`
     );
+
     if (restRes.rows.length > 0) {
-      if (restRes.rows[0].is_open === false) {
+      const rest = restRes.rows[0];
+      if (rest.is_open === false) {
         return { success: false, error: 'The store is currently closed. Please try again later.' };
       }
-      restaurantId = restRes.rows[0].id;
+      restaurantId = rest.id;
+      if (rest.opening_time) openTime = String(rest.opening_time).slice(0, 5);
+      if (rest.closing_time) closeTime = String(rest.closing_time).slice(0, 5);
     } else {
       // Create default restaurant if none exists
       const slug = `dilip-da-main-${Date.now().toString(36)}`;
       const ownerId = user?.id ?? '5c262804-b3d8-4815-a41f-2ce1cab12fa1';
       const newRest = await query<any>(
         `INSERT INTO public.restaurants (
-          id, owner_id, name, slug, address_line1, city, state, postal_code, is_active, is_open
+          id, owner_id, name, slug, address_line1, city, state, postal_code, is_active, is_open, opening_time, closing_time
         ) VALUES (
           'd1111111-1111-1111-1111-111111111111', $1, 'Dilip Da Main Store', $2,
-          'Near CIT Kokrajhar Campus', 'Kokrajhar', 'Assam', '783370', true, true
+          'Near CIT Kokrajhar Campus', 'Kokrajhar', 'Assam', '783370', true, true, '09:00', '22:00'
         )
         ON CONFLICT (id) DO UPDATE SET is_active = true, is_open = true, deleted_at = NULL
         RETURNING id`,
@@ -363,6 +354,31 @@ export async function createOrder(params: CreateOrderParams) {
   } catch (restErr) {
     console.error('Restaurant lookup failed:', restErr);
     return { success: false, error: 'Restaurant not available' };
+  }
+
+  // 2. Store hours are compared in IST (UTC+5:30)
+  const istNow = new Date(Date.now() + (5 * 60 + 30) * 60 * 1000);
+  const istMinutes = istNow.getUTCHours() * 60 + istNow.getUTCMinutes();
+
+  const tempReopensAt = (await getSetting('store_temp_close_until')) || '';
+  if (tempReopensAt && istMinutes < minutesOf(tempReopensAt)) {
+    return {
+      success: false,
+      error: `${temporaryCloseLabel(tempReopensAt)} — please try again later.`,
+    };
+  }
+
+  const openMins = minutesOf(openTime);
+  const closeMins = minutesOf(closeTime);
+  const isWithinHours = openMins <= closeMins
+    ? (istMinutes >= openMins && istMinutes < closeMins)
+    : (istMinutes >= openMins || istMinutes < closeMins);
+
+  if (!isWithinHours) {
+    return {
+      success: false,
+      error: `The store is currently closed. We are open from ${formatClock(openTime)} to ${formatClock(closeTime)} — please try again later.`,
+    };
   }
 
   const { items, paymentMethod, address, notes, customerPhone, customerName, customerEmail, orderType } = params;

@@ -14,7 +14,7 @@ import type { Wallet } from '@/features/wallet/types';
 import { menuSections } from '@/features/menu/data';
 import { useFavoritesStore } from '@/features/favorites/store';
 import { usePublicSettings } from '@/hooks/usePublicSettings';
-import { isStoreOpen, nextOrderByCutoff, formatClock, isTemporarilyClosed, temporaryCloseLabel } from '@/features/menu/lib/store-hours';
+import { nextOrderByCutoff, formatClock, getStoreStatus } from '@/features/menu/lib/store-hours';
 import HamsterLoader from '@/components/ui/HamsterLoader';
 
 const allMenuItems = menuSections.flatMap((s) => s.items);
@@ -34,15 +34,15 @@ function StoreStatusPill({ settings }: { settings: ReturnType<typeof usePublicSe
   }, []);
 
   const hours = { open: settings.hours.open, close: settings.hours.close };
-  const tempClosed = isTemporarilyClosed(settings.tempReopensAt, now);
-  const open = !tempClosed && isStoreOpen(hours, now);
+  const storeStatus = getStoreStatus(settings.isOpen, settings.tempReopensAt, hours, now);
+  const open = storeStatus.isOpen;
   const cutoff = open ? nextOrderByCutoff(settings.orderByCutoffs, now) : null;
 
   return (
     <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-zborder bg-zcard px-4 py-3">
       <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${open ? 'bg-zgreen' : 'bg-amber-500'}`} />
       <p className="text-xs font-semibold text-ztext truncate">
-        {tempClosed ? temporaryCloseLabel(settings.tempReopensAt) : open ? `Open now · Kitchen closes ${formatClock(hours.close)}` : `Closed now · Opens tomorrow ${formatClock(hours.open)}`}
+        {storeStatus.statusText}
       </p>
       {cutoff && (
         <span className="ml-auto shrink-0 inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 bg-amber-500/10 border border-amber-500/25 rounded-full px-2.5 py-1">
