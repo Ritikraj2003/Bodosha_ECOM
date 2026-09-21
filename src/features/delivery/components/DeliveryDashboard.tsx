@@ -138,8 +138,7 @@ export default function DeliveryDashboard() {
 
   async function handleSignOut() {
     await signOut();
-    router.push('/auth/login');
-    router.refresh();
+    window.location.href = '/auth/login';
   }
 
   if (loading) {

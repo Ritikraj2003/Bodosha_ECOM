@@ -28,6 +28,11 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
 
   const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
+  const handleSignOut = async () => {
+    await signOut();
+    window.location.href = '/auth/login';
+  };
+
   useEffect(() => {
     if (!isLoading && !isAuthenticated) router.push('/auth/login');
   }, [isLoading, isAuthenticated, router]);
@@ -77,7 +82,7 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
             <Link href="/" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ztext-light hover:bg-zgray transition-colors">
               <Store size={18} /> View store
             </Link>
-            <button onClick={signOut} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ztext-light hover:bg-zgray transition-colors">
+            <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-ztext-light hover:bg-zgray transition-colors">
               <LogOut size={18} /> Sign out
             </button>
           </div>

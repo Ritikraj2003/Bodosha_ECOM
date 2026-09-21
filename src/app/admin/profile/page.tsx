@@ -20,7 +20,7 @@ export default function AdminProfilePage() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.push('/auth/login');
+    window.location.href = '/auth/login';
   };
 
   return (

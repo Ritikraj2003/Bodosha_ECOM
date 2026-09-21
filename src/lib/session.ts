@@ -47,11 +47,15 @@ export async function setSessionCookie(token: string): Promise<void> {
 
 export async function clearSessionCookie(): Promise<void> {
   const cookieStore = await cookies();
+  try {
+    cookieStore.delete(AUTH_COOKIE_NAME);
+  } catch {}
   cookieStore.set(AUTH_COOKIE_NAME, '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     maxAge: 0,
+    expires: new Date(0),
     path: '/',
   });
 }

@@ -161,6 +161,18 @@ export default function ProfilePage() {
     setEditValue('');
   }
 
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleSignOut() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      await signOut();
+    } finally {
+      window.location.href = '/auth/login';
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center page-pad">
@@ -546,11 +558,14 @@ export default function ProfilePage() {
 
             {/* Sign out */}
             <button
-              onClick={signOut}
-              className="mt-4 w-full bg-zcard rounded-xl border border-zborder p-4 flex items-center gap-3 hover:bg-red-500/5 transition-colors"
+              onClick={handleSignOut}
+              disabled={loggingOut}
+              className="mt-4 w-full bg-zcard rounded-xl border border-zborder p-4 flex items-center gap-3 hover:bg-red-500/5 transition-colors disabled:opacity-50"
             >
               <LogOut size={18} className="text-zred shrink-0" />
-              <span className="font-semibold text-zred text-sm">Sign out</span>
+              <span className="font-semibold text-zred text-sm">
+                {loggingOut ? 'Signing out...' : 'Sign out'}
+              </span>
             </button>
       </div>
 

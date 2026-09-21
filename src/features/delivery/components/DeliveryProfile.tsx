@@ -78,8 +78,7 @@ export default function DeliveryProfile() {
 
   async function handleSignOut() {
     await signOut();
-    router.push('/auth/login');
-    router.refresh();
+    window.location.href = '/auth/login';
   }
 
   const initials = (user?.fullName || user?.email || 'D')

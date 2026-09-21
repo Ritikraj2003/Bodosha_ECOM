@@ -51,12 +51,25 @@ export const useAuthStore = create<AuthStore>()(
       },
 
       signOut: async () => {
-        await authService.signOut();
-        set({ user: null, isAuthenticated: false, isLoading: false });
-        if (typeof window !== 'undefined') {
-          try {
-            window.sessionStorage.removeItem('bodosa-auth');
-          } catch {}
+        try {
+          set({ user: null, isAuthenticated: false, isLoading: false });
+          if (typeof window !== 'undefined') {
+            try {
+              window.sessionStorage.removeItem('bodosa-auth');
+              window.localStorage.removeItem('bodosa-auth');
+            } catch {}
+          }
+          await authService.signOut();
+        } catch (err) {
+          console.error('signOut error:', err);
+        } finally {
+          set({ user: null, isAuthenticated: false, isLoading: false });
+          if (typeof window !== 'undefined') {
+            try {
+              window.sessionStorage.removeItem('bodosa-auth');
+              window.localStorage.removeItem('bodosa-auth');
+            } catch {}
+          }
         }
       },
 

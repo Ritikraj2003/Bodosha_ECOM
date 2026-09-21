@@ -7,6 +7,7 @@ import {
   LayoutDashboard, LogOut, Menu, X, ShoppingBag, Banknote, Bike,
   Store, UtensilsCrossed, Wallet,
 } from 'lucide-react';
+import { useAuthStore } from '@/features/auth/store';
 
 interface SidebarItem {
   label: string;
@@ -35,10 +36,13 @@ export default function OwnerShell({ children }: { children: React.ReactNode }) 
   }, [pathname]);
 
   const handleSignOut = async () => {
-    const { createClient } = await import('@/infrastructure/supabase/client');
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    router.push('/auth/login');
+    try {
+      await useAuthStore.getState().signOut();
+    } catch (e) {
+      console.error('Logout error:', e);
+    } finally {
+      window.location.href = '/auth/login';
+    }
   };
 
   return (

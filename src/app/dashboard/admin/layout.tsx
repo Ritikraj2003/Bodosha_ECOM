@@ -138,10 +138,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   const handleSignOut = async () => {
     try {
-      const { logoutAction } = await import('@/features/auth/actions/credentials');
-      await logoutAction();
+      await useAuthStore.getState().signOut();
     } catch {}
-    router.push('/auth/login');
+    window.location.href = '/auth/login';
   };
 
   const visibleSidebarEntries = (!isLoaded && !adminRole)

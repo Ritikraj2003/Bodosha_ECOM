@@ -34,11 +34,21 @@ export const authService = {
   async signOut(): Promise<{ error: string | null }> {
     try {
       if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-        const reg = await navigator.serviceWorker.ready;
-        const sub = await reg.pushManager.getSubscription();
-        if (sub?.endpoint) {
-          const { removePushSubscription } = await import('@/features/notifications/actions/push');
-          await removePushSubscription(sub.endpoint);
+        const getReg = async () => {
+          try {
+            return await navigator.serviceWorker.getRegistration();
+          } catch {
+            return undefined;
+          }
+        };
+        const timeout = new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 600));
+        const reg = await Promise.race([getReg(), timeout]);
+        if (reg?.pushManager) {
+          const sub = await reg.pushManager.getSubscription().catch(() => null);
+          if (sub?.endpoint) {
+            const { removePushSubscription } = await import('@/features/notifications/actions/push');
+            await removePushSubscription(sub.endpoint).catch(() => null);
+          }
         }
       }
     } catch (e) {
@@ -46,58 +56,89 @@ export const authService = {
     }
 
     try {
+      if (typeof window !== 'undefined') {
+        await fetch('/api/auth/logout', { method: 'POST', cache: 'no-store' }).catch(() => null);
+      }
+    } catch (e) {
+      console.warn('API logout error:', e);
+    }
+
+    try {
       const { logoutAction } = await import('@/features/auth/actions/credentials');
-      await logoutAction();
+      await logoutAction().catch(() => null);
     } catch (e) {
       console.warn('logoutAction error:', e);
     }
 
-    const supabase = createClient();
-    if (supabase) {
-      await supabase.auth.signOut().catch(() => null);
+    let signOutError: string | null = null;
+    try {
+      const supabase = createClient();
+      if (supabase?.auth?.signOut) {
+        const res = await supabase.auth.signOut();
+        if (res?.error) {
+          signOutError = res.error.message || 'Session error';
+        }
+      }
+    } catch (e: any) {
+      signOutError = e?.message || 'Sign out failed';
     }
-    return { error: null };
+
+    return { error: signOutError };
   },
 
   async getSession(): Promise<{ user: AuthUser | null }> {
     try {
       if (typeof window !== 'undefined') {
-        const res = await fetch('/api/auth/session', {
-          headers: { 'Cache-Control': 'no-cache' },
-          cache: 'no-store',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.user) {
-            return {
-              user: {
-                id: data.user.id,
-                email: data.user.email,
-                fullName: data.user.fullName || data.user.email?.split('@')[0] || 'User',
-                role: (data.user.role as Role) || null,
-                avatarUrl: data.user.avatarUrl ?? null,
-                phone: data.user.phone ?? null,
-                permissions: data.user.permissions ?? [],
-              },
-            };
+        try {
+          const res = await fetch('/api/auth/session', {
+            headers: { 'Cache-Control': 'no-cache' },
+            cache: 'no-store',
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.user) {
+              return {
+                user: {
+                  id: data.user.id,
+                  email: data.user.email,
+                  fullName: data.user.fullName || data.user.email?.split('@')[0] || 'User',
+                  role: (data.user.role as Role) || null,
+                  avatarUrl: data.user.avatarUrl ?? null,
+                  phone: data.user.phone ?? null,
+                  permissions: data.user.permissions ?? [],
+                },
+              };
+            }
           }
+        } catch {
+          // ignore fetch error in non-browser/test env
         }
       }
 
-      const { getServerSession } = await import('@/features/auth/actions');
-      const res = await getServerSession();
-      if (res?.user) {
-        return {
-          user: {
-            id: res.user.id,
-            email: res.user.email,
-            fullName: res.user.fullName || res.user.email?.split('@')[0] || 'User',
-            role: (res.user.role as Role) || null,
-            avatarUrl: res.user.avatarUrl ?? null,
-            phone: res.user.phone ?? null,
-            permissions: (res.user as any).permissions ?? [],
-          },
-        };
+      try {
+        const { getServerSession } = await import('@/features/auth/actions');
+        const res = await getServerSession();
+        if (res?.user) {
+          return {
+            user: {
+              id: res.user.id,
+              email: res.user.email,
+              fullName: res.user.fullName || res.user.email?.split('@')[0] || 'User',
+              role: (res.user.role as Role) || null,
+              avatarUrl: res.user.avatarUrl ?? null,
+              phone: res.user.phone ?? null,
+              permissions: (res.user as any).permissions ?? [],
+            },
+          };
+        }
+      } catch {}
+
+      const supabase = createClient();
+      if (supabase?.auth?.getUser) {
+        const { data } = await supabase.auth.getUser().catch(() => ({ data: null }));
+        if (data?.user) {
+          return { user: mapUser(data.user) };
+        }
       }
     } catch (e) {
       console.warn('getSession error:', e);
