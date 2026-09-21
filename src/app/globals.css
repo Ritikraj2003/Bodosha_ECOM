@@ -2,24 +2,25 @@
 
 @theme {
   --font-sans: "National 2 Regular", "National 2", ui-sans-serif, system-ui, sans-serif;
-  --color-zred: #EF4444;
-  --color-zred-light: #F87171;
-  --color-zred-dark: #DC2626;
-  --color-zgreen: #22C55E;
-  --color-zbg: #1c1c1d;
-  --color-zgray: #232325;
-  --color-zcard: #262628;
-  --color-zelevated: #262628;
-  --color-zsurface: #303032;
-  --color-ztext: #FAFAFA;
-  --color-ztext-light: #A3A3A3;
-  --color-ztext-lighter: #737373;
-  --color-ztext-muted: #525252;
+  --color-zred: #6E9B2F;
+  --color-zred-light: #9BC83B;
+  --color-zred-dark: #527920;
+  --color-zgreen: #8EC63F;
+  --color-zethnic-red: #C81018;
+  --color-zbg: #0C1009;
+  --color-zgray: #131A0F;
+  --color-zcard: #1A2314;
+  --color-zelevated: #202B1A;
+  --color-zsurface: #27341F;
+  --color-ztext: #F7FAF3;
+  --color-ztext-light: #B0C2A4;
+  --color-ztext-lighter: #86997B;
+  --color-ztext-muted: #5E6F54;
   --color-zborder: rgba(255,255,255,0.08);
-  --color-zborder-hover: rgba(239,68,68,0.35);
-  --shadow-z: 0 2px 8px rgba(0,0,0,0.3);
-  --shadow-z-hover: 0 8px 24px rgba(0,0,0,0.4);
-  --shadow-z-modal: 0 16px 48px rgba(0,0,0,0.5);
+  --color-zborder-hover: rgba(155,200,59,0.4);
+  --shadow-z: 0 2px 8px rgba(0,0,0,0.4);
+  --shadow-z-hover: 0 8px 24px rgba(0,0,0,0.5);
+  --shadow-z-modal: 0 16px 48px rgba(0,0,0,0.6);
   --radius-z: 8px;
   --radius-z-sm: 6px;
   --radius-z-lg: 14px;
@@ -280,20 +281,23 @@ option {
 }
 
 .light-mode {
-  --color-zbg: #FFFFFF;
-  --color-zgray: #F0F0F0;
+  --color-zbg: #F8FAF5;
+  --color-zgray: #EEF4EA;
   --color-zcard: #FFFFFF;
-  --color-zelevated: #F5F5F5;
-  --color-zsurface: #DCDCDC;
-  --color-ztext: #1C1C1C;
-  --color-ztext-light: #696969;
-  --color-ztext-lighter: #6B6B6B;
-  --color-ztext-muted: #9CA3AF;
-  --color-zborder: #E0E0E0;
-  --color-zborder-hover: rgba(239,68,68,0.35);
-  --shadow-z: 0 2px 8px rgba(0,0,0,0.08);
-  --shadow-z-hover: 0 8px 24px rgba(0,0,0,0.12);
-  --shadow-z-modal: 0 16px 48px rgba(0,0,0,0.15);
+  --color-zelevated: #F3F8EF;
+  --color-zsurface: #E0EBD6;
+  --color-ztext: #131B0E;
+  --color-ztext-light: #4E6044;
+  --color-ztext-lighter: #6E8262;
+  --color-ztext-muted: #92A488;
+  --color-zborder: #DCE5D4;
+  --color-zborder-hover: rgba(110, 155, 47, 0.45);
+  --shadow-z: 0 2px 8px rgba(19, 27, 14, 0.08);
+  --shadow-z-hover: 0 8px 24px rgba(19, 27, 14, 0.12);
+  --shadow-z-modal: 0 16px 48px rgba(19, 27, 14, 0.16);
+  --color-zred: #5D8724;
+  --color-zred-light: #7DAE31;
+  --color-zred-dark: #446517;
 }
 
 /* Bottom navigation */
@@ -426,11 +430,12 @@ option {
    DEMO-STYLE HOME UI (structure only — theme tokens kept)
 =================================================== */
 
-/* Red gradient band header with decorative circles */
+/* Bodosa ethnic kitchen gradient band header with decorative circles and traditional red accent */
 .hero-band {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(140deg, var(--color-zred) 0%, var(--color-zred-light) 100%);
+  background: linear-gradient(135deg, #375317 0%, #567C21 50%, #76A52E 100%);
+  border-left: 4px solid #C81018;
   padding: 1rem 1rem 1.5rem;
 }
 .hero-band::before {
@@ -492,7 +497,7 @@ option {
 }
 .category-item.active .category-avatar {
   border-color: var(--color-zred);
-  box-shadow: 0 6px 15px rgba(239, 68, 68, 0.25);
+  box-shadow: 0 6px 15px rgba(155, 200, 59, 0.35);
 }
 .category-item.active .category-label { color: var(--color-zred); font-weight: 700; }
 
@@ -507,7 +512,7 @@ option {
   width: 4.25rem;
   height: 4.25rem;
   border-radius: 1.125rem;
-  background: #EF4444;
+  background: var(--color-zred);
   display: grid;
   place-items: center;
   color: #fff;

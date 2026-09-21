@@ -131,7 +131,7 @@ export async function sendDeliveryOtpEmail(to: string, otp: string, trackingCode
       text: `Your delivery OTP for order ${trackingCode} is: ${otp}\n\nTell this code to your delivery partner to confirm delivery.\nThis OTP expires in 5 minutes.\n\n- Bodosa`,
       html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-          <h2 style="color:#EF4444">Delivery confirmation OTP</h2>
+          <h2 style="color:#6E9B2F">Delivery confirmation OTP</h2>
           <p>Your delivery OTP for order <strong>${trackingCode}</strong> is:</p>
           <p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#111">${otp}</p>
           <p>Tell this code to your delivery partner to confirm your delivery.</p>
@@ -178,7 +178,7 @@ export async function sendOrderNotificationEmail(to: string, order: OrderNotific
       subject: `🆕 New Order — ${order.trackingCode}`,
       html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-          <h2 style="color:#EF4444">🆕 New Order Received</h2>
+          <h2 style="color:#6E9B2F">🆕 New Order Received</h2>
           <p><strong>Tracking:</strong> ${order.trackingCode}</p>
           <p><strong>Customer:</strong> ${order.customerName || 'Guest'}</p>
           <p><strong>Phone:</strong> ${order.customerPhone || 'N/A'}</p>

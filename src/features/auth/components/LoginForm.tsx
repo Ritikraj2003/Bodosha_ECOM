@@ -100,8 +100,13 @@ export default function LoginForm() {
           <ForgotPasswordForm onBack={() => setShowForgotPassword(false)} />
         ) : (
           <>
-            <h1 className="text-2xl font-bold text-ztext mb-1">Welcome back</h1>
-            <p className="text-ztext-light text-sm mb-6">Sign in to your Bodosa account</p>
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="w-16 h-16 rounded-2xl overflow-hidden mb-3 border border-white/10 shadow-lg bg-black/40 p-1 flex items-center justify-center">
+                <img src="/logo.png" alt="Bodosa Logo" className="w-full h-full object-contain" />
+              </div>
+              <h1 className="text-2xl font-bold text-ztext">Welcome back</h1>
+              <p className="text-ztext-light text-xs sm:text-sm mt-1">Sign in to Bodosa · Bodos Ethnic Kitchen</p>
+            </div>
 
             {registeredNotice && (
               <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl text-xs font-medium mb-4 flex items-center gap-2">

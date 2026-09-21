@@ -263,8 +263,13 @@ export default function SignupForm() {
   return (
     <div className="w-full max-w-md mx-auto">
       <div className="bg-zcard rounded-xl shadow-z p-8">
-        <h1 className="text-2xl font-bold text-ztext mb-1">Create account</h1>
-        <p className="text-ztext-light text-sm mb-6">Join Bodosa and start ordering</p>
+        <div className="flex flex-col items-center text-center mb-6">
+          <div className="w-16 h-16 rounded-2xl overflow-hidden mb-3 border border-white/10 shadow-lg bg-black/40 p-1 flex items-center justify-center">
+            <img src="/logo.png" alt="Bodosa Logo" className="w-full h-full object-contain" />
+          </div>
+          <h1 className="text-2xl font-bold text-ztext mb-1">Create account</h1>
+          <p className="text-ztext-light text-sm">Join Bodosa · Bodos Ethnic Kitchen</p>
+        </div>
 
         <div className="space-y-4">
           <div>

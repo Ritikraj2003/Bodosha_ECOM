@@ -45,10 +45,16 @@ export default function MerchantLayout({ children }: { children: React.ReactNode
     <div className="min-h-screen bg-zgray flex flex-col lg:flex-row">
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-zcard border-r border-zborder transform transition-transform duration-300 lg:translate-x-0 lg:fixed lg:top-0 lg:bottom-0 lg:left-0 lg:z-30 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between h-16 px-6 border-b border-zborder">
-          <Link href="/dashboard/merchant" className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
-            <span className="text-xl font-black tracking-tight">
-              <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
-            </span>
+          <Link href="/dashboard/merchant" className="flex items-center gap-2 shrink-0 group" aria-label="Bodosa">
+            <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-black/40 flex items-center justify-center">
+              <img src="/logo.png" alt="Bodosa" className="w-full h-full object-cover" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-black tracking-tight leading-none">
+                <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
+              </span>
+              <span className="text-[8px] font-semibold text-zred-light tracking-wider uppercase leading-tight">Merchant Portal</span>
+            </div>
           </Link>
           <button onClick={closeSidebar} aria-label="Close sidebar" className="lg:hidden p-1 rounded-lg hover:bg-zgray text-ztext-lighter">
             <X size={20} />

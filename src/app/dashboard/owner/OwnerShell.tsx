@@ -51,10 +51,16 @@ export default function OwnerShell({ children }: { children: React.ReactNode }) 
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex items-center justify-between px-5 h-16 border-b border-zborder">
-          <Link href="/dashboard/owner" className="flex items-center gap-1.5 shrink-0" aria-label="Bodosa">
-            <span className="text-xl font-black tracking-tight">
-              <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
-            </span>
+          <Link href="/dashboard/owner" className="flex items-center gap-2 shrink-0 group" aria-label="Bodosa">
+            <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-black/40 flex items-center justify-center">
+              <img src="/logo.png" alt="Bodosa" className="w-full h-full object-cover" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-black tracking-tight leading-none">
+                <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
+              </span>
+              <span className="text-[8px] font-semibold text-zred-light tracking-wider uppercase leading-tight">Owner Portal</span>
+            </div>
           </Link>
           <button onClick={() => setSidebarOpen(false)} aria-label="Close sidebar" className="lg:hidden p-1.5 hover:bg-zgray transition-colors">
             <X size={18} className="text-ztext-lighter" />
