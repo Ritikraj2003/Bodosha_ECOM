@@ -24,8 +24,8 @@ function loadEnv() {
 
 loadEnv();
 
-const email = process.argv[2] || 'admin@dilipda.com';
-const password = process.argv[3] || 'Admin@123456';
+const email = process.argv[2] || 'ane@gmail.com';
+const password = process.argv[3] || 'Qwerty@123';
 const fullName = process.argv[4] || 'Super Administrator';
 
 const connectionString = process.env.DATABASE_URL;
