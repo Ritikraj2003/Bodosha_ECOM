@@ -17,7 +17,7 @@ export type PaymentMethod = 'razorpay' | 'bnpl' | 'cod' | 'cash' | 'upi' | 'wall
 export type OrderType = 'room_delivery' | 'takeaway' | 'in_store' | 'dine_in';
 
 export const ORDER_TYPES = [
-  { id: 'room_delivery' as const, label: 'Hostel Delivery', icon: '🚚', description: 'Delivered to your hostel' },
+  { id: 'room_delivery' as const, label: 'Online Delivery', icon: '🚚', description: 'Delivered to your address' },
   { id: 'takeaway' as const, label: 'Take Away', icon: '🥡', description: 'Pick up your order' },
   { id: 'in_store' as const, label: 'In Store', icon: '🏪', description: 'Counter POS order' },
 ] as const;

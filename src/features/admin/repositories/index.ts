@@ -4,6 +4,7 @@ import type {
   DashboardStats, AdminStudent, AdminMerchant, AdminOrder, AdminUser,
   CreditAccountAdmin, PaymentAdmin, AuditEntry, SystemSetting,
   PaginatedResponse, AdminFilter, ActivityEntry, DeliveryPartnerAdmin,
+  TopSellingItem,
 } from '../types';
 import { notifyOrderStatusPush, sendPushToUser, sendPushToDeliveryPartners } from '@/lib/push';
 
@@ -72,7 +73,7 @@ export class AdminRepository {
       `, [fromDate, toDate]);
 
       const orderTypeLabels: Record<string, string> = {
-        room_delivery: 'Hostel Delivery',
+        room_delivery: 'Online Delivery',
         takeaway: 'Take Away',
         in_store: 'In Store',
         dine_in: 'Dine In',
@@ -135,6 +136,28 @@ export class AdminRepository {
         value: count,
       }));
 
+      // Top selling items (top 50)
+      const topItemsRes = await query(`
+        SELECT 
+          oi.product_name AS name,
+          SUM(oi.quantity)::int AS quantity,
+          COALESCE(SUM(COALESCE(oi.subtotal, oi.item_total, 0)), 0)::numeric(12,2) AS revenue
+        FROM public.order_items oi
+        JOIN public.orders o ON oi.order_id = o.id
+        WHERE (o.status IS NULL OR o.status != 'cancelled')
+          AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+          AND ($2::timestamptz IS NULL OR o.created_at <= $2)
+        GROUP BY oi.product_name
+        ORDER BY quantity DESC
+        LIMIT 50
+      `, [fromDate, toDate]);
+
+      const top_selling_items: TopSellingItem[] = (topItemsRes.rows || []).map((r: any) => ({
+        name: r.name,
+        quantity: Number(r.quantity) || 0,
+        revenue: Number(r.revenue) || 0,
+      }));
+
       return {
         total_users: s.total_users ?? 0,
         total_students: s.total_students ?? 0,
@@ -158,10 +181,43 @@ export class AdminRepository {
         recent_activity: recentActivity,
         order_type_stats,
         payment_type_stats,
+        top_selling_items,
       };
     } catch (e) {
       console.error('getDashboardStats error:', e);
       return null;
+    }
+  }
+
+  async getTopSellingItems(filter: { fromDate?: string; toDate?: string; limit?: number } = {}): Promise<TopSellingItem[]> {
+    try {
+      const fromDate = filter.fromDate || null;
+      const toDate = filter.toDate || null;
+      const limit = Math.max(1, Math.min(100, Number(filter.limit) || 10));
+
+      const res = await query(`
+        SELECT 
+          oi.product_name AS name,
+          SUM(oi.quantity)::int AS quantity,
+          COALESCE(SUM(COALESCE(oi.subtotal, oi.item_total, 0)), 0)::numeric(12,2) AS revenue
+        FROM public.order_items oi
+        JOIN public.orders o ON oi.order_id = o.id
+        WHERE (o.status IS NULL OR o.status != 'cancelled')
+          AND ($1::timestamptz IS NULL OR o.created_at >= $1)
+          AND ($2::timestamptz IS NULL OR o.created_at <= $2)
+        GROUP BY oi.product_name
+        ORDER BY quantity DESC
+        LIMIT $3
+      `, [fromDate, toDate, limit]);
+
+      return (res.rows || []).map((r: any) => ({
+        name: r.name,
+        quantity: Number(r.quantity) || 0,
+        revenue: Number(r.revenue) || 0,
+      }));
+    } catch (e) {
+      console.error('getTopSellingItems error:', e);
+      return [];
     }
   }
 

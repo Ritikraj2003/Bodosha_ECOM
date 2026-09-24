@@ -108,7 +108,7 @@ function OrderCard({ order, index, onCancel, cancellationWindowMs }: { order: Or
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="font-bold text-ztext text-[13px] leading-tight">Bodosa</h3>
-          <p className="text-[10px] text-ztext-lighter mt-0.5 truncate">{orderTypeLabel(order.order_type) || 'Hostel Delivery'}</p>
+          <p className="text-[10px] text-ztext-lighter mt-0.5 truncate">{orderTypeLabel(order.order_type) || 'Online Delivery'}</p>
           <Link href="/menu" className="text-[10px] font-semibold text-zred hover:underline inline-flex items-center gap-1 mt-0.5">
             View menu <ChevronDown size={9} />
           </Link>

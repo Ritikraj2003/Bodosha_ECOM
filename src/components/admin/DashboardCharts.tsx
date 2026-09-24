@@ -166,7 +166,7 @@ export default function DashboardCharts({ orderTypeData, paymentTypeData }: Dash
       });
 
       const defaultOrderTypes = [
-        { orderType: 'Hostel Delivery', value: 0 },
+        { orderType: 'Online Delivery', value: 0 },
         { orderType: 'Take Away', value: 0 },
         { orderType: 'In Store', value: 0 },
         { orderType: 'Dine In', value: 0 },

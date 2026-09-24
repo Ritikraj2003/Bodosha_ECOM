@@ -5,7 +5,7 @@ import { getServerSession, getServerProfile } from '@/features/auth/actions';
 import { clearSettingsCache, getOwnerEmail } from '@/lib/settings';
 import { revalidatePath } from 'next/cache';
 import { isOwnerEmail } from '@/config/auth-access';
-import type { AdminFilter, SystemSetting } from '../types';
+import type { AdminFilter } from '../types';
 import type { Restaurant } from '@/features/restaurants/types';
 
 import { getAdminEmails } from '@/lib/settings';
@@ -61,6 +61,16 @@ export async function getAdminDashboard(filter?: { fromDate?: string; toDate?: s
     return { success: true, data: stats };
   } catch (e) {
     return { success: false, error: (e as Error).message, data: null };
+  }
+}
+
+export async function getTopSellingItems(filter?: { fromDate?: string; toDate?: string; limit?: number }) {
+  try {
+    await authorizeAdmin();
+    const data = await adminRepository.getTopSellingItems(filter);
+    return { success: true, data };
+  } catch (e) {
+    return { success: false, error: (e as Error).message, data: [] };
   }
 }
 

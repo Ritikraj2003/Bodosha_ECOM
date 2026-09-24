@@ -388,7 +388,7 @@ export async function createOrder(params: CreateOrderParams) {
   }
 
   if (paymentMethod === 'cod' && orderType && orderType !== 'room_delivery') {
-    return { success: false, error: 'Pay on Delivery is only available for Hostel Delivery orders' };
+    return { success: false, error: 'Pay on Delivery is only available for Online Delivery orders' };
   }
 
   // Calculate authoritative prices & line items strictly from DB

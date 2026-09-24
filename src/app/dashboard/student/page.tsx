@@ -147,7 +147,7 @@ export default async function StudentDashboardPage() {
               <ShoppingBag size={40} className="mx-auto mb-3 text-ztext-lighter" />
               <p className="font-bold text-ztext text-base">No orders yet</p>
               <p className="text-ztext-light text-xs mt-1 max-w-sm mx-auto">
-                Explore our hot meals, quick bites, and combos. Place an order for hostel delivery or take away!
+                Explore our hot meals, quick bites, and combos. Place an order for online delivery or take away!
               </p>
               <Link href="/menu" className="button-z button-z-primary mt-5 px-6 py-2.5 text-xs font-bold inline-flex">
                 Browse Menu

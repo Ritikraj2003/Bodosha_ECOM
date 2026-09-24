@@ -515,7 +515,7 @@ export default function CheckoutPage() {
                 </div>
               )}
 
-              {/* Delivery Time Slot Section (ONLY when Fixed Delivery Slots = ON and Order Type = Home/Hostel Delivery) */}
+              {/* Delivery Time Slot Section (ONLY when Fixed Delivery Slots = ON and Order Type = Home/Online Delivery) */}
               {isDelivery && publicSettings.deliveryFixedSlotsEnabled && publicSettings.deliveryAvailable && (
                 <div className="bg-zcard rounded-xl border border-zborder p-4">
                   <h2 className="font-semibold text-ztext mb-1 flex items-center gap-1.5 text-sm">

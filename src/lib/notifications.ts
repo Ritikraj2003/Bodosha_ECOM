@@ -17,7 +17,7 @@ interface OrderInfo {
 
 function orderTypeBadge(type: string | null | undefined): string {
   switch (type) {
-    case 'room_delivery': return '🚚 Hostel Delivery';
+    case 'room_delivery': return '🚚 Online Delivery';
     case 'takeaway': return '🥡 Take Away';
     case 'dine_in': return '🍽️ Dine In';
     case 'in_store': return '🏪 In Store (Counter)';

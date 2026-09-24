@@ -10,6 +10,12 @@ export interface AdminUser {
   created_at: string;
 }
 
+export interface TopSellingItem {
+  name: string;
+  quantity: number;
+  revenue: number;
+}
+
 export interface DashboardStats {
   total_users: number;
   total_students: number;
@@ -33,6 +39,7 @@ export interface DashboardStats {
   total_expenses: number;
   order_type_stats?: Array<{ type: string; label: string; count: number }>;
   payment_type_stats?: Array<{ category: string; value: number }>;
+  top_selling_items?: TopSellingItem[];
 }
 
 export interface ActivityEntry {

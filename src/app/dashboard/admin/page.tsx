@@ -21,6 +21,13 @@ const DashboardCharts = dynamic(() => import('@/components/admin/DashboardCharts
   ),
 });
 
+const TopSellingChart = dynamic(() => import('@/components/admin/TopSellingChart'), {
+  ssr: false,
+  loading: () => (
+    <div className="bg-zcard rounded-xl border border-zborder p-5 h-[340px] mb-6 animate-pulse" />
+  ),
+});
+
 export default function AdminDashboardPage() {
   const user = useAuthStore((s) => s.user);
   const canFilter = hasPermission(user?.permissions, PERMISSION_CODES.DASHFL, user?.role);
@@ -181,6 +188,13 @@ export default function AdminDashboardPage() {
       <DashboardCharts
         orderTypeData={stats?.order_type_stats}
         paymentTypeData={stats?.payment_type_stats}
+      />
+
+      {/* Top Selling Items Graph with Dynamic Input */}
+      <TopSellingChart
+        initialData={stats?.top_selling_items}
+        dateFilter={dateFilter}
+        dateLabel={dateLabel}
       />
 
       <div className="bg-zcard rounded-xl border border-zborder mb-6">
