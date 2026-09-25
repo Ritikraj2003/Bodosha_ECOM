@@ -741,7 +741,7 @@ export class AdminRepository {
     if (status === 'ready') {
       sendPushToDeliveryPartners({
         title: `🛵 Order #${order.tracking_code} is Ready!`,
-        body: `Food is packed and ready for delivery pickup from Bodosa kitchen.`,
+        body: `Food is packed and ready for delivery pickup from Badmaas kitchen.`,
         url: `/dashboard/delivery`,
         tag: `delivery-ready-${order.id}`,
       }).catch((err) => console.error('Error sending delivery partner push:', err));

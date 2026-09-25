@@ -188,7 +188,7 @@ export default function ProfilePage() {
           <div className="w-20 h-20 rounded-full bg-zgray flex items-center justify-center mx-auto">
             <User size={36} className="text-ztext-muted" />
           </div>
-          <h1 className="text-xl font-bold text-ztext mt-5">Welcome to Bodosa</h1>
+          <h1 className="text-xl font-bold text-ztext mt-5">Welcome to {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</h1>
           <p className="text-sm text-ztext-light mt-2">
             Sign in to manage your profile, view orders, and save your delivery address.
           </p>
@@ -244,7 +244,7 @@ export default function ProfilePage() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="font-bold text-ztext text-[15px] truncate">
-              {user.fullName || 'Bodosa Customer'}
+              {user.fullName || `${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} Customer`}
             </p>
             <p className="text-xs text-ztext-light truncate">{user.email}</p>
           </div>
@@ -478,7 +478,7 @@ export default function ProfilePage() {
                 <HelpCircle size={18} className="text-zred shrink-0" />
                 <div className="flex-1">
                   <p className="font-semibold text-ztext text-sm">Help &amp; Customer Support</p>
-                  <p className="text-xs text-ztext-light mt-0.5">Chat with Bodosa Team</p>
+                  <p className="text-xs text-ztext-light mt-0.5">Chat with {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} Team</p>
                 </div>
                 <ChevronRight size={16} className="text-ztext-muted shrink-0" />
               </Link>
@@ -507,11 +507,10 @@ export default function ProfilePage() {
             {/* About section */}
             <div className="mt-4 bg-zcard rounded-xl border border-zborder p-5">
               <h2 className="text-sm font-bold text-ztext mb-2 flex items-center gap-2">
-                <Store size={18} className="text-zred" /> About Bodosa
+                <Store size={18} className="text-zred" /> About {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}
               </h2>
               <p className="text-xs text-ztext-light leading-relaxed">
-                Homestyle food service near CIT Kokrajhar&apos;s 2nd gate.
-                Fresh, authentic meals cooked with love — from classic fish curry to evening chai.
+                Signature brews, specialty coffee, and mouth-watering bites cooked fresh with passion.
               </p>
               <div className="mt-3 space-y-2">
                 <div className="flex items-center gap-2 text-xs text-ztext-light">

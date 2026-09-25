@@ -196,7 +196,7 @@ export default function OrderDetailPage() {
               <MapPin size={16} className="text-amber-500 shrink-0" />
               <div>
                 <p className="font-semibold text-ztext">Store Pickup (Take Away)</p>
-                <p className="text-xs text-ztext-light mt-0.5">Collect directly from store counter • Bodosa Canteen</p>
+                <p className="text-xs text-ztext-light mt-0.5">Collect directly from store counter • {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</p>
               </div>
             </div>
           </div>
@@ -343,7 +343,7 @@ export default function OrderDetailPage() {
                     className="accent-zred"
                   />
                   <Wallet size={14} className="text-emerald-500" />
-                  <span>Bodosa Wallet (Instant refund of ₹{order.total})</span>
+                  <span>{process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} Wallet (Instant refund of ₹{order.total})</span>
                 </label>
                 <label
                   onClick={() => setRefundChoice('original')}
@@ -367,7 +367,7 @@ export default function OrderDetailPage() {
             {order.payment_method === 'wallet' && (
               <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-medium mb-3 flex items-center gap-2">
                 <Wallet size={14} />
-                <span>₹{order.total} will be instantly refunded to your Bodosa Wallet balance.</span>
+                <span>₹{order.total} will be instantly refunded to your {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} Wallet balance.</span>
               </div>
             )}
 

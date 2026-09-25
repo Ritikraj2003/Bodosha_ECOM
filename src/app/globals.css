@@ -2,25 +2,25 @@
 
 @theme {
   --font-sans: "National 2 Regular", "National 2", ui-sans-serif, system-ui, sans-serif;
-  --color-zred: #6E9B2F;
-  --color-zred-light: #9BC83B;
-  --color-zred-dark: #527920;
-  --color-zgreen: #8EC63F;
-  --color-zethnic-red: #C81018;
-  --color-zbg: #0C1009;
-  --color-zgray: #131A0F;
-  --color-zcard: #1A2314;
-  --color-zelevated: #202B1A;
-  --color-zsurface: #27341F;
-  --color-ztext: #F7FAF3;
-  --color-ztext-light: #B0C2A4;
-  --color-ztext-lighter: #86997B;
-  --color-ztext-muted: #5E6F54;
-  --color-zborder: rgba(255,255,255,0.08);
-  --color-zborder-hover: rgba(155,200,59,0.4);
-  --shadow-z: 0 2px 8px rgba(0,0,0,0.4);
-  --shadow-z-hover: 0 8px 24px rgba(0,0,0,0.5);
-  --shadow-z-modal: 0 16px 48px rgba(0,0,0,0.6);
+  --color-zred: #E50914;
+  --color-zred-light: #FF334B;
+  --color-zred-dark: #B80710;
+  --color-zgreen: #10B981;
+  --color-zethnic-red: #E50914;
+  --color-zbg: #0A0A0C;
+  --color-zgray: #121316;
+  --color-zcard: #17181C;
+  --color-zelevated: #202227;
+  --color-zsurface: #282B32;
+  --color-ztext: #FFFFFF;
+  --color-ztext-light: #CBD5E1;
+  --color-ztext-lighter: #94A3B8;
+  --color-ztext-muted: #64748B;
+  --color-zborder: rgba(255,255,255,0.09);
+  --color-zborder-hover: rgba(229,9,20,0.45);
+  --shadow-z: 0 4px 14px rgba(0,0,0,0.5);
+  --shadow-z-hover: 0 8px 24px rgba(0,0,0,0.6);
+  --shadow-z-modal: 0 16px 48px rgba(0,0,0,0.8);
   --radius-z: 8px;
   --radius-z-sm: 6px;
   --radius-z-lg: 14px;
@@ -430,12 +430,12 @@ option {
    DEMO-STYLE HOME UI (structure only — theme tokens kept)
 =================================================== */
 
-/* Bodosa ethnic kitchen gradient band header with decorative circles and traditional red accent */
+/* Badmaas House Cafe gradient band header with decorative circles and signature red accent */
 .hero-band {
   position: relative;
   overflow: hidden;
-  background: linear-gradient(135deg, #375317 0%, #567C21 50%, #76A52E 100%);
-  border-left: 4px solid #C81018;
+  background: linear-gradient(135deg, #121316 0%, #1A1C20 50%, #252830 100%);
+  border-left: 4px solid #E50914;
   padding: 1rem 1rem 1.5rem;
 }
 .hero-band::before {
@@ -497,7 +497,7 @@ option {
 }
 .category-item.active .category-avatar {
   border-color: var(--color-zred);
-  box-shadow: 0 6px 15px rgba(155, 200, 59, 0.35);
+  box-shadow: 0 6px 15px rgba(229, 9, 20, 0.4);
 }
 .category-item.active .category-label { color: var(--color-zred); font-weight: 700; }
 

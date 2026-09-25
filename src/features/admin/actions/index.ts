@@ -921,14 +921,16 @@ export async function getAdminRestaurant(): Promise<{ success: boolean; data?: R
     // Fallback: If table is empty, auto-create default store record
     const { user } = await getServerSession();
     const ownerId = user?.id || '5c262804-b3d8-4815-a41f-2ce1cab12fa1';
+    const storeName = process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe';
+    const storeSlug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'main-store';
     const newRest = await query(`
       INSERT INTO public.restaurants (
         id, owner_id, name, slug, address_line1, city, state, postal_code, is_active, is_open
       ) VALUES (
         'd1111111-1111-1111-1111-111111111111',
         $1,
-        'Bodosa Main Store',
-        'dilip-da-main',
+        $2,
+        $3,
         'Near CIT Kokrajhar Campus',
         'Kokrajhar',
         'Assam',
@@ -938,7 +940,7 @@ export async function getAdminRestaurant(): Promise<{ success: boolean; data?: R
       )
       ON CONFLICT (id) DO UPDATE SET is_active = true, deleted_at = NULL
       RETURNING *;
-    `, [ownerId]);
+    `, [ownerId, storeName, storeSlug]);
     return { success: true, data: newRest.rows[0] as Restaurant };
   } catch (e) {
     return { success: false, error: (e as Error).message, data: null };

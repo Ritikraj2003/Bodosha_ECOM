@@ -31,7 +31,7 @@ export default function RecentOrders({ orders }: { orders: Order[] }) {
         name: matched?.name ?? oi.product_name,
         price: matched ? Number(matched.price) : Number(oi.product_price ?? oi.unit_price),
         veg: matched?.veg ?? false,
-        image: matched?.img ?? '/images/Chicken Curry.jpg',
+        image: matched?.img || '/images/food-placeholder.jpg',
         packagingBigQty: matched?.packagingBigQty,
         packagingSmallQty: matched?.packagingSmallQty,
       }, oi.quantity || 1);

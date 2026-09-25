@@ -95,7 +95,7 @@ export default function FavoritesPage() {
                 desc: item.desc,
                 veg: item.veg ?? false,
                 popular: item.popular ?? false,
-                img: item.img || item.image || '/images/Chicken Curry.jpg',
+                img: item.img || item.image || '/images/food-placeholder.jpg',
               };
 
               return (

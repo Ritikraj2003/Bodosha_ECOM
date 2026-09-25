@@ -34,7 +34,7 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
   const rating = dish.rating ?? menu?.rating;
   const [imgError, setImgError] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-  const displayImg = imgError || !dish.img ? '/images/Chicken Curry.jpg' : dish.img;
+  const displayImg = imgError || !dish.img ? '/images/food-placeholder.jpg' : dish.img;
 
   // Merge full data if available
   const fullDish: MenuItem = {

@@ -52,8 +52,8 @@ export async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
       from: cfg?.from || 'noreply@dilipda.com',
       to,
       subject: 'Your CIT Student Verification OTP',
-      text: `Your OTP for CIT student verification is: ${otp}\n\nThis OTP expires in 10 minutes.\n\n- Bodosa`,
-      html: `<p>Your OTP for CIT student verification is:</p><h2>${otp}</h2><p>This OTP expires in <strong>10 minutes</strong>.</p><p>- Bodosa</p>`,
+      text: `Your OTP for CIT student verification is: ${otp}\n\nThis OTP expires in 10 minutes.\n\n- ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}`,
+      html: `<p>Your OTP for CIT student verification is:</p><h2>${otp}</h2><p>This OTP expires in <strong>10 minutes</strong>.</p><p>- ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</p>`,
     });
     return true;
   } catch {
@@ -77,19 +77,19 @@ export async function sendPasswordResetLinkEmail(to: string, resetLink: string):
     await t.sendMail({
       from: cfg?.from || 'noreply@dilipda.com',
       to,
-      subject: 'Reset your Bodosa password',
-      text: `We received a request to reset your password for your Bodosa account.\n\nClick the link below to set a new password:\n${resetLink}\n\nThis link will expire in 24 hours. If you did not request a password reset, you can safely ignore this email.\n\n- Bodosa Team`,
+      subject: `Reset your ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} password`,
+      text: `We received a request to reset your password for your ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} account.\n\nClick the link below to set a new password:\n${resetLink}\n\nThis link will expire in 24 hours. If you did not request a password reset, you can safely ignore this email.\n\n- ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} Team`,
       html: `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #eaeaea;">
           <div style="text-align: center; margin-bottom: 24px;">
-            <h1 style="color: #EF4444; font-size: 24px; margin: 0; font-weight: 800;">Bodosa</h1>
+            <h1 style="color: #E50914; font-size: 24px; margin: 0; font-weight: 800;">${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</h1>
           </div>
           <h2 style="color: #111827; font-size: 18px; margin-bottom: 12px;">Reset your password</h2>
           <p style="color: #4B5563; font-size: 14px; line-height: 1.5; margin-bottom: 20px;">
-            We received a request to reset the password for your Bodosa account (<strong>${to}</strong>). Click the button below to choose a new password:
+            We received a request to reset the password for your ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} account (<strong>${to}</strong>). Click the button below to choose a new password:
           </p>
           <div style="text-align: center; margin: 28px 0;">
-            <a href="${resetLink}" style="background-color: #EF4444; color: #ffffff; padding: 12px 28px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">
+            <a href="${resetLink}" style="background-color: #E50914; color: #ffffff; padding: 12px 28px; font-size: 14px; font-weight: bold; text-decoration: none; border-radius: 8px; display: inline-block;">
               Reset Password
             </a>
           </div>
@@ -128,15 +128,15 @@ export async function sendDeliveryOtpEmail(to: string, otp: string, trackingCode
       from: cfg?.from || 'noreply@dilipda.com',
       to,
       subject: `Delivery OTP — Order ${trackingCode}`,
-      text: `Your delivery OTP for order ${trackingCode} is: ${otp}\n\nTell this code to your delivery partner to confirm delivery.\nThis OTP expires in 5 minutes.\n\n- Bodosa`,
+      text: `Your delivery OTP for order ${trackingCode} is: ${otp}\n\nTell this code to your delivery partner to confirm delivery.\nThis OTP expires in 5 minutes.\n\n- ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}`,
       html: `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto">
-          <h2 style="color:#6E9B2F">Delivery confirmation OTP</h2>
+          <h2 style="color:#E50914">Delivery confirmation OTP</h2>
           <p>Your delivery OTP for order <strong>${trackingCode}</strong> is:</p>
           <p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#111">${otp}</p>
           <p>Tell this code to your delivery partner to confirm your delivery.</p>
           <p style="font-size:12px;color:#777">This OTP expires in <strong>5 minutes</strong>.</p>
-          <p>- Bodosa</p>
+          <p>- ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</p>
         </div>
       `,
     });

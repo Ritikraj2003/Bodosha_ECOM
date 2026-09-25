@@ -13,6 +13,7 @@ interface HomeHeaderProps {
 
 export default function HomeHeader({ user, liveOrder }: HomeHeaderProps) {
   const firstName = user?.fullName?.split(' ')[0] || 'Foodie';
+  const storeName = process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe';
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4 animate-hero-in overflow-hidden max-w-full">
@@ -20,7 +21,7 @@ export default function HomeHeader({ user, liveOrder }: HomeHeaderProps) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">Hello, {firstName}!</h1>
-            <p className="mt-0.5 text-xs font-medium text-white/90">Bodosa · Homestyle meals</p>
+            <p className="mt-0.5 text-xs font-medium text-white/90">{storeName} · Brews & Bites</p>
           </div>
           <div className="shrink-0 pt-0.5">
             <LiveNotificationToggle />

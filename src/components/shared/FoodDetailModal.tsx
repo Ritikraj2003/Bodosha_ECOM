@@ -61,7 +61,7 @@ export default function FoodDetailModal({ dish, isOpen, onClose }: FoodDetailMod
 
   if (!isOpen || !dish || !mounted) return null;
 
-  const displayImg = imgError || !dish.img ? '/images/Chicken Curry.jpg' : dish.img;
+  const displayImg = imgError || !dish.img ? '/images/food-placeholder.jpg' : dish.img;
   const rating = dish.rating ?? 4.8;
   const descriptionText = dish.fullDesc || dish.desc;
   const totalPrice = dish.price * modalQty;

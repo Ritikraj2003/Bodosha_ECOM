@@ -741,7 +741,7 @@ export default function CheckoutPage() {
                 <h2 className="font-bold text-ztext mb-3 flex items-center gap-2 text-sm">
                   <ShoppingBag size={15} className="text-zred" /> Order summary
                 </h2>
-                <p className="text-xs text-ztext-light mb-2.5">Bodosa &bull; {items.length} item{items.length > 1 ? 's' : ''}</p>
+                <p className="text-xs text-ztext-light mb-2.5">{process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} &bull; {items.length} item{items.length > 1 ? 's' : ''}</p>
                 <div className="space-y-1.5 max-h-32 overflow-y-auto text-xs pr-1">
                   {items.map((item) => (
                     <div key={item.id} className="flex justify-between">

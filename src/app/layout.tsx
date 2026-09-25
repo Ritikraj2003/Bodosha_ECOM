@@ -15,12 +15,14 @@ const PageLoader = dynamic(() => import('@/components/shared/PageLoader'));
 const PushNotificationManager = dynamic(() => import('@/components/notifications/PushNotificationManager'));
 
 
+import { APP_NAME } from '@/config/site';
+
 export const metadata: Metadata = {
   title: {
-    template: '%s | Bodosa',
-    default: 'Bodosa — Bodos Ethnic Kitchen near CIT Kokrajhar',
+    template: `%s | ${APP_NAME}`,
+    default: `${APP_NAME} — Signature Brews & Delicious Food`,
   },
-  description: 'Bodosa · Bodos Ethnic Kitchen — fresh homestyle meals near CIT Kokrajhar. Order online for delivery or dine-in.',
+  description: `${APP_NAME} — Premium coffee, quick bites, hot meals, and delicious combos. Order online for delivery or dine-in.`,
   icons: {
     icon: [
       { url: '/logo.png', type: 'image/png' },

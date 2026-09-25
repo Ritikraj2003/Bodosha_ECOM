@@ -165,7 +165,7 @@ function TrackContent() {
       let msg = 'Your order has been cancelled.';
       if (res.refunded) {
         if (res.refundTarget === 'wallet') {
-          msg = `Your order has been cancelled and ₹${data.order.total} has been instantly refunded to your Bodosa Wallet!`;
+          msg = `Your order has been cancelled and ₹${data.order.total} has been instantly refunded to your ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} Wallet!`;
         } else {
           msg = `Your order has been cancelled and a refund of ₹${data.order.total} has been initiated back to your original payment source.`;
         }
@@ -391,7 +391,7 @@ function TrackContent() {
                   </div>
                 </div>
                 <div className="mt-3 pt-3 border-t border-amber-500/15 text-xs text-ztext-lighter">
-                  📍 Bodosa Canteen, Near CIT Kokrajhar 2nd Gate
+                  📍 {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}, Near CIT Kokrajhar 2nd Gate
                 </div>
               </div>
             )}
@@ -539,7 +539,7 @@ function TrackContent() {
                     <div>
                       <p className="text-xs font-bold text-emerald-500">Instant Wallet Refund</p>
                       <p className="text-[11px] text-ztext-light mt-0.5 leading-relaxed">
-                        The amount of <strong className="text-ztext">₹{data.order.total}</strong> will be instantly refunded back to your Bodosa Wallet balance.
+                        The amount of <strong className="text-ztext">₹{data.order.total}</strong> will be instantly refunded back to your {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} Wallet balance.
                       </p>
                     </div>
                   </div>
@@ -551,7 +551,7 @@ function TrackContent() {
                       Choose where to receive your refund:
                     </label>
 
-                    {/* Option 1: Bodosa Wallet */}
+                    {/* Option 1: Wallet */}
                     <label
                       onClick={() => setRefundChoice('wallet')}
                       className={`p-3 rounded-xl border flex items-start gap-3 cursor-pointer transition-all ${
@@ -570,7 +570,7 @@ function TrackContent() {
                       <div className="flex-1">
                         <div className="flex items-center gap-1.5">
                           <Wallet size={14} className="text-emerald-500" />
-                          <span className="text-xs font-bold text-ztext">Bodosa Wallet (Instant)</span>
+                          <span className="text-xs font-bold text-ztext">{process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} Wallet (Instant)</span>
                           <span className="text-[10px] bg-emerald-500/15 text-emerald-500 font-bold px-1.5 py-0.2 rounded-full">
                             Recommended
                           </span>

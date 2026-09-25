@@ -131,7 +131,7 @@ export async function getPublicSettings(): Promise<PublicStoreSettings> {
     deliveryUnavailableMessage:
       (await getSetting('delivery_unavailable_message')) ||
       'Delivery is temporarily unavailable because our delivery person is busy. Please try again later.',
-    deliveryPersonName: (await getSetting('delivery_person_name')) || 'Bodosa Delivery',
+    deliveryPersonName: (await getSetting('delivery_person_name')) || (process.env.NEXT_PUBLIC_APP_NAME ? `${process.env.NEXT_PUBLIC_APP_NAME} Delivery` : 'Badmaas Delivery'),
     deliveryPersonPhone: (await getSetting('delivery_person_phone')) || '6000212823',
     deliveryFixedSlotsEnabled: deliveryFixedSlotsRaw === 'true',
     deliverySlots: await getJsonSetting<DeliverySlot[]>('delivery_slots', DEFAULT_DELIVERY_SLOTS),

@@ -9,7 +9,7 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DIRECT_URL: z.string().optional(),
   NEXT_PUBLIC_APP_URL: urlOrLocalhost.default('http://localhost:3000'),
-  NEXT_PUBLIC_APP_NAME: z.string().min(1).default('Bodosa'),
+  NEXT_PUBLIC_APP_NAME: z.string().min(1).default('Badmaas House Cafe'),
   NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().optional(),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   SMTP_HOST: z.string().optional(),

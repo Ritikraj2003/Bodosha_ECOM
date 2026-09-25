@@ -1,7 +1,7 @@
 'use server';
 
 import { query } from '@/infrastructure/db';
-import { menuSections as fallbackMenuSections, type MenuItem, type MenuSection } from '../data';
+import { type MenuItem, type MenuSection } from '../data';
 
 export async function getPublicMenu(): Promise<{ success: boolean; sections: MenuSection[]; source: 'db' | 'fallback' }> {
   try {
@@ -24,7 +24,7 @@ export async function getPublicMenu(): Promise<{ success: boolean; sections: Men
     const products = prodRes.rows;
 
     if (!products || products.length === 0) {
-      return { success: true, sections: fallbackMenuSections, source: 'fallback' };
+      return { success: true, sections: [], source: 'db' };
     }
 
     // Map DB products to MenuItem format
@@ -49,9 +49,14 @@ export async function getPublicMenu(): Promise<{ success: boolean; sections: Men
         price: Number(prod.price),
         desc: prod.description || '',
         fullDesc: prod.full_description || prod.description || '',
-        veg: Boolean(prod.is_vegetarian),
-        popular: Boolean(prod.compare_at_price || (prod.tags && prod.tags.includes('popular')) || prod.tags?.includes('bestseller')),
-        img: prod.image || '/images/Chicken Curry.jpg',
+        veg: Boolean(prod.is_vegetarian ?? prod.is_veg),
+        popular: Boolean(
+          prod.compare_at_price ||
+          (prod.tags && (prod.tags.includes('popular') || prod.tags.includes('bestseller'))) ||
+          prod.badge === 'Popular' ||
+          prod.badge === 'Bestseller'
+        ),
+        img: (prod.image && prod.image.trim()) || (prod.image_url && prod.image_url.trim()) || '/images/food-placeholder.jpg',
         rating: 4.8,
         category: categoryName,
         servings: prod.servings || undefined,
@@ -80,13 +85,9 @@ export async function getPublicMenu(): Promise<{ success: boolean; sections: Men
         items,
       }));
 
-    if (sections.length === 0) {
-      return { success: true, sections: fallbackMenuSections, source: 'fallback' };
-    }
-
     return { success: true, sections, source: 'db' };
   } catch (err) {
     console.error('Failed to load menu from DB:', err);
-    return { success: true, sections: fallbackMenuSections, source: 'fallback' };
+    return { success: false, sections: [], source: 'fallback' };
   }
 }

@@ -596,7 +596,7 @@ export default function RolesAndPermissionsPage() {
                 <div className="flex items-center justify-between p-3 rounded-xl bg-zsurface border border-zborder text-sm">
                   <div className="flex items-center gap-2 font-medium text-ztext">
                     <Store size={18} className="text-zred" />
-                    <span>Bodosa - Main Central Store (Assam)</span>
+                    <span>{process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} - Main Store</span>
                   </div>
                   <span className="text-xs font-semibold text-ztext-lighter flex items-center gap-1"><Lock size={12} /> Locked</span>
                 </div>

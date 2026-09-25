@@ -10,11 +10,10 @@
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "typecheck": "tsc --noEmit",
-    "seed:admin": "node scripts/seed-superadmin.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "migrate": "node scripts/run-migration.mjs",
+    "seed:admin": "node scripts/seed-database.mjs",
+    "seed:db": "node scripts/seed-database.mjs",
+    "seed:all": "node scripts/seed-database.mjs"
   },
   "dependencies": {
     "@amcharts/amcharts5": "^5.20.6",

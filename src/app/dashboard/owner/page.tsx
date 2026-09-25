@@ -90,7 +90,7 @@ export default function OwnerOverviewPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <PageHeader title="Owner Dashboard" description="Business overview & analytics for Bodosa" />
+        <PageHeader title="Owner Dashboard" description={`Business overview & analytics for ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}`} />
         <div className="flex items-center gap-3">
           <button onClick={() => load()} aria-label="Refresh" className="p-2.5 rounded-xl hover:bg-zgray border border-zborder text-ztext-lighter transition-colors">
             <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />

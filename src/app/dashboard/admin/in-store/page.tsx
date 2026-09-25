@@ -362,7 +362,7 @@ export default function InStorePage() {
     }
 
     const rawUpi = (publicSettings.storeUpiId || publicSettings.gpayUpiId || process.env.NEXT_PUBLIC_STORE_UPI_ID || 'ritikraj1092002-4@okaxis').trim();
-    const upiName = (publicSettings.storeUpiName || publicSettings.gpayUpiName || 'Bodosa').trim();
+    const upiName = (publicSettings.storeUpiName || publicSettings.gpayUpiName || process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe').trim();
 
     if (!rawUpi) {
       setError('Store UPI ID is not configured in General Settings.');
@@ -372,7 +372,8 @@ export default function InStorePage() {
     setGeneratingQr(true);
     setShowUpiModal(true);
     try {
-      const note = isTakeaway ? 'Bodosa Parcel' : 'Bodosa Counter';
+      const storeShort = (process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas').split(' ')[0];
+      const note = isTakeaway ? `${storeShort} Parcel` : `${storeShort} Counter`;
       const upiUri = `upi://pay?pa=${encodeURIComponent(rawUpi)}&pn=${encodeURIComponent(upiName)}&am=${total.toFixed(2)}&cu=INR&tn=${encodeURIComponent(note)}`;
       const dataUrl = await QRCode.toDataURL(upiUri, {
         width: 320,
@@ -519,7 +520,7 @@ export default function InStorePage() {
       openRazorpayCheckout({
         key: razorpayKey,
         amount: rzpRes.data.amount,
-        name: 'Bodosa In-Store Counter',
+        name: `${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas'} In-Store Counter`,
         description: `Counter Order for ${displayName}`,
         orderId: rzpRes.data.id,
         prefill: { name: displayName, contact: customerPhone.trim() || '', email: customerEmail.trim() || '' },

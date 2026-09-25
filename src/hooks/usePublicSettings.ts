@@ -13,7 +13,7 @@ const DEFAULT_SLOTS: DeliverySlot[] = [
 const FALLBACK: PublicStoreSettings = {
   razorpayKeyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? '',
   gpayUpiId: process.env.NEXT_PUBLIC_STORE_UPI_ID ?? '',
-  gpayUpiName: process.env.NEXT_PUBLIC_STORE_UPI_NAME ?? 'Bodosa',
+  gpayUpiName: process.env.NEXT_PUBLIC_STORE_UPI_NAME ?? process.env.NEXT_PUBLIC_APP_NAME ?? 'Badmaas House Cafe',
   supportPhone: '',
   supportEmail: '',
   address: '',
@@ -22,7 +22,7 @@ const FALLBACK: PublicStoreSettings = {
   facebook: '',
   website: '',
   storeUpiId: process.env.NEXT_PUBLIC_STORE_UPI_ID ?? '',
-  storeUpiName: process.env.NEXT_PUBLIC_STORE_UPI_NAME ?? 'Bodosa',
+  storeUpiName: process.env.NEXT_PUBLIC_STORE_UPI_NAME ?? process.env.NEXT_PUBLIC_APP_NAME ?? 'Badmaas House Cafe',
   hours: { open: '10:00', close: '21:30' },
   tempReopensAt: '',
   orderByCutoffs: [],
@@ -57,7 +57,7 @@ const FALLBACK: PublicStoreSettings = {
   deliveryAvailable: true,
   deliveryUnavailableMessage:
     'Delivery is temporarily unavailable because our delivery person is busy. Please try again later.',
-  deliveryPersonName: 'Bodosa Delivery',
+  deliveryPersonName: process.env.NEXT_PUBLIC_APP_NAME ? `${process.env.NEXT_PUBLIC_APP_NAME} Delivery` : 'Badmaas Delivery',
   deliveryPersonPhone: '6000212823',
   deliveryFixedSlotsEnabled: false,
   deliverySlots: DEFAULT_SLOTS,

@@ -55,15 +55,17 @@ export default function OwnerShell({ children }: { children: React.ReactNode }) 
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex items-center justify-between px-5 h-16 border-b border-zborder">
-          <Link href="/dashboard/owner" className="flex items-center gap-2 shrink-0 group" aria-label="Bodosa">
-            <div className="relative w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-black/40 flex items-center justify-center">
-              <img src="/logo.png" alt="Bodosa" className="w-full h-full object-cover" />
+          <Link href="/dashboard/owner" className="flex items-center gap-2.5 shrink-0 group" aria-label={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}>
+            <div className="relative w-9 h-9 rounded-full overflow-hidden shrink-0 border border-white/20 bg-black shadow-md flex items-center justify-center">
+              <img src="/logo.png" alt={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
-              <span className="text-lg font-black tracking-tight leading-none">
-                <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
+              <span className="text-base font-black tracking-tight leading-none text-white flex items-center gap-1">
+                <span className="text-zred font-extrabold tracking-wide">
+                  {(process.env.NEXT_PUBLIC_APP_NAME || 'BADMAAS').split(' ')[0]}
+                </span>
               </span>
-              <span className="text-[8px] font-semibold text-zred-light tracking-wider uppercase leading-tight">Owner Portal</span>
+              <span className="text-[9px] font-bold text-zred-light tracking-wider uppercase leading-tight mt-0.5">Owner Portal</span>
             </div>
           </Link>
           <button onClick={() => setSidebarOpen(false)} aria-label="Close sidebar" className="lg:hidden p-1.5 hover:bg-zgray transition-colors">
@@ -108,7 +110,7 @@ export default function OwnerShell({ children }: { children: React.ReactNode }) 
             </button>
 
             <div className="hidden lg:flex items-center gap-2">
-              <span className="text-xs font-medium text-ztext-muted">Bodosa — Owner Dashboard</span>
+              <span className="text-xs font-medium text-ztext-muted">{process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} — Owner Dashboard</span>
             </div>
 
             <div className="flex items-center gap-3" />

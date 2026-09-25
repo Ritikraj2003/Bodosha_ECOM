@@ -17,7 +17,7 @@ export default function OfferCards({ active, onSelect }: OfferCardsProps) {
     document.getElementById('recommended-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  const allThumbnail = sections[0]?.items[0]?.img || '/images/Chicken Curry.jpg';
+  const allThumbnail = '/images/category-placeholder.jpg';
 
   return (
     <section className="py-5 sm:py-6 bg-zbg">
@@ -44,23 +44,26 @@ export default function OfferCards({ active, onSelect }: OfferCardsProps) {
             <span className="category-label">All</span>
           </button>
 
-          {sections.map((s) => (
-            <button
-              key={s.category}
-              onClick={() => select(s.category)}
-              className={`category-item ${active === s.category ? 'active' : ''}`}
-            >
-              <Image
-                src={s.items[0]?.img || '/images/Chicken Curry.jpg'}
-                alt={s.category}
-                width={68}
-                height={68}
-                className="category-avatar"
-                loading="lazy"
-              />
-              <span className="category-label">{s.category}</span>
-            </button>
-          ))}
+          {sections.map((s) => {
+            const catImg = s.items.find((i) => i.img && !i.img.includes('placeholder'))?.img || '/images/category-placeholder.jpg';
+            return (
+              <button
+                key={s.category}
+                onClick={() => select(s.category)}
+                className={`category-item ${active === s.category ? 'active' : ''}`}
+              >
+                <Image
+                  src={catImg}
+                  alt={s.category}
+                  width={68}
+                  height={68}
+                  className="category-avatar"
+                  loading="lazy"
+                />
+                <span className="category-label">{s.category}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </section>

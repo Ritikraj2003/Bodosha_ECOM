@@ -1,0 +1,330 @@
+[
+  {
+    "id": "7eaeb95e-6749-484c-b4f3-c3d87680b15d",
+    "description": "Access and view main dashboard overview",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Dashboard",
+    "permission_code": "DASH",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "dcc0821b-d7d3-46a7-a78c-0e6e3d3cf8ae",
+    "description": "Filter dashboard analytics by date range",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Dashboard | Filter",
+    "permission_code": "DASHFL",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "7370baca-1b49-4f2f-9b9e-62e6398a1e09",
+    "description": "Access daily expenses tracker",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Expenses",
+    "permission_code": "EXPENSES",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "9ad9b54a-7eb6-4c84-aa8b-da8eb0febaaa",
+    "description": "Record daily expenses",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Expenses | Add",
+    "permission_code": "EXP_ADD",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "5360364b-90e5-4816-bbae-61337b3dd97a",
+    "description": "Configure starting balance / investment funds",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Expenses | Invest",
+    "permission_code": "EXP_INVEST",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "41bc07dd-4324-4960-8af1-ab5da4ca1a8e",
+    "description": "Access in-store POS counter",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "In-Store",
+    "permission_code": "INSTORE",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "fbd5ee56-70f5-4623-81ad-b4f19e7023e3",
+    "description": "View in-store order history tab",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "In-Store | History",
+    "permission_code": "INSTORE_HIST",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "6a5fd2c5-0840-4860-ba77-f1d9562bf730",
+    "description": "Access orders directory",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Orders",
+    "permission_code": "ORDERS",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "e337d80a-217e-47be-a40e-7dbe0ef85d13",
+    "description": "View delivered and cancelled order history",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Orders | History",
+    "permission_code": "ORDERS_HIST",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "69ec275e-a64c-4073-9d4f-db811eb42025",
+    "description": "View and manage running active orders",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Orders | Running",
+    "permission_code": "ORDERS_RUNNING",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "ec53feff-7119-4bfe-aa11-32246676cc05",
+    "description": "Access payments & billing section",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Payments",
+    "permission_code": "PAYMENTS",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "0a4b0f8e-3214-4475-94e4-b61264ce741e",
+    "description": "Export payment reports to CSV or Excel",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Payments | Export",
+    "permission_code": "PAYMENTS_EXPORT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "d2b197cc-7a1b-449c-9c16-21879a10864b",
+    "description": "Toggle show/hide payment records",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Payments | Show/Hide",
+    "permission_code": "PAYMENTS_TOGGLE",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "55d0f705-dce7-414c-890c-eac145711ac3",
+    "description": "View audit logs of employee actions",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Audit Log",
+    "permission_code": "SET_AUDIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "635f4abd-fef2-43d3-a132-ae8023e0fea4",
+    "description": "Manage promotional banners and bumper offers",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Bumper Offer",
+    "permission_code": "SET_OFFERS",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "77388af0-5c97-4c66-82b5-f9c2904d2c21",
+    "description": "Access menu categories management",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Category",
+    "permission_code": "SET_CAT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "1b314e8d-67d5-4e5b-a053-c217939176e6",
+    "description": "Add new category",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Category | Add",
+    "permission_code": "SET_CAT_ADD",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "cb6fa629-8c69-4864-8454-b48341575c89",
+    "description": "Delete category",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Category | Delete",
+    "permission_code": "SET_CAT_DEL",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "8ba01f68-32dc-4a84-8c23-25eec287cf44",
+    "description": "Edit category details",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Category | Edit",
+    "permission_code": "SET_CAT_EDIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "b18ebbd6-51d7-40ef-961d-70801eb55199",
+    "description": "Access store general settings",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | General Setting",
+    "permission_code": "SET_GEN",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "06360b80-a671-4abf-b206-f0471350ff17",
+    "description": "Edit payment credentials, timings and store details",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | General Setting | Edit",
+    "permission_code": "SET_GEN_EDIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "b2731a80-c115-4d89-8556-d9439e7315f8",
+    "description": "Access menu products management",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Product",
+    "permission_code": "SET_PROD",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "371635fc-ac03-404d-b2c7-038a3b49e622",
+    "description": "Add new food item or product",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Product | Add",
+    "permission_code": "SET_PROD_ADD",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "c6d2f55a-2d51-4a6b-a10e-8b6b5bf5e8f9",
+    "description": "Delete or archive product",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Product | Delete",
+    "permission_code": "SET_PROD_DEL",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "06f258a3-f1c0-40c5-9f4e-54f4359d4fa7",
+    "description": "Edit product details, price, and stock",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Setting | Product | Edit",
+    "permission_code": "SET_PROD_EDIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "75255246-78bb-46b0-9ab9-44e5adeb2562",
+    "description": "Access customer directory",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Customer",
+    "permission_code": "USER_CUST",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "3defd0c6-9bbf-463a-813e-26508d9e40aa",
+    "description": "Adjust credit limit or top up customer wallet",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Customer | Credit Wallet",
+    "permission_code": "USER_CUST_CREDIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "bf13cb59-2d1b-4553-a070-d3b93f551158",
+    "description": "Suspend or block customer account",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Customer | Suspend",
+    "permission_code": "USER_CUST_SUSPEND",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "716d2319-3885-49ea-af5e-8b7b1406b09b",
+    "description": "Access employee directory",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Employee",
+    "permission_code": "USER_EMP",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "ed2e0430-a711-40dd-9e63-3b7dcfdc4f4a",
+    "description": "Add new employee account",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Employee | Add",
+    "permission_code": "USER_EMP_ADD",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "2cac096a-a1af-41bd-abc0-4290bda14462",
+    "description": "Delete / deactivate employee account",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Employee | Delete",
+    "permission_code": "USER_EMP_DEL",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "401c62f3-6d50-46de-b4e2-cc218925add8",
+    "description": "Edit employee details, password, and role",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Employee | Edit",
+    "permission_code": "USER_EMP_EDIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "cb0f9ceb-3d82-4b26-8868-4a6155a95138",
+    "description": "Access roles & permissions management",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Roles & Permissions",
+    "permission_code": "USER_ROLES",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "7ae2ad68-4554-4c1d-b000-bce79ab8100f",
+    "description": "Create new custom role",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Roles & Permissions | Add",
+    "permission_code": "USER_ROLES_ADD",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "c5a86a94-744c-4daf-aadb-4abf2b799dfa",
+    "description": "Delete custom role",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Roles & Permissions | Delete",
+    "permission_code": "USER_ROLES_DEL",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "c7db4a84-6df9-4db2-9496-812fe10fb0a2",
+    "description": "Edit role permissions matrix",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "User Management | Roles & Permissions | Edit",
+    "permission_code": "USER_ROLES_EDIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "7a463b7e-4be4-446a-8393-a1aac0b64707",
+    "description": "Access Wallet KYC tab",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Wallet KYC",
+    "permission_code": "WALLET_KYC",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "e6177971-4f16-48ca-b678-3c20c3f72044",
+    "description": "Check and waive BNPL overdue penalties",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Wallet KYC | Check Penalty",
+    "permission_code": "WALLET_KYC_PENALTY",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "b4a277a1-5951-47cd-a541-221baa339dc6",
+    "description": "View wallet credit and transaction history",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Wallet KYC | History",
+    "permission_code": "WALLET_KYC_HIST",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "ef7a808e-2e25-4661-b5c9-e9eda24b9be8",
+    "description": "Set and adjust student credit limits",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Wallet KYC | Set Limit",
+    "permission_code": "WALLET_KYC_LIMIT",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  },
+  {
+    "id": "85125f54-b43a-4816-96f9-f418d1e544c5",
+    "description": "View student KYC submissions and documents",
+    "created_at": "2026-09-19T02:26:24.533Z",
+    "permission_name": "Wallet KYC | View",
+    "permission_code": "WALLET_KYC_VIEW",
+    "created_on": "2026-09-19T02:26:24.533Z"
+  }
+]

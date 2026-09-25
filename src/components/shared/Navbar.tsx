@@ -66,15 +66,21 @@ export default function Navbar() {
             <ChevronLeft size={20} /> Back
           </button>
         ) : (
-          <Link href={isStaff ? '/admin/dashboard' : (isAuthenticated ? '/home/student' : '/')} className="flex items-center gap-2 shrink-0 group" aria-label="Bodosa">
-            <div className="relative w-8 h-8 sm:w-9 sm:h-9 rounded-lg overflow-hidden shrink-0 border border-white/10 bg-black/40 shadow-sm flex items-center justify-center transition-transform group-hover:scale-105">
-              <img src="/logo.png" alt="Bodosa Logo" className="w-full h-full object-cover" />
+          <Link href={isStaff ? '/admin/dashboard' : (isAuthenticated ? '/home/student' : '/')} className="flex items-center gap-2.5 shrink-0 group" aria-label={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}>
+            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 border border-white/20 bg-black shadow-md flex items-center justify-center transition-transform group-hover:scale-105">
+              <img src="/logo.png" alt={`${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} Logo`} className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
-              <span className="text-xl sm:text-2xl font-black tracking-tight leading-none">
-                <span className="text-ztext">Bodo</span><span className="text-zred">sa</span>
+              <span className="text-xl sm:text-2xl font-black tracking-tight leading-none text-white">
+                <span className="text-zred font-extrabold tracking-wide">
+                  {(process.env.NEXT_PUBLIC_APP_NAME || 'BADMAAS').split(' ')[0]}
+                </span>
               </span>
-              <span className="text-[9px] font-semibold text-zred-light tracking-wider uppercase leading-tight -mt-0.5">Ethnic Kitchen</span>
+              {(process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe').split(' ').slice(1).length > 0 && (
+                <span className="text-[9px] font-bold text-ztext-lighter tracking-widest uppercase leading-tight mt-0.5">
+                  {(process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe').split(' ').slice(1).join(' ')}
+                </span>
+              )}
             </div>
           </Link>
         )}

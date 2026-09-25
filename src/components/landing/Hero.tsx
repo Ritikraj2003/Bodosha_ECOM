@@ -8,9 +8,8 @@ import BumperOffersSlider from '@/components/landing/BumperOffersSlider';
 import type { BumperOfferItem } from '@/features/settings/actions';
 
 const slides = [
-  { img: '/images/Chicken Curry.jpg', top: 'Fresh thalis', bottom: 'from ₹60', note: 'Chicken, pork & veg thalis made fresh daily' },
-  { img: '/images/Pork Thali.webp', top: 'Homestyle gravy', bottom: 'Chicken & Pork', note: 'Rich curries straight from the kitchen' },
-  { img: '/images/Aloo Posto.jpg', top: 'Veg & Non-Veg', bottom: 'Both available', note: 'Classic homestyle dishes, every day' },
+  { img: '/images/banner-placeholder.svg', top: 'Welcome', bottom: 'Fresh Meals & Snacks', note: 'Freshly prepared and delivered fast to your doorstep' },
+  { img: '/images/banner-placeholder.svg', top: 'Fresh & Hygienic', bottom: 'Made To Order Daily', note: 'Hot, delicious meals crafted with quality ingredients' },
 ];
 
 interface HeroProps {
@@ -44,7 +43,7 @@ export default function Hero({ query, onQueryChange, vegOn, onVegToggle, bumperO
             <input
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
-              placeholder="Search &quot;chicken thali&quot;"
+              placeholder="Search dishes, drinks & snacks..."
               className="flex-1 bg-transparent text-[12px] text-ztext outline-none placeholder:text-ztext-muted min-w-0"
               aria-label="Search dishes"
             />

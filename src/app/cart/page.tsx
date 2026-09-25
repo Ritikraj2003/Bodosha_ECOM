@@ -57,7 +57,7 @@ export default function CartPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-ztext">Your Bag</h1>
-            <p className="text-xs text-ztext-light mt-0.5">{count} item{count > 1 ? 's' : ''} from Bodosa</p>
+            <p className="text-xs text-ztext-light mt-0.5">{count} item{count > 1 ? 's' : ''} from {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</p>
           </div>
           <button onClick={clearCart} className="text-xs text-ztext-lighter hover:text-red-400 font-medium flex items-center gap-1 transition-colors">
             <Trash2 size={13} /> Clear Bag
@@ -70,7 +70,7 @@ export default function CartPage() {
             {items.map((item) => (
               <div key={item.id} className="bg-zcard rounded-xl border border-zborder p-3.5 flex items-center gap-3.5 shadow-z">
                 <div className="relative w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-zsurface">
-                  <Image src={item.image || '/images/food-placeholder.svg'} alt={item.name} fill sizes="64px" className="object-cover" />
+                  <Image src={item.image || '/images/food-placeholder.jpg'} alt={item.name} fill sizes="64px" className="object-cover" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
