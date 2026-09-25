@@ -7,7 +7,7 @@ import {
   CreditCard, CheckCircle2, AlertCircle, ShoppingBag, Loader2,
   RefreshCw, Store, Sparkles, Check, DollarSign, Printer, History,
   TrendingUp, Calendar, FileText, ChevronRight, Filter, UserPlus, X, Clock,
-  QrCode, Copy,
+  QrCode, Copy, Star,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
@@ -72,6 +72,156 @@ interface HistoryStats {
   todayRevenue: number;
   cashRevenue: number;
   onlineRevenue: number;
+}
+
+interface InStoreProductCardProps {
+  prod: Product;
+  inCart?: CartItem;
+  addToCart: (p: Product) => void;
+  updateQuantity: (id: string, delta: number) => void;
+  idx: number;
+}
+
+function InStoreProductCard({ prod, inCart, addToCart, updateQuantity, idx }: InStoreProductCardProps) {
+  const [imgError, setImgError] = useState(false);
+  const isOutOfStock = prod.track_inventory && prod.stock_quantity <= 0;
+  const isAvailable = prod.is_available && prod.is_active && !isOutOfStock;
+  const displayImg = imgError || !prod.image || !prod.image.trim() ? '/images/food-placeholder.jpg' : prod.image;
+  const isVeg = prod.is_vegetarian !== false;
+
+  return (
+    <div
+      onClick={() => {
+        if (isAvailable && !inCart) addToCart(prod);
+      }}
+      className={`group bg-zcard rounded-xl border border-zborder overflow-hidden flex flex-col justify-between transition-all duration-200 hover:border-ztext-light hover:shadow-lg cursor-pointer ${
+        inCart ? 'ring-2 ring-zred bg-red-500/5 border-zred' : ''
+      } ${!isAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
+    >
+      {/* Top Image Section - Compact & Proportional Full Food View */}
+      <div className="relative w-full aspect-[16/10] sm:aspect-[4/3] max-h-28 sm:max-h-32 bg-zgray overflow-hidden">
+        <Image
+          src={displayImg}
+          alt={prod.name}
+          fill
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          priority={idx < 6}
+          onError={() => setImgError(true)}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20 pointer-events-none" />
+
+        {/* Veg / Non-Veg Indicator Badge on top-left */}
+        <div
+          className={`absolute top-2 left-2 z-10 flex items-center justify-center w-4 h-4 rounded bg-white/95 backdrop-blur-sm shadow border ${
+            isVeg ? 'border-green-600' : 'border-red-600'
+          }`}
+          title={isVeg ? 'Vegetarian' : 'Non-Vegetarian'}
+        >
+          <div className={`w-2 h-2 rounded-full ${isVeg ? 'bg-green-600' : 'bg-red-600'}`} />
+        </div>
+
+        {/* Out of Stock Overlay */}
+        {!isAvailable ? (
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex items-center justify-center">
+            <span className="px-2 py-0.5 text-[10px] font-bold text-white bg-red-600/90 rounded shadow">
+              Out of stock
+            </span>
+          </div>
+        ) : inCart ? (
+          /* Counter Quick Increment/Decrement Controls on Image */
+          <div
+            className="absolute right-2 bottom-2 z-10 flex items-center gap-1 bg-zred text-white rounded-md shadow-lg px-1.5 py-0.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => updateQuantity(prod.id, -1)}
+              className="w-4 h-4 flex items-center justify-center hover:bg-black/20 rounded transition-colors"
+              title="Decrease quantity"
+            >
+              <Minus size={11} strokeWidth={2.5} />
+            </button>
+            <span className="text-[11px] font-extrabold min-w-[14px] text-center">{inCart.quantity}</span>
+            <button
+              type="button"
+              onClick={() => updateQuantity(prod.id, 1)}
+              className="w-4 h-4 flex items-center justify-center hover:bg-black/20 rounded transition-colors"
+              title="Increase quantity"
+            >
+              <Plus size={11} strokeWidth={2.5} />
+            </button>
+          </div>
+        ) : (
+          /* White + ADD button on Image */
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              addToCart(prod);
+            }}
+            className="absolute right-2 bottom-2 z-10 px-2 py-0.5 rounded-md bg-white hover:bg-neutral-100 text-zred text-[11px] font-extrabold shadow flex items-center gap-0.5 transition-transform active:scale-95 border border-white/80"
+          >
+            <Plus size={12} strokeWidth={3} /> ADD
+          </button>
+        )}
+      </div>
+
+      {/* Bottom Content Area */}
+      <div className="p-2.5 flex flex-col flex-1 justify-between gap-1">
+        <div>
+          <div className="flex items-center justify-between gap-1 mb-0.5">
+            <span
+              className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                isVeg
+                  ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/40'
+                  : 'bg-rose-950/80 text-rose-400 border border-rose-800/40'
+              }`}
+            >
+              {isVeg ? 'VEG' : 'NON-VEG'}
+            </span>
+
+            <div className="flex items-center gap-0.5 text-amber-400 text-[10px] font-bold">
+              <Star size={10} className="fill-amber-400 text-amber-400" />
+              <span>4.8</span>
+            </div>
+          </div>
+
+          <h3
+            className="font-bold text-ztext text-xs sm:text-sm line-clamp-1 leading-tight group-hover:text-zred transition-colors"
+            title={prod.name}
+          >
+            {prod.name}
+          </h3>
+        </div>
+
+        <div className="flex items-center justify-between mt-0.5 pt-1 border-t border-zborder/40">
+          <span className="text-sm sm:text-base font-black text-ztext">₹{prod.price}</span>
+
+          {((Number(prod.packaging_big_qty) || 0) > 0 || (Number(prod.packaging_small_qty) || 0) > 0) ? (
+            <span
+              className="text-[9px] text-amber-400 font-medium flex items-center gap-0.5 bg-amber-500/10 px-1 py-0.5 rounded border border-amber-500/20"
+              title="Packaging container required"
+            >
+              <span>📦</span>
+              <span>
+                {[
+                  (Number(prod.packaging_big_qty) || 0) > 0 ? `${prod.packaging_big_qty}B` : '',
+                  (Number(prod.packaging_small_qty) || 0) > 0 ? `${prod.packaging_small_qty}S` : '',
+                ]
+                  .filter(Boolean)
+                  .join('+')}
+              </span>
+            </span>
+          ) : inCart ? (
+            <span className="text-[10px] font-bold text-zred">
+              {inCart.quantity} in bill
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function InStorePage() {
@@ -753,12 +903,12 @@ export default function InStorePage() {
 
             {/* Product Cards Grid */}
             {loadingCatalog ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="bg-zcard p-4 rounded-xl border border-zborder animate-pulse h-40 flex flex-col justify-between">
-                    <div className="h-4 bg-zsurface rounded w-3/4" />
-                    <div className="h-3 bg-zsurface rounded w-1/2" />
-                    <div className="h-8 bg-zsurface rounded w-full mt-4" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="bg-zcard p-3 rounded-xl border border-zborder animate-pulse h-36 flex flex-col justify-between">
+                    <div className="h-3 bg-zsurface rounded w-3/4" />
+                    <div className="h-2.5 bg-zsurface rounded w-1/2" />
+                    <div className="h-6 bg-zsurface rounded w-full mt-3" />
                   </div>
                 ))}
               </div>
@@ -769,94 +919,17 @@ export default function InStorePage() {
                 <p className="text-xs text-ztext-light mt-1">Try searching with a different term or select another category.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {filteredProducts.map((prod, idx) => {
-                  const inCart = cart.find((i) => i.id === prod.id);
-                  const isOutOfStock = prod.track_inventory && prod.stock_quantity <= 0;
-                  const isAvailable = prod.is_available && prod.is_active && !isOutOfStock;
-
-                  return (
-                    <div
-                      key={prod.id}
-                      className={`bg-zcard rounded-xl border border-zborder p-3.5 flex flex-col justify-between transition-all hover:border-ztext-light ${
-                        inCart ? 'ring-1 ring-zred bg-red-500/5' : ''
-                      } ${!isAvailable ? 'opacity-50' : ''}`}
-                    >
-                      <div>
-                        <div className="flex items-start justify-between gap-1.5 mb-1.5">
-                          <div className="flex items-center gap-1.5">
-                            <span
-                              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                                prod.is_vegetarian ? 'bg-green-500' : 'bg-red-500'
-                              }`}
-                              title={prod.is_vegetarian ? 'Vegetarian' : 'Non-Vegetarian'}
-                            />
-                            <h3 className="font-semibold text-ztext text-xs line-clamp-1">{prod.name}</h3>
-                          </div>
-                        </div>
-
-                        {prod.image && (
-                          <div className="relative w-full h-20 rounded-lg overflow-hidden mb-2 bg-zgray">
-                            <Image
-                              src={prod.image}
-                              alt={prod.name}
-                              fill
-                              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                              className="object-cover"
-                              priority={idx < 6}
-                            />
-                          </div>
-                        )}
-
-                        <p className="font-bold text-ztext text-sm">₹{prod.price}</p>
-                        {((Number(prod.packaging_big_qty) || 0) > 0 || (Number(prod.packaging_small_qty) || 0) > 0) && (
-                          <div className="text-[10px] text-amber-400/90 font-medium flex items-center gap-1 mt-0.5">
-                            <span>📦</span>
-                            <span>
-                              {[
-                                (Number(prod.packaging_big_qty) || 0) > 0 ? `${prod.packaging_big_qty} Big` : '',
-                                (Number(prod.packaging_small_qty) || 0) > 0 ? `${prod.packaging_small_qty} Small` : '',
-                              ]
-                                .filter(Boolean)
-                                .join(' + ')}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-3">
-                        {!isAvailable ? (
-                          <span className="block w-full py-1.5 text-center text-[10px] font-bold text-red-400 bg-red-500/10 rounded-lg">
-                            Out of stock
-                          </span>
-                        ) : inCart ? (
-                          <div className="flex items-center justify-between bg-zred text-white rounded-lg px-2 py-1">
-                            <button
-                              onClick={() => updateQuantity(prod.id, -1)}
-                              className="p-1 hover:bg-black/20 rounded transition-colors"
-                            >
-                              <Minus size={12} />
-                            </button>
-                            <span className="text-xs font-bold px-1">{inCart.quantity}</span>
-                            <button
-                              onClick={() => updateQuantity(prod.id, 1)}
-                              className="p-1 hover:bg-black/20 rounded transition-colors"
-                            >
-                              <Plus size={12} />
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => addToCart(prod)}
-                            className="w-full py-1.5 rounded-lg bg-zgray hover:bg-zred hover:text-white text-ztext text-xs font-bold transition-all flex items-center justify-center gap-1 border border-zborder hover:border-zred"
-                          >
-                            <Plus size={14} /> Add
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
+                {filteredProducts.map((prod, idx) => (
+                  <InStoreProductCard
+                    key={prod.id}
+                    prod={prod}
+                    inCart={cart.find((i) => i.id === prod.id)}
+                    addToCart={addToCart}
+                    updateQuantity={updateQuantity}
+                    idx={idx}
+                  />
+                ))}
               </div>
             )}
           </div>

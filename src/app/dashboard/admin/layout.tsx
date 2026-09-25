@@ -13,6 +13,7 @@ import {
 import { getServerSession } from '@/features/auth/actions';
 import { canAccessAdminPage, getFirstAllowedAdminPage } from '@/lib/permissions';
 import { useAuthStore } from '@/features/auth/store';
+import ThemeToggle from '@/components/shared/ThemeToggle';
 
 interface SidebarSubItem {
   label: string;
@@ -316,7 +317,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </span>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <ThemeToggle className="p-2 text-ztext-lighter hover:text-ztext hover:bg-zgray rounded-lg transition-colors flex items-center justify-center cursor-pointer" />
               <button aria-label="Notifications" className="relative p-2 hover:bg-zgray rounded-lg transition-colors">
                 <Bell size={18} className="text-ztext-lighter" />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-zred rounded-full" />
