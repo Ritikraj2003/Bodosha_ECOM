@@ -202,7 +202,7 @@ export default function AdminDashboardPage() {
           <h2 className="text-sm font-bold text-ztext">
             Recent Orders <span className="text-xs font-normal text-ztext-muted">({dateLabel})</span>
           </h2>
-          <Link href="/dashboard/admin/orders" className="text-xs font-medium text-zred hover:underline">View all</Link>
+          <Link href="/dashboard/admin/orders" prefetch={false} className="text-xs font-medium text-zred hover:underline">View all</Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -264,9 +264,8 @@ export default function AdminDashboardPage() {
             </div>
             <ChevronDown
               size={16}
-              className={`text-ztext-lighter transition-transform duration-200 ${
-                activityOpen ? 'rotate-180 text-ztext' : ''
-              }`}
+              className={`text-ztext-lighter transition-transform duration-200 ${activityOpen ? 'rotate-180 text-ztext' : ''
+                }`}
             />
           </button>
           {activityOpen && (

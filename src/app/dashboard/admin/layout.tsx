@@ -184,7 +184,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="flex items-center justify-between px-5 h-16 border-b border-zborder">
-          <Link href={getFirstAllowedAdminPage(permissions, adminRole)} className="flex items-center gap-2.5 shrink-0 group" aria-label={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}>
+          <Link href={getFirstAllowedAdminPage(permissions, adminRole)} prefetch={false} className="flex items-center gap-2.5 shrink-0 group" aria-label={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}>
             <div className="relative w-9 h-9 rounded-full overflow-hidden shrink-0 border border-white/20 bg-black shadow-md flex items-center justify-center">
               <img src="/Logo/badmaas-logo.png" alt={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} className="w-full h-full object-cover" />
             </div>
@@ -214,6 +214,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={entry.href}
                   href={entry.href}
+                  prefetch={false}
                   onClick={() => setSidebarOpen(false)}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     active
@@ -267,6 +268,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         <Link
                           key={child.href}
                           href={child.href}
+                          prefetch={false}
                           onClick={() => setSidebarOpen(false)}
                           className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                             childActive
@@ -325,6 +327,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </button>
               <Link
                 href="/admin/profile"
+                prefetch={false}
                 className="flex items-center gap-2.5 pl-3 border-l border-zborder hover:opacity-80 transition-opacity cursor-pointer"
                 title="View Profile"
               >
