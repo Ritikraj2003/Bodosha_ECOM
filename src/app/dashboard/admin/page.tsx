@@ -10,6 +10,7 @@ import dynamic from 'next/dynamic';
 import { createClient } from '@/infrastructure/supabase/client';
 import { useAuthStore } from '@/features/auth/store';
 import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
+import HamsterLoader from '@/components/ui/HamsterLoader';
 
 const DashboardCharts = dynamic(() => import('@/components/admin/DashboardCharts'), {
   ssr: false,
@@ -106,7 +107,16 @@ export default function AdminDashboardPage() {
 
   const fmt = (n: number) => '₹' + Number(n).toLocaleString('en-IN');
 
-  if (loading && !stats) return <Skeleton />;
+  if (loading && !stats) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[65vh] w-full py-12">
+        <HamsterLoader
+          size="lg"
+          text="Loading Dashboard Analytics..."
+        />
+      </div>
+    );
+  }
 
   const primaryCards = [
     { label: 'Total Customers', value: stats?.total_students ?? 0, icon: Users, desc: 'Registered customers' },
@@ -131,7 +141,12 @@ export default function AdminDashboardPage() {
   };
 
   return (
-    <div>
+    <div className="relative min-h-[500px]">
+      {loading && stats && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-zbg/70 backdrop-blur-sm rounded-2xl transition-opacity">
+          <HamsterLoader size="md" text="Updating Dashboard Analytics..." />
+        </div>
+      )}
       <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold text-ztext">Dashboard</h1>
@@ -287,28 +302,6 @@ export default function AdminDashboardPage() {
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-function Skeleton() {
-  return (
-    <div className="animate-pulse">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-zcard rounded-xl shadow-z p-3.5 sm:p-5">
-            <div className="h-3 w-16 sm:w-20 bg-zsurface rounded mb-3" />
-            <div className="h-6 sm:h-8 w-14 sm:w-16 bg-zsurface rounded mb-2" />
-            <div className="h-3 w-20 sm:w-24 bg-zsurface rounded" />
-          </div>
-        ))}
-      </div>
-      <div className="bg-zcard rounded-xl border border-zborder p-5">
-        <div className="h-4 w-24 bg-zsurface rounded mb-4" />
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-10 bg-zsurface rounded mb-2" />
-        ))}
-      </div>
     </div>
   );
 }
