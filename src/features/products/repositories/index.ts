@@ -48,6 +48,7 @@ export function mapCategoryRow(r: any): Category {
     name: r.name,
     slug: r.slug,
     description: r.description || null,
+    image: r.image || r.image_url || null,
     display_order: Number(r.display_order) || 0,
     is_active: Boolean(r.is_active ?? true),
     created_at: r.created_at,
@@ -344,7 +345,7 @@ export class CategoryRepository {
       const condition = includeInactive ? '' : 'AND c.is_active = true';
       const res = await query(`
         SELECT 
-          c.id, c.restaurant_id, c.name, c.slug, c.description, c.display_order, c.is_active, c.created_at, c.updated_at,
+          c.id, c.restaurant_id, c.name, c.slug, c.description, c.image, c.image_url, c.display_order, c.is_active, c.created_at, c.updated_at,
           COUNT(p.id)::int AS product_count
         FROM public.categories c
         LEFT JOIN public.products p ON p.category_id = c.id AND p.deleted_at IS NULL
@@ -362,7 +363,7 @@ export class CategoryRepository {
   async findById(id: string): Promise<Category | null> {
     try {
       const res = await query(`
-        SELECT id, restaurant_id, name, slug, description, display_order, is_active, created_at, updated_at
+        SELECT id, restaurant_id, name, slug, description, image, image_url, display_order, is_active, created_at, updated_at
         FROM public.categories
         WHERE id = $1
         LIMIT 1;
@@ -381,16 +382,18 @@ export class CategoryRepository {
       const nextOrder = data.display_order ?? ((countRes.rows[0]?.count || 0) + 1);
       const slugBase = data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'cat';
       const slug = `${slugBase}-${Date.now().toString(36)}`;
+      const imgVal = data.image?.trim() || null;
 
       const res = await query(`
-        INSERT INTO public.categories (restaurant_id, name, slug, description, display_order, is_active, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-        RETURNING id, restaurant_id, name, slug, description, display_order, is_active, created_at, updated_at;
+        INSERT INTO public.categories (restaurant_id, name, slug, description, image, image_url, display_order, is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $5, $6, $7, NOW(), NOW())
+        RETURNING id, restaurant_id, name, slug, description, image, image_url, display_order, is_active, created_at, updated_at;
       `, [
         restaurantId,
         data.name.trim(),
         slug,
         data.description?.trim() || null,
+        imgVal,
         nextOrder,
         data.is_active ?? true,
       ]);
@@ -411,6 +414,11 @@ export class CategoryRepository {
         updates.slug = `${data.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now().toString(36)}`;
       }
       if (data.description !== undefined) updates.description = data.description?.trim() || null;
+      if (data.image !== undefined) {
+        const val = data.image?.trim() || null;
+        updates.image = val;
+        updates.image_url = val;
+      }
       if (data.display_order !== undefined) updates.display_order = Number(data.display_order);
       if (data.is_active !== undefined) updates.is_active = Boolean(data.is_active);
 

@@ -16,7 +16,7 @@ export default function Footer() {
   const settings = usePublicSettings();
   if (pathname?.startsWith('/admin') || pathname?.startsWith('/dashboard')) return null;
 
-  const support = settings.supportPhone || '6000212823';
+  const support = settings.supportPhone || '--';
   const whatsapp = waLink(settings.whatsapp || support);
   const socials = [
     { href: settings.instagram, icon: Instagram, label: 'Instagram' },
@@ -30,10 +30,10 @@ export default function Footer() {
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
           <div className="flex items-center gap-2.5">
             <div className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 border border-white/20 bg-black flex items-center justify-center shadow-sm">
-              <img src="/logo.png" alt={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} className="w-full h-full object-cover" />
+              <img src="/Logo/badmaas-logo.png" alt={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} className="w-full h-full object-cover" />
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="font-black text-sm text-zred tracking-wide">
+              <span className="font-black text-sm text-brand-red tracking-wide">
                 {(process.env.NEXT_PUBLIC_APP_NAME || 'BADMAAS').split(' ')[0]}
               </span>
               {(process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe').split(' ').slice(1).length > 0 && (
@@ -44,9 +44,11 @@ export default function Footer() {
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-ztext-light">
-            <span className="flex items-center gap-1">
-              <MapPin size={11} /> {settings.address || 'Near CIT Kokrajhar'}
-            </span>
+            {settings.address && (
+              <span className="flex items-center gap-1">
+                <MapPin size={11} /> {settings.address}
+              </span>
+            )}
             <span className="flex items-center gap-1">
               <Phone size={11} /> {support}
             </span>

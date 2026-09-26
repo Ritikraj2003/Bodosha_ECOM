@@ -340,7 +340,7 @@ export async function createOrder(params: CreateOrderParams) {
           id, owner_id, name, slug, address_line1, city, state, postal_code, is_active, is_open, opening_time, closing_time
         ) VALUES (
           'd1111111-1111-1111-1111-111111111111', $1, 'Dilip Da Main Store', $2,
-          'Near CIT Kokrajhar Campus', 'Kokrajhar', 'Assam', '783370', true, true, '09:00', '22:00'
+          'Dolaigaon Rd, near Aim Academy, New Colony, Natunpara', 'Bongaigaon', 'Assam', '783380', true, true, '09:00', '22:00'
         )
         ON CONFLICT (id) DO UPDATE SET is_active = true, is_open = true, deleted_at = NULL
         RETURNING id`,

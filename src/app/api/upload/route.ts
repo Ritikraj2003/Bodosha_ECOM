@@ -81,79 +81,64 @@ export async function POST(request: Request) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
+    const categoryParam = ((formData.get('category') as string | null) || 'general').toLowerCase().trim();
+    let subfolder = 'general';
+    if (categoryParam.includes('cat')) {
+      subfolder = 'categories';
+    } else if (categoryParam.includes('prod')) {
+      subfolder = 'products';
+    } else if (categoryParam.includes('bump') || categoryParam.includes('offer')) {
+      subfolder = 'bumper';
+    }
+
     const originalExt = path.extname(file.name).toLowerCase() || (fileCategory === 'video' ? '.mp4' : '.jpg');
     const cleanBaseName = path.basename(file.name, originalExt).toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 40) || 'media';
-    const prefix = category.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const prefix = subfolder === 'categories' ? 'category' : subfolder === 'products' ? 'product' : subfolder === 'bumper' ? 'bumper' : 'media';
     const fileName = `${prefix}-${cleanBaseName}-${Date.now()}${originalExt}`;
 
     let publicUrl: string | null = null;
     let localSaveSucceeded = false;
 
-    // 1. Primary persistence: Supabase Storage (reliable across Vercel / serverless deployments)
+    // 1. Save directly into public/uploads/{subfolder}/
     try {
-      const admin = createAdminClient();
-      const targetBucket = category === 'bumper' ? BUMPER_BUCKET : PRODUCT_BUCKET;
-
-      let uploadRes = await admin.storage.from(targetBucket).upload(fileName, buffer, {
-        contentType,
-        cacheControl: '31536000',
-        upsert: true,
-      });
-
-      // If bucket doesn't exist, try auto-creating bucket or fallback to product bucket
-      if (uploadRes.error && (uploadRes.error.message.includes('Bucket not found') || (uploadRes.error as { statusCode?: string }).statusCode === '404')) {
-        try {
-          await admin.storage.createBucket(targetBucket, { public: true });
-          uploadRes = await admin.storage.from(targetBucket).upload(fileName, buffer, {
-            contentType,
-            cacheControl: '31536000',
-            upsert: true,
-          });
-        } catch {
-          // If creating bucket failed, try fallback bucket
-          if (targetBucket !== PRODUCT_BUCKET) {
-            uploadRes = await admin.storage.from(PRODUCT_BUCKET).upload(fileName, buffer, {
-              contentType,
-              cacheControl: '31536000',
-              upsert: true,
-            });
-          }
-        }
-      }
-
-      if (!uploadRes.error) {
-        const bucketUsed = (uploadRes.data?.path && targetBucket !== PRODUCT_BUCKET && !uploadRes.error) ? targetBucket : PRODUCT_BUCKET;
-        const { data: urlData } = admin.storage.from(bucketUsed).getPublicUrl(fileName);
-        if (urlData?.publicUrl) {
-          publicUrl = urlData.publicUrl;
-        }
-      } else {
-        console.warn('Supabase storage upload error:', uploadRes.error.message);
-      }
-    } catch (storageErr) {
-      console.warn('Supabase storage unavailable, proceeding with local filesystem:', storageErr);
-    }
-
-    // 2. Local filesystem storage (public/uploads)
-    try {
-      const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+      const uploadsDir = path.join(process.cwd(), 'public', 'uploads', subfolder);
       await mkdir(uploadsDir, { recursive: true });
       const filePath = path.join(uploadsDir, fileName);
       await writeFile(filePath, buffer);
       localSaveSucceeded = true;
     } catch (fsErr) {
-      console.warn('Local filesystem write failed (likely serverless read-only disk):', fsErr);
+      console.warn('Local filesystem write failed:', fsErr);
     }
 
-    // If local write succeeded and we don't have a remote Supabase URL, use local relative path
-    const localPath = `/uploads/${fileName}`;
-    const finalUrl = publicUrl || (localSaveSucceeded ? localPath : null);
+    // 2. Optional cloud backup (Supabase Storage) if credentials configured
+    try {
+      const admin = createAdminClient();
+      const targetBucket = subfolder === 'bumper' ? BUMPER_BUCKET : PRODUCT_BUCKET;
+
+      const uploadRes = await admin.storage.from(targetBucket).upload(`${subfolder}/${fileName}`, buffer, {
+        contentType,
+        cacheControl: '31536000',
+        upsert: true,
+      });
+
+      if (!uploadRes.error && uploadRes.data?.path) {
+        const { data: urlData } = admin.storage.from(targetBucket).getPublicUrl(`${subfolder}/${fileName}`);
+        if (urlData?.publicUrl && !urlData.publicUrl.includes('[object')) {
+          publicUrl = urlData.publicUrl;
+        }
+      }
+    } catch (storageErr) {
+      // Non-fatal, local filesystem is primary
+    }
+
+    const localPath = `/uploads/${subfolder}/${fileName}`;
+    const finalUrl = localSaveSucceeded ? localPath : (publicUrl || null);
 
     if (!finalUrl) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Failed to save file to both cloud storage and local filesystem. Please verify storage permissions or try again.',
+          error: 'Failed to save file to uploads directory. Please try again.',
         },
         { status: 500 },
       );
@@ -163,6 +148,7 @@ export async function POST(request: Request) {
       success: true,
       url: finalUrl,
       fileName,
+      subfolder,
       type: fileCategory,
       size: file.size,
     });

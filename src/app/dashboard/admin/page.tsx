@@ -157,15 +157,15 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {primaryCards.map((card) => (
-          <div key={card.label} className="bg-zcard rounded-xl shadow-z p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-ztext-lighter capitalize">{card.desc}</p>
-              <card.icon size={18} className="text-ztext-muted" />
+          <div key={card.label} className="bg-zcard rounded-xl shadow-z p-3.5 sm:p-5">
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <p className="text-[11px] sm:text-xs text-ztext-lighter capitalize truncate">{card.desc}</p>
+              <card.icon size={16} className="text-ztext-muted shrink-0" />
             </div>
-            <p className="text-2xl font-bold text-ztext">{card.value}</p>
-            <p className="text-sm text-ztext-light mt-1">{card.label}</p>
+            <p className="text-xl sm:text-2xl font-bold text-ztext truncate">{card.value}</p>
+            <p className="text-xs sm:text-sm text-ztext-light mt-1 truncate">{card.label}</p>
           </div>
         ))}
       </div>
@@ -295,12 +295,12 @@ export default function AdminDashboardPage() {
 function Skeleton() {
   return (
     <div className="animate-pulse">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-zcard rounded-xl shadow-z p-5">
-            <div className="h-3 w-20 bg-zsurface rounded mb-3" />
-            <div className="h-8 w-16 bg-zsurface rounded mb-2" />
-            <div className="h-3 w-24 bg-zsurface rounded" />
+          <div key={i} className="bg-zcard rounded-xl shadow-z p-3.5 sm:p-5">
+            <div className="h-3 w-16 sm:w-20 bg-zsurface rounded mb-3" />
+            <div className="h-6 sm:h-8 w-14 sm:w-16 bg-zsurface rounded mb-2" />
+            <div className="h-3 w-20 sm:w-24 bg-zsurface rounded" />
           </div>
         ))}
       </div>

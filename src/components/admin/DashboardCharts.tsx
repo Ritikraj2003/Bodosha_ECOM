@@ -169,15 +169,16 @@ export default function DashboardCharts({ orderTypeData, paymentTypeData }: Dash
         { orderType: 'Online Delivery', value: 0 },
         { orderType: 'Take Away', value: 0 },
         { orderType: 'In Store', value: 0 },
-        { orderType: 'Dine In', value: 0 },
       ];
 
       const barData =
         orderTypeData && orderTypeData.length > 0
-          ? orderTypeData.map((d) => ({
-              orderType: d.label,
-              value: d.count,
-            }))
+          ? orderTypeData
+              .filter((d) => d.type !== 'dine_in' && d.label !== 'Dine In')
+              .map((d) => ({
+                orderType: d.label,
+                value: d.count,
+              }))
           : defaultOrderTypes;
 
       xAxis.data.setAll(barData);

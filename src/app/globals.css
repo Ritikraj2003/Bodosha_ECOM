@@ -300,6 +300,12 @@ option {
   --color-zred-dark: #446517;
 }
 
+/* Brand name always stays red in both dark and light mode */
+.brand-name-red,
+.text-brand-red {
+  color: #E23744 !important;
+}
+
 /* Bottom navigation */
 .bottom-nav {
   position: fixed;

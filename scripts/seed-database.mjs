@@ -300,20 +300,161 @@ async function main() {
       console.log(`✅ Linked user to 'super_admin' in public.user_roles`);
     }
 
-    // 8. Basic System Settings default
+    // 8. Complete System Settings Default
+    const defaultSettings = [
+      ['payment_method_wallet_enabled', 'true', 'boolean', false, 'Enable Wallet payment method'],
+      ['payment_method_razorpay_enabled', 'true', 'boolean', false, 'Enable Razorpay payment method'],
+      ['payment_method_upi_enabled', 'true', 'boolean', false, 'Enable UPI payment method'],
+      ['payment_method_cod_enabled', 'true', 'boolean', false, 'Enable Cash on Delivery'],
+      ['razorpay_key_id', '', 'string', false, 'Razorpay API Key ID'],
+      ['razorpay_key_secret', '', 'string', true, 'Razorpay API Key Secret'],
+      ['store_upi_id', '', 'string', false, 'Store primary UPI ID'],
+      ['store_upi_name', '', 'string', false, 'Store primary UPI Account Name'],
+      ['gpay_upi_id', '', 'string', false, 'Google Pay UPI ID'],
+      ['gpay_upi_name', '', 'string', false, 'Google Pay UPI Account Name'],
+      ['contact_enabled', 'true', 'boolean', false, 'Enable Contact Section'],
+      ['store_support_phone', '', 'string', false, 'Store Support Phone'],
+      ['store_support_email', '', 'string', false, 'Store Support Email'],
+      ['notification_email', adminEmail, 'string', false, 'Admin order notification email'],
+      ['store_address', '', 'string', false, 'Store physical address'],
+      ['store_whatsapp', '', 'string', false, 'Store WhatsApp number/link'],
+      ['store_instagram', '', 'string', false, 'Store Instagram profile link'],
+      ['store_facebook', '', 'string', false, 'Store Facebook page link'],
+      ['store_website', '', 'string', false, 'Store website link'],
+      ['delivery_available', 'true', 'boolean', false, 'Master delivery switch'],
+      ['takeaway_available', 'true', 'boolean', false, 'Master takeaway switch'],
+      ['in_store_available', 'true', 'boolean', false, 'Master in-store POS switch'],
+      ['delivery_unavailable_message', 'Delivery is temporarily unavailable because our delivery person is busy. Please try again later.', 'string', false, 'Message shown when delivery is disabled'],
+      ['delivery_person_name', '', 'string', false, 'Delivery person name'],
+      ['delivery_person_phone', '', 'string', false, 'Delivery person phone'],
+      ['delivery_fixed_slots_enabled', 'false', 'boolean', false, 'Enable fixed delivery slots'],
+      ['delivery_custom_message_enabled', 'false', 'boolean', false, 'Show custom delivery message'],
+      ['delivery_custom_message', '', 'string', false, 'Custom delivery announcement message'],
+      ['delivery_slots', '[]', 'json', false, 'Configured scheduled delivery time slots'],
+      ['delivery_person_emails', '[]', 'json', false, 'List of delivery personnel email addresses'],
+      ['store_delivery_locations', '[]', 'json', false, 'Available delivery locations list'],
+      ['telegram_enabled', 'false', 'boolean', false, 'Enable Telegram notifications'],
+      ['telegram_bot_token', '', 'string', true, 'Telegram bot token'],
+      ['telegram_chat_id', '', 'string', false, 'Telegram chat ID'],
+      ['telegram_show_qr', 'false', 'boolean', false, 'Show Telegram QR in receipts'],
+      ['telegram_qr_expiry_minutes', '15', 'number', false, 'Telegram QR code expiry minutes'],
+      ['smtp_enabled', 'false', 'boolean', false, 'Enable SMTP email delivery'],
+      ['smtp_host', '', 'string', false, 'SMTP server host'],
+      ['smtp_port', '587', 'number', false, 'SMTP server port'],
+      ['smtp_user', '', 'string', false, 'SMTP username'],
+      ['smtp_pass', '', 'string', true, 'SMTP password'],
+      ['smtp_from', '', 'string', false, 'SMTP From address'],
+      ['pricing_enabled', 'true', 'boolean', false, 'Pricing rules enabled'],
+      ['delivery_fee', '10', 'number', false, 'Flat delivery fee for orders'],
+      ['maintenance_fee', '1', 'number', false, 'Standard platform maintenance charge'],
+      ['min_order_amount', '0', 'number', false, 'Minimum order amount threshold'],
+      ['wallet_credit_limit', '500', 'number', false, 'Maximum credit limit for customer wallet'],
+      ['packaging_charge_enabled', 'true', 'boolean', false, 'Toggle dynamic packaging fee'],
+      ['packaging_big_packet_price', '3', 'number', false, 'Price per big packaging packet (₹)'],
+      ['packaging_small_packet_price', '2', 'number', false, 'Price per small packaging packet (₹)'],
+      ['store_open_time', '09:00', 'string', false, 'Daily operating opening hour (HH:MM)'],
+      ['store_close_time', '22:00', 'string', false, 'Daily operating closing hour (HH:MM)'],
+      ['store_is_open', 'true', 'boolean', false, 'Manual store open override'],
+      ['store_temp_close_until', '', 'string', false, 'Temporary close until timestamp/time'],
+      ['store_order_cutoff_lunch', '', 'string', false, 'Lunch order cutoff time'],
+      ['store_order_cutoff_dinner', '', 'string', false, 'Dinner order cutoff time'],
+      ['cancellation_window_minutes', '2', 'number', false, 'Customer cancellation window in minutes'],
+      ['maintenance_mode', 'false', 'boolean', false, 'Put site into maintenance mode'],
+      ['other_enabled', 'true', 'boolean', false, 'Other settings section enabled'],
+      ['admin_emails', JSON.stringify([adminEmail]), 'json', false, 'List of admin email accounts'],
+      ['owner_email', adminEmail, 'string', false, 'Primary platform owner contact email'],
+      ['bumper_offers_enabled', 'true', 'boolean', false, 'Toggle home banner bumper slider'],
+      ['bumper_offers', '[]', 'json', false, 'List of home screen bumper media banners'],
+    ];
+
+    for (const [key, value, type, isSecret, description] of defaultSettings) {
+      await client.query(`
+        INSERT INTO public.system_settings (id, key, value, type, is_secret, description)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5)
+        ON CONFLICT (key) DO UPDATE SET
+          description = EXCLUDED.description;
+      `, [key, value, type, isSecret, description]);
+    }
+    console.log(`✅ Default system settings verified (${defaultSettings.length} keys).`);
+
+    // 9. Ensure default restaurant exists
     await client.query(`
-      INSERT INTO public.system_settings (key, value, type, is_secret, description)
-      VALUES 
-        ('admin_emails', $1, 'json', false, 'List of admin email accounts'),
-        ('owner_email', $2, 'string', false, 'Primary platform owner contact email'),
-        ('delivery_fee', '20', 'number', false, 'Flat delivery fee for orders'),
-        ('maintenance_fee', '1', 'number', false, 'Standard platform maintenance charge'),
-        ('store_open_time', '09:00', 'string', false, 'Daily opening hour'),
-        ('store_close_time', '22:00', 'string', false, 'Daily closing hour'),
-        ('store_is_open', 'true', 'boolean', false, 'Store status')
-      ON CONFLICT (key) DO NOTHING;
-    `, [JSON.stringify([adminEmail]), adminEmail]);
-    console.log(`✅ Default system settings verified.`);
+      CREATE TABLE IF NOT EXISTS public.restaurants (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        description TEXT,
+        cuisine_type TEXT,
+        phone TEXT,
+        email TEXT,
+        address_line1 TEXT NOT NULL,
+        address_line2 TEXT,
+        city TEXT NOT NULL,
+        state TEXT NOT NULL,
+        postal_code TEXT NOT NULL,
+        latitude NUMERIC(10, 7),
+        longitude NUMERIC(10, 7),
+        cover_image TEXT,
+        logo_url TEXT,
+        opening_time TIME NOT NULL DEFAULT '09:00:00'::TIME,
+        closing_time TIME NOT NULL DEFAULT '22:00:00'::TIME,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        is_open BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        deleted_at TIMESTAMPTZ
+      );
+
+      CREATE TABLE IF NOT EXISTS public.restaurant_settings (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        restaurant_id UUID NOT NULL UNIQUE REFERENCES public.restaurants(id) ON DELETE CASCADE,
+        allow_preorder BOOLEAN NOT NULL DEFAULT true,
+        allow_scheduled BOOLEAN NOT NULL DEFAULT true,
+        prep_time_minutes INTEGER NOT NULL DEFAULT 20,
+        max_orders_slot INTEGER NOT NULL DEFAULT 10,
+        gst_percentage NUMERIC(5, 2) NOT NULL DEFAULT 5.00,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+    `);
+
+    await client.query(`
+      INSERT INTO public.restaurants (
+        id, owner_id, name, slug, description, cuisine_type, phone, email,
+        address_line1, city, state, postal_code, is_active, is_open, opening_time, closing_time
+      ) VALUES (
+        'd1111111-1111-1111-1111-111111111111',
+        $1,
+        'Badmaas House Cafe',
+        'badmaas-house-cafe',
+        'Signature brews, specialty coffee, and mouth-watering bites cooked fresh with passion.',
+        'Cafe, Fast Food, Snacks, Beverages',
+        '',
+        $2,
+        'BTM',
+        'Bangalore',
+        'Karnataka',
+        '560076',
+        true,
+        true,
+        '09:00:00'::TIME,
+        '22:00:00'::TIME
+      ) ON CONFLICT (id) DO UPDATE SET
+        owner_id = EXCLUDED.owner_id;
+    `, [adminId, adminEmail]);
+
+    await client.query(`
+      INSERT INTO public.restaurant_settings (
+        restaurant_id, min_order_amount, delivery_fee, estimated_prep_time
+      ) VALUES (
+        'd1111111-1111-1111-1111-111111111111',
+        0,
+        10,
+        20
+      ) ON CONFLICT (restaurant_id) DO NOTHING;
+    `);
+    console.log(`✅ Default restaurant verified in public.restaurants.`);
 
     console.log('\n\x1b[32m%s\x1b[0m', '🎉 Setup completed successfully!');
     console.log('Roles Created:');

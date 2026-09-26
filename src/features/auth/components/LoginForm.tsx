@@ -102,7 +102,7 @@ export default function LoginForm() {
           <>
             <div className="flex flex-col items-center text-center mb-6">
               <div className="w-20 h-20 rounded-full overflow-hidden mb-3 border-2 border-white/20 shadow-xl bg-black p-1 flex items-center justify-center">
-                <img src="/logo.png" alt={`${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} Logo`} className="w-full h-full object-contain" />
+                <img src="/Logo/badmaas-logo.png" alt={`${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} Logo`} className="w-full h-full object-contain" />
               </div>
               <h1 className="text-2xl font-bold text-ztext">Welcome back</h1>
               <p className="text-ztext-light text-xs sm:text-sm mt-1">Sign in to {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</p>

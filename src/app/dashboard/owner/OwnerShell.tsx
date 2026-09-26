@@ -57,15 +57,15 @@ export default function OwnerShell({ children }: { children: React.ReactNode }) 
         <div className="flex items-center justify-between px-5 h-16 border-b border-zborder">
           <Link href="/dashboard/owner" className="flex items-center gap-2.5 shrink-0 group" aria-label={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}>
             <div className="relative w-9 h-9 rounded-full overflow-hidden shrink-0 border border-white/20 bg-black shadow-md flex items-center justify-center">
-              <img src="/logo.png" alt={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} className="w-full h-full object-cover" />
+              <img src="/Logo/badmaas-logo.png" alt={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
-              <span className="text-base font-black tracking-tight leading-none text-white flex items-center gap-1">
-                <span className="text-zred font-extrabold tracking-wide">
+              <span className="text-base font-black tracking-tight leading-none flex items-center gap-1">
+                <span className="text-brand-red font-extrabold tracking-wide">
                   {(process.env.NEXT_PUBLIC_APP_NAME || 'BADMAAS').split(' ')[0]}
                 </span>
               </span>
-              <span className="text-[9px] font-bold text-zred-light tracking-wider uppercase leading-tight mt-0.5">Owner Portal</span>
+              <span className="text-[9px] font-bold text-ztext-lighter tracking-wider uppercase leading-tight mt-0.5">Owner Portal</span>
             </div>
           </Link>
           <button onClick={() => setSidebarOpen(false)} aria-label="Close sidebar" className="lg:hidden p-1.5 hover:bg-zgray transition-colors">

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, X } from 'lucide-react';
+import Image from 'next/image';
 import { getProduct, updateProduct, getCategories } from '@/features/products/actions';
 import type { Category } from '@/features/products/types';
 
@@ -50,6 +51,9 @@ export default function EditProductPage() {
     image: '', tags: '',
   });
 
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
+
   useEffect(() => {
     Promise.all([getProduct(productId), getCategories()]).then(([pRes, cRes]) => {
       if (pRes.success && pRes.data) {
@@ -82,6 +86,7 @@ export default function EditProductPage() {
           image: p.image ?? '',
           tags: (p.tags ?? []).join(', '),
         });
+        setImagePreview(p.image ?? '');
       } else { setError('Product not found'); }
       if (cRes.success && cRes.data) setCategories(cRes.data);
       setLoading(false);
@@ -94,6 +99,25 @@ export default function EditProductPage() {
     if (!form.name.trim()) { setError('Name is required'); return; }
     if (form.price <= 0) { setError('Price must be greater than 0'); return; }
     setSaving(true);
+
+    let finalImage = form.image.trim() || undefined;
+    if (imageFile) {
+      const uploadFd = new FormData();
+      uploadFd.append('file', imageFile);
+      uploadFd.append('category', 'product');
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        body: uploadFd,
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadData.success || !uploadData.url) {
+        setError(uploadData.error || 'Failed to upload product image');
+        setSaving(false);
+        return;
+      }
+      finalImage = uploadData.url;
+    }
+
     const res = await updateProduct(productId, {
       name: form.name.trim(),
       description: form.description.trim() || undefined,
@@ -115,7 +139,7 @@ export default function EditProductPage() {
       is_gluten_free: form.is_gluten_free,
       spice_level: form.spice_level,
       preparation_time: form.preparation_time || 10,
-      image: form.image || undefined,
+      image: finalImage,
       stock_quantity: form.stock_quantity,
       track_inventory: form.track_inventory,
       packaging_big_qty: form.packaging_big_qty || 0,
@@ -235,10 +259,71 @@ export default function EditProductPage() {
           </label>
         </div>
 
-        <div>
-          <label className="text-xs font-medium text-ztext-lighter">Image URL</label>
-          <input value={form.image} onChange={(e) => update('image', e.target.value)} className="input-z mt-1" placeholder="https://..." />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs font-medium text-ztext-lighter">Upload Image File</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setImageFile(file);
+                if (file) setImagePreview(URL.createObjectURL(file));
+                else setImagePreview(form.image);
+              }}
+              className="input-z mt-1 pt-1.5 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:bg-zred file:text-white"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-ztext-lighter">Or Image URL</label>
+            <input
+              value={form.image}
+              onChange={(e) => {
+                update('image', e.target.value);
+                if (!imageFile) setImagePreview(e.target.value);
+              }}
+              className="input-z mt-1"
+              placeholder="https://..."
+            />
+          </div>
         </div>
+
+        {(imagePreview || form.image) && (
+          <div className="flex items-center justify-between gap-2 p-2.5 bg-zgray/50 rounded-xl border border-zborder">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-12 h-12 rounded-lg bg-zcard border border-zborder overflow-hidden shrink-0 relative">
+                <Image
+                  src={imagePreview || form.image || '/images/food-placeholder.jpg'}
+                  alt="Product preview"
+                  fill
+                  className="object-cover"
+                  unoptimized={!!imageFile}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (!target.src.includes('food-placeholder.jpg')) {
+                      target.src = '/images/food-placeholder.jpg';
+                    }
+                  }}
+                />
+              </div>
+              <span className="text-xs text-ztext-light truncate">
+                {imageFile ? imageFile.name : form.image}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                update('image', '');
+                setImageFile(null);
+                setImagePreview('');
+              }}
+              className="p-1.5 text-ztext-muted hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+              title="Remove image"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         <div>
           <label className="text-xs font-medium text-ztext-lighter">Tags (comma separated)</label>

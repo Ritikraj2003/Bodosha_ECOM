@@ -151,7 +151,8 @@ export default function AdminProductsPage() {
     setIncludedItems(prod.included_items ? prod.included_items.join('\n') : '');
     setIngredients(prod.ingredients ? prod.ingredients.join(', ') : '');
     setAllergens(prod.allergens ? prod.allergens.join(', ') : '');
-    setImage(prod.image ?? '');
+    const safeImage = (prod.image && !prod.image.startsWith('{') && !prod.image.includes('"data":')) ? prod.image : '';
+    setImage(safeImage);
     setImageFile(null);
     setIsVegetarian(prod.is_vegetarian);
     setIsVegan(prod.is_vegan);
@@ -178,6 +179,26 @@ export default function AdminProductsPage() {
     }
     setSaving(true);
     try {
+      let finalImageUrl = image.trim();
+
+      // If user uploaded a new image file, upload it to /api/upload (category: product)
+      if (imageFile) {
+        const uploadFd = new FormData();
+        uploadFd.append('file', imageFile);
+        uploadFd.append('category', 'product');
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: uploadFd,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadData.success || !uploadData.url) {
+          setError(uploadData.error || 'Failed to upload product image');
+          setSaving(false);
+          return;
+        }
+        finalImageUrl = uploadData.url;
+      }
+
       const formData = new FormData();
       formData.append('name', name.trim());
       formData.append('price', price);
@@ -193,7 +214,7 @@ export default function AdminProductsPage() {
       formData.append('included_items', includedItems.trim());
       formData.append('ingredients', ingredients.trim());
       formData.append('allergens', allergens.trim());
-      formData.append('image', image.trim());
+      formData.append('image', finalImageUrl);
       formData.append('is_vegetarian', String(isVegetarian));
       formData.append('is_vegan', String(isVegan));
       formData.append('is_gluten_free', String(isGlutenFree));
@@ -203,10 +224,6 @@ export default function AdminProductsPage() {
       formData.append('stock_quantity', stockQuantity || '0');
       formData.append('packaging_big_qty', packagingBigQty || '0');
       formData.append('packaging_small_qty', packagingSmallQty || '0');
-
-      if (imageFile) {
-        formData.append('file', imageFile);
-      }
 
       if (editing) {
         const res = await fetch(`/api/products?id=${editing.id}`, {
@@ -606,20 +623,33 @@ export default function AdminProductsPage() {
                   />
                 </div>
               </div>
-              {(imageFile || image) && (
-                <div className="mt-2.5 flex items-center gap-2 text-xs text-ztext-light bg-zgray/50 p-2 rounded-xl border border-zborder">
-                  <div className="w-9 h-9 rounded-lg bg-zcard border border-zborder overflow-hidden shrink-0 relative">
-                    <Image
-                      src={imageFile ? URL.createObjectURL(imageFile) : image}
-                      alt="Preview"
-                      fill
-                      className="object-cover"
-                      unoptimized={!!imageFile}
-                    />
+              {(imageFile || (image && !image.startsWith('{'))) && (
+                <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-ztext-light bg-zgray/50 p-2 rounded-xl border border-zborder">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <div className="w-9 h-9 rounded-lg bg-zcard border border-zborder overflow-hidden shrink-0 relative">
+                      <Image
+                        src={imageFile ? URL.createObjectURL(imageFile) : image}
+                        alt="Preview"
+                        fill
+                        className="object-cover"
+                        unoptimized={!!imageFile}
+                      />
+                    </div>
+                    <span className="truncate text-xs font-medium">
+                      {imageFile ? `Selected: ${imageFile.name}` : `URL: ${image}`}
+                    </span>
                   </div>
-                  <span className="truncate text-xs font-medium">
-                    {imageFile ? `Selected: ${imageFile.name}` : `URL: ${image}`}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageFile(null);
+                      setImage('');
+                    }}
+                    className="p-1 text-ztext-lighter hover:text-red-400 rounded transition-colors shrink-0"
+                    title="Remove image"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               )}
             </div>
@@ -786,7 +816,7 @@ export default function AdminProductsPage() {
                     <td className="px-5 py-3.5">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-zgray border border-zborder overflow-hidden shrink-0 relative flex items-center justify-center">
-                          {prod.image ? (
+                          {prod.image && !prod.image.startsWith('{') ? (
                             <Image
                               src={prod.image}
                               alt={prod.name}

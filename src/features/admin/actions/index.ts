@@ -58,6 +58,9 @@ export async function getAdminDashboard(filter?: { fromDate?: string; toDate?: s
   try {
     await authorizeAdmin();
     const stats = await adminRepository.getDashboardStats(filter);
+    if (!stats) {
+      return { success: false, error: 'Failed to retrieve dashboard stats', data: null };
+    }
     return { success: true, data: stats };
   } catch (e) {
     return { success: false, error: (e as Error).message, data: null };
@@ -931,10 +934,10 @@ export async function getAdminRestaurant(): Promise<{ success: boolean; data?: R
         $1,
         $2,
         $3,
-        'Near CIT Kokrajhar Campus',
-        'Kokrajhar',
+        'Dolaigaon Rd, near Aim Academy, New Colony, Natunpara',
+        'Bongaigaon',
         'Assam',
-        '783370',
+        '783380',
         true,
         true
       )

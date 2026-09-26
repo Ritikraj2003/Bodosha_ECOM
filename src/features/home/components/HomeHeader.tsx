@@ -5,6 +5,7 @@ import { Bike, MapPin } from 'lucide-react';
 import type { AuthUser } from '@/features/auth/types';
 import type { Order } from '@/features/orders/types';
 import LiveNotificationToggle from '@/components/notifications/LiveNotificationToggle';
+import { usePublicSettings } from '@/hooks/usePublicSettings';
 
 interface HomeHeaderProps {
   user: AuthUser | null;
@@ -14,6 +15,7 @@ interface HomeHeaderProps {
 export default function HomeHeader({ user, liveOrder }: HomeHeaderProps) {
   const firstName = user?.fullName?.split(' ')[0] || 'Foodie';
   const storeName = process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe';
+  const settings = usePublicSettings();
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pt-3 sm:pt-4 animate-hero-in overflow-hidden max-w-full">
@@ -28,10 +30,12 @@ export default function HomeHeader({ user, liveOrder }: HomeHeaderProps) {
           </div>
         </div>
 
-        <p className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-white/90">
-          <MapPin size={13} className="text-white/85 shrink-0" />
-          Near CIT Kokrajhar, 2nd Gate
-        </p>
+        {settings.address && (
+          <p className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-white/90">
+            <MapPin size={13} className="text-white/85 shrink-0" />
+            {settings.address}
+          </p>
+        )}
 
         {liveOrder && (
           <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-zcard border border-zborder px-3 py-2 shadow-sm">

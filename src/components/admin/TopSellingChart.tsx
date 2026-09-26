@@ -15,7 +15,7 @@ interface TopSellingChartProps {
 }
 
 export default function TopSellingChart({
-  initialData = [],
+  initialData,
   dateFilter,
   dateLabel = 'All time',
 }: TopSellingChartProps) {
@@ -24,7 +24,7 @@ export default function TopSellingChart({
 
   const [limit, setLimit] = useState<number>(5);
   const [inputValue, setInputValue] = useState<string>('5');
-  const [items, setItems] = useState<TopSellingItem[]>(initialData);
+  const [items, setItems] = useState<TopSellingItem[]>(() => initialData || []);
   const [loading, setLoading] = useState<boolean>(false);
 
   const fetchTopItems = React.useCallback(async (targetLimit: number) => {
@@ -43,13 +43,18 @@ export default function TopSellingChart({
     } finally {
       setLoading(false);
     }
-  }, [dateFilter]);
+  }, [dateFilter?.fromDate, dateFilter?.toDate]);
 
-  // Sync with initialData changes (e.g. when main date filter changes)
+  // Sync with initialData changes from parent
   useEffect(() => {
-    if (initialData && initialData.length > 0) {
+    if (initialData !== undefined) {
       setItems(initialData);
-    } else {
+    }
+  }, [initialData]);
+
+  // If initialData is not provided at all, fetch on mount or when dateFilter changes
+  useEffect(() => {
+    if (initialData === undefined) {
       fetchTopItems(limit);
     }
   }, [initialData, fetchTopItems, limit]);
@@ -74,7 +79,7 @@ export default function TopSellingChart({
     }
   }
 
-  const displayedItems = items.slice(0, limit);
+  const displayedItems = React.useMemo(() => items.slice(0, limit), [items, limit]);
   const totalUnits = displayedItems.reduce((acc, curr) => acc + curr.quantity, 0);
   const totalRevenue = displayedItems.reduce((acc, curr) => acc + curr.revenue, 0);
   const topItem = displayedItems[0];

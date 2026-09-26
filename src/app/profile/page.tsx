@@ -473,7 +473,7 @@ export default function ProfilePage() {
             <div className="mt-2 bg-zcard rounded-2xl border border-zborder divide-y divide-zborder overflow-hidden">
 
               {/* Help & support */}
-              <Link href={`tel:${settings.supportPhone || '6000212823'}`} className="p-4 flex items-center gap-3 hover:bg-zgray transition-colors">
+              <Link href={`tel:${settings.supportPhone || ''}`} className="p-4 flex items-center gap-3 hover:bg-zgray transition-colors">
 
                 <HelpCircle size={18} className="text-zred shrink-0" />
                 <div className="flex-1">
@@ -513,12 +513,16 @@ export default function ProfilePage() {
                 Signature brews, specialty coffee, and mouth-watering bites cooked fresh with passion.
               </p>
               <div className="mt-3 space-y-2">
-                <div className="flex items-center gap-2 text-xs text-ztext-light">
-                  <MapPin size={14} className="text-ztext-muted" /> {settings.address || 'Near CIT Kokrajhar, 2nd Gate'}
-                </div>
-                <div className="flex items-center gap-2 text-xs text-ztext-light">
-                  <Phone size={14} className="text-ztext-muted" /> {settings.supportPhone || '6000212823'}
-                </div>
+                {settings.address ? (
+                  <div className="flex items-center gap-2 text-xs text-ztext-light">
+                    <MapPin size={14} className="text-ztext-muted shrink-0" /> {settings.address}
+                  </div>
+                ) : null}
+                {settings.supportPhone ? (
+                  <div className="flex items-center gap-2 text-xs text-ztext-light">
+                    <Phone size={14} className="text-ztext-muted shrink-0" /> {settings.supportPhone}
+                  </div>
+                ) : null}
                 {settings.supportEmail && (
                   <div className="flex items-center gap-2 text-xs text-ztext-light">
                     <Mail size={14} className="text-ztext-muted" /> {settings.supportEmail}

@@ -7,7 +7,7 @@ export async function getPublicMenu(): Promise<{ success: boolean; sections: Men
   try {
     // 1. Fetch active categories
     const catRes = await query(`
-      SELECT id, name, display_order
+      SELECT id, name, display_order, image, image_url
       FROM public.categories
       WHERE is_active = true
       ORDER BY display_order ASC;
@@ -29,9 +29,12 @@ export async function getPublicMenu(): Promise<{ success: boolean; sections: Men
 
     // Map DB products to MenuItem format
     const categoryMap = new Map<string, string>();
+    const categoryImageMap = new Map<string, string>();
     if (categories && categories.length > 0) {
       for (const cat of categories) {
         categoryMap.set(cat.id, cat.name);
+        const img = (cat.image && cat.image.trim()) || (cat.image_url && cat.image_url.trim()) || null;
+        if (img) categoryImageMap.set(cat.name, img);
       }
     }
 
@@ -82,6 +85,7 @@ export async function getPublicMenu(): Promise<{ success: boolean; sections: Men
       .filter(([, items]) => items.length > 0)
       .map(([category, items]) => ({
         category,
+        image: categoryImageMap.get(category) || null,
         items,
       }));
 

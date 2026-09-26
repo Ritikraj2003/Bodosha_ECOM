@@ -130,10 +130,18 @@ export default function AdminSettingsPage() {
     fetchSettings();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const isDirty = (s: SystemSetting): boolean => {
-    const cur = editingValues[s.key] ?? '';
-    return cur !== (originalValues[s.key] ?? s.value);
-  };
+  const getDirtySettingKeys = useCallback((): string[] => {
+    const allKeys = new Set([...Object.keys(editingValues), ...Object.keys(originalValues)]);
+    const dirty: string[] = [];
+    allKeys.forEach((key) => {
+      const cur = editingValues[key] ?? '';
+      const orig = originalValues[key] ?? '';
+      if (cur !== orig) {
+        dirty.push(key);
+      }
+    });
+    return dirty;
+  }, [editingValues, originalValues]);
 
   const handleSave = async () => {
     const session = await authService.getSession();
@@ -142,10 +150,10 @@ export default function AdminSettingsPage() {
       window.location.href = '/auth/login';
       return;
     }
-    const dirty = settings.filter(isDirty);
+    const dirtyKeys = getDirtySettingKeys();
     const restDirty = isRestaurantDirty();
 
-    if (dirty.length === 0 && !restDirty) {
+    if (dirtyKeys.length === 0 && !restDirty) {
       addToast('No changes to save', 'info');
       return;
     }
@@ -161,25 +169,24 @@ export default function AdminSettingsPage() {
       }
     }
 
-    for (const s of dirty) {
-      if (s.key === 'telegram_qr_expiry_minutes') {
-        const num = Number(editingValues[s.key]);
+    for (const key of dirtyKeys) {
+      if (key === 'telegram_qr_expiry_minutes') {
+        const num = Number(editingValues[key]);
         if (!Number.isFinite(num) || num < 1 || num > 60) {
           addToast('Telegram QR Expiry Time must be between 1 and 60 minutes', 'error');
           return;
         }
       }
-      if (s.type === 'json') {
-        const val = editingValues[s.key] ?? '';
-        if (!val.trim()) {
-          addToast(`${s.key.replace(/_/g, ' ')} · empty value not allowed`, 'error');
-          return;
-        }
-        try {
-          JSON.parse(val);
-        } catch {
-          addToast(`${s.key.replace(/_/g, ' ')} · invalid JSON`, 'error');
-          return;
+      const s = get(key);
+      if (s?.type === 'json' || key === 'store_delivery_locations' || key === 'delivery_slots' || key === 'bumper_offers') {
+        const val = editingValues[key] ?? '';
+        if (val.trim()) {
+          try {
+            JSON.parse(val);
+          } catch {
+            addToast(`${key.replace(/_/g, ' ')} · invalid JSON`, 'error');
+            return;
+          }
         }
       }
     }
@@ -194,16 +201,18 @@ export default function AdminSettingsPage() {
       }
     }
 
-    for (const s of dirty) {
-      const res = await updateSystemSetting(s.id, editingValues[s.key] ?? '');
-      if (!res.success) errors.push(res.error ?? s.key);
+    for (const key of dirtyKeys) {
+      const s = get(key);
+      const targetId = s?.id || key;
+      const res = await updateSystemSetting(targetId, editingValues[key] ?? '');
+      if (!res.success) errors.push(res.error ?? key);
     }
     setSaving(false);
     if (errors.length) {
       addToast(`Saved with errors: ${errors.join('; ')}`, 'error');
       return;
     }
-    const totalChanges = dirty.length + (restDirty ? 1 : 0);
+    const totalChanges = dirtyKeys.length + (restDirty ? 1 : 0);
     addToast(`Saved ${totalChanges} change${totalChanges > 1 ? 's' : ''}`, 'success');
     setEditing(false);
     invalidatePublicSettingsCache();
@@ -297,7 +306,13 @@ export default function AdminSettingsPage() {
                 rows={2}
                 value={val}
                 disabled={disabled}
-                placeholder="—"
+                placeholder={
+                  settingKey === 'store_address'
+                    ? 'Enter address'
+                    : settingKey === 'store_delivery_locations'
+                    ? 'Enter delivery locations (one per line)'
+                    : '—'
+                }
                 onChange={(e) => setVal(settingKey, e.target.value)}
                 className={`${inputClass} resize-none`}
               />
@@ -315,7 +330,15 @@ export default function AdminSettingsPage() {
                 type="text"
                 value={val}
                 disabled={disabled}
-                placeholder="—"
+                placeholder={
+                  settingKey === 'store_support_phone'
+                    ? 'Enter phone number'
+                    : settingKey === 'store_support_email' || settingKey === 'dilip_da_email' || settingKey === 'notification_email'
+                    ? 'Enter email / gmail'
+                    : settingKey === 'store_address'
+                    ? 'Enter address'
+                    : '—'
+                }
                 onChange={(e) => setVal(settingKey, e.target.value)}
                 className={inputClass}
               />
@@ -393,7 +416,7 @@ export default function AdminSettingsPage() {
     );
   };
 
-  const dirtySettingsCount = settings.filter(isDirty).length;
+  const dirtySettingsCount = getDirtySettingKeys().length;
   const restDirty = isRestaurantDirty();
   const dirtyCount = dirtySettingsCount + (restDirty ? 1 : 0);
 
@@ -523,7 +546,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.name ?? ''}
                     disabled={saving || !editing}
-                    placeholder="e.g. Dilip Da Main Store"
+                    placeholder="Enter store name"
                     onChange={(e) => setRestVal('name', e.target.value)}
                     className={inputClass}
                   />
@@ -536,7 +559,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.slug ?? ''}
                     disabled={saving || !editing}
-                    placeholder="e.g. dilip-da-main"
+                    placeholder="Enter store slug"
                     onChange={(e) => setRestVal('slug', e.target.value)}
                     className={inputClass}
                   />
@@ -549,7 +572,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.cuisine_type ?? ''}
                     disabled={saving || !editing}
-                    placeholder="e.g. Fast Food, Snacks, Rice Bowls"
+                    placeholder="Enter cuisine type"
                     onChange={(e) => setRestVal('cuisine_type', e.target.value)}
                     className={inputClass}
                   />
@@ -562,7 +585,7 @@ export default function AdminSettingsPage() {
                     rows={2}
                     value={restaurantForm.description ?? ''}
                     disabled={saving || !editing}
-                    placeholder="Original Dilip Da Store at CIT Kokrajhar Campus"
+                    placeholder="Enter store description"
                     onChange={(e) => setRestVal('description', e.target.value)}
                     className={`${inputClass} resize-none`}
                   />
@@ -582,7 +605,7 @@ export default function AdminSettingsPage() {
                     type="tel"
                     value={restaurantForm.phone ?? ''}
                     disabled={saving || !editing}
-                    placeholder="+91 9876543210"
+                    placeholder="Enter phone number"
                     onChange={(e) => setRestVal('phone', e.target.value)}
                     className={inputClass}
                   />
@@ -595,7 +618,7 @@ export default function AdminSettingsPage() {
                     type="email"
                     value={restaurantForm.email ?? ''}
                     disabled={saving || !editing}
-                    placeholder="admin@dilipda.com"
+                    placeholder="Enter email / gmail"
                     onChange={(e) => setRestVal('email', e.target.value)}
                     className={inputClass}
                   />
@@ -642,7 +665,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.address_line1 ?? ''}
                     disabled={saving || !editing}
-                    placeholder="Near CIT Kokrajhar Campus"
+                    placeholder="Enter address"
                     onChange={(e) => setRestVal('address_line1', e.target.value)}
                     className={inputClass}
                   />
@@ -655,7 +678,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.address_line2 ?? ''}
                     disabled={saving || !editing}
-                    placeholder="Stall #4 / Ground Floor"
+                    placeholder="Enter address line 2 (optional)"
                     onChange={(e) => setRestVal('address_line2', e.target.value)}
                     className={inputClass}
                   />
@@ -668,7 +691,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.city ?? ''}
                     disabled={saving || !editing}
-                    placeholder="Kokrajhar"
+                    placeholder="Enter city"
                     onChange={(e) => setRestVal('city', e.target.value)}
                     className={inputClass}
                   />
@@ -681,7 +704,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.state ?? ''}
                     disabled={saving || !editing}
-                    placeholder="Assam"
+                    placeholder="Enter state"
                     onChange={(e) => setRestVal('state', e.target.value)}
                     className={inputClass}
                   />
@@ -694,7 +717,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={restaurantForm.postal_code ?? ''}
                     disabled={saving || !editing}
-                    placeholder="783370"
+                    placeholder="Enter PIN code"
                     onChange={(e) => setRestVal('postal_code', e.target.value)}
                     className={inputClass}
                   />
@@ -718,7 +741,7 @@ export default function AdminSettingsPage() {
                     step="any"
                     value={restaurantForm.latitude ?? ''}
                     disabled={saving || !editing}
-                    placeholder="e.g. 26.5025000"
+                    placeholder="Enter latitude"
                     onChange={(e) => setRestVal('latitude', e.target.value)}
                     className={inputClass}
                   />
@@ -733,7 +756,7 @@ export default function AdminSettingsPage() {
                     step="any"
                     value={restaurantForm.longitude ?? ''}
                     disabled={saving || !editing}
-                    placeholder="e.g. 90.2718000"
+                    placeholder="Enter longitude"
                     onChange={(e) => setRestVal('longitude', e.target.value)}
                     className={inputClass}
                   />

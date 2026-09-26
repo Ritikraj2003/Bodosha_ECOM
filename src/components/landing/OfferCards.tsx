@@ -45,7 +45,7 @@ export default function OfferCards({ active, onSelect }: OfferCardsProps) {
           </button>
 
           {sections.map((s) => {
-            const catImg = s.items.find((i) => i.img && !i.img.includes('placeholder'))?.img || '/images/category-placeholder.jpg';
+            const catImg = (s.image && s.image.trim()) || s.items.find((i) => i.img && !i.img.includes('placeholder'))?.img || '/images/category-placeholder.jpg';
             return (
               <button
                 key={s.category}
@@ -57,8 +57,14 @@ export default function OfferCards({ active, onSelect }: OfferCardsProps) {
                   alt={s.category}
                   width={68}
                   height={68}
-                  className="category-avatar"
+                  className="category-avatar object-cover"
                   loading="lazy"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (!target.src.includes('category-placeholder.jpg')) {
+                      target.src = '/images/category-placeholder.jpg';
+                    }
+                  }}
                 />
                 <span className="category-label">{s.category}</span>
               </button>

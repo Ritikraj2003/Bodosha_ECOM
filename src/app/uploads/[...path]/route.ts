@@ -37,22 +37,50 @@ export async function GET(
       return new NextResponse('Bad Request', { status: 400 });
     }
 
-    // Sanitize to file basename to enforce safety against path traversal
-    const fileName = path.basename(pathSegments.join('/'));
-    const ext = path.extname(fileName).toLowerCase();
+    // Sanitize path segments to prevent directory traversal
+    const safeSubPath = path.normalize(pathSegments.join('/')).replace(/^(\.\.(\/|\\|$))+/, '');
+    const resolvedPath = path.resolve(UPLOADS_DIR, safeSubPath);
+    const resolvedUploadsDir = path.resolve(UPLOADS_DIR);
+
+    // Enforce that the target file resides within UPLOADS_DIR
+    if (!resolvedPath.startsWith(resolvedUploadsDir)) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
+    const ext = path.extname(resolvedPath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
     // Direct single I/O read
     let fileBuffer: Buffer;
     try {
-      fileBuffer = await readFile(path.join(UPLOADS_DIR, fileName));
+      fileBuffer = await readFile(resolvedPath);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'ENOENT') {
         try {
-          fileBuffer = await readFile(path.join(FALLBACK_UPLOADS_DIR, fileName));
+          const fallbackPath = path.resolve(FALLBACK_UPLOADS_DIR, safeSubPath);
+          fileBuffer = await readFile(fallbackPath);
         } catch {
-          return new NextResponse('File not found', { status: 404 });
+          // As a secondary fallback, check if it was placed flat in the root of UPLOADS_DIR
+          try {
+            const flatFallback = path.join(UPLOADS_DIR, path.basename(safeSubPath));
+            fileBuffer = await readFile(flatFallback);
+          } catch {
+            // Or check inside bumper, products, or categories subfolders
+            const base = path.basename(safeSubPath);
+            let foundBuffer: Buffer | null = null;
+            for (const sub of ['bumper', 'products', 'categories']) {
+              try {
+                foundBuffer = await readFile(path.join(UPLOADS_DIR, sub, base));
+                break;
+              } catch {}
+            }
+            if (foundBuffer) {
+              fileBuffer = foundBuffer;
+            } else {
+              return new NextResponse('File not found', { status: 404 });
+            }
+          }
         }
       } else {
         throw err;

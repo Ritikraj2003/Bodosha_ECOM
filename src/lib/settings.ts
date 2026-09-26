@@ -7,21 +7,40 @@ export interface StoreRestaurantInfo {
   isActive: boolean;
   openingTime: string;
   closingTime: string;
+  address?: string;
+  phone?: string;
+  email?: string;
 }
 
 /** Get restaurant operating settings directly from public.restaurants table. */
 export async function getStoreRestaurantInfo(): Promise<StoreRestaurantInfo | null> {
   try {
-    const res = await query<{ is_open: boolean; is_active: boolean; opening_time: string; closing_time: string }>(
-      'SELECT is_open, is_active, opening_time, closing_time FROM public.restaurants WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1'
+    const res = await query<{
+      is_open: boolean;
+      is_active: boolean;
+      opening_time: string;
+      closing_time: string;
+      address_line1?: string | null;
+      address_line2?: string | null;
+      city?: string | null;
+      state?: string | null;
+      postal_code?: string | null;
+      phone?: string | null;
+      email?: string | null;
+    }>(
+      'SELECT is_open, is_active, opening_time, closing_time, address_line1, address_line2, city, state, postal_code, phone, email FROM public.restaurants WHERE deleted_at IS NULL ORDER BY created_at ASC LIMIT 1'
     );
     if (res.rows.length === 0) return null;
     const r = res.rows[0];
+    const addrParts = [r.address_line1, r.address_line2, r.city, r.state, r.postal_code].filter((p): p is string => Boolean(p && String(p).trim().length > 0));
     return {
       isOpen: r.is_open === true,
       isActive: r.is_active === true,
       openingTime: r.opening_time ? String(r.opening_time).slice(0, 5) : '09:00',
       closingTime: r.closing_time ? String(r.closing_time).slice(0, 5) : '22:00',
+      address: addrParts.length > 0 ? addrParts.join(', ') : undefined,
+      phone: r.phone ? String(r.phone).trim() : undefined,
+      email: r.email ? String(r.email).trim() : undefined,
     };
   } catch {
     return null;

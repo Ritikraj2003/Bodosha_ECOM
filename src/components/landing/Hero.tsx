@@ -8,8 +8,30 @@ import BumperOffersSlider from '@/components/landing/BumperOffersSlider';
 import type { BumperOfferItem } from '@/features/settings/actions';
 
 const slides = [
-  { img: '/images/banner-placeholder.svg', top: 'Welcome', bottom: 'Fresh Meals & Snacks', note: 'Freshly prepared and delivered fast to your doorstep' },
-  { img: '/images/banner-placeholder.svg', top: 'Fresh & Hygienic', bottom: 'Made To Order Daily', note: 'Hot, delicious meals crafted with quality ingredients' },
+  {
+    img: '/images/hero-burger-banner.jpg',
+    top: 'BUILT FOR BADMAAS',
+    bottom: 'Juicy Double Trouble Burgers',
+    note: 'Double chicken breast, molten cheese & golden crispy fries',
+  },
+  {
+    img: '/images/hero-momos-banner.jpg',
+    top: 'HOT & STEAMING',
+    bottom: 'Authentic Momos & Dimsums',
+    note: 'Steam, fried & pan-fried with fiery schezwan red chutney',
+  },
+  {
+    img: '/images/hero-rolls-banner.jpg',
+    top: 'CRISPY LACHHA PARATHA',
+    bottom: 'Signature Rolls & Starters',
+    note: 'Loaded chicken & paneer rolls, crispy chicken lollipops & tenders',
+  },
+  {
+    img: '/images/hero-shakes-banner.jpg',
+    top: 'BOLD SIPS & SHAKES',
+    bottom: 'Cold Coffee, Shakes & Mojitos',
+    note: 'Oreo crunch, KitKat fudge, cold coffee with ice cream & Blue Lagoon',
+  },
 ];
 
 interface HeroProps {
@@ -70,24 +92,24 @@ export default function Hero({ query, onQueryChange, vegOn, onVegToggle, bumperO
             <BumperOffersSlider items={activeBumper} />
           ) : (
             <>
-              <div className="relative rounded-2xl overflow-hidden h-32 sm:h-44 lg:h-56 shadow-z">
-                <div key={index} className="relative w-full h-full">
+              <div className="relative rounded-2xl overflow-hidden h-36 sm:h-48 lg:h-60 shadow-z border border-white/5">
+                <div key={index} className="relative w-full h-full transition-opacity duration-300">
                   <Image
                     src={slides[index].img}
-                    alt="Dilip Da specials"
+                    alt={slides[index].bottom}
                     fill
-                    loading="eager"
+                    priority
                     className="object-cover"
                     sizes="(max-width: 640px) 100vw, 1200px"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/30 to-transparent" />
-                  <div className="absolute inset-0 flex flex-col justify-center px-4 sm:px-7">
-                    <p className="text-white text-[10px] font-bold tracking-[0.2em] uppercase">{slides[index].top}</p>
-                    <p className="mt-1 text-2xl sm:text-3xl font-extrabold text-white leading-tight">{slides[index].bottom}</p>
-                    <p className="mt-1 text-xs text-white/85">{slides[index].note}</p>
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-transparent" />
+                  <div className="absolute inset-0 flex flex-col justify-center px-4 sm:px-7 max-w-xl">
+                    <p className="text-[#FF5A67] text-[10px] sm:text-xs font-black tracking-[0.2em] uppercase">{slides[index].top}</p>
+                    <p className="mt-1 text-xl sm:text-3xl font-extrabold text-white leading-tight drop-shadow-sm">{slides[index].bottom}</p>
+                    <p className="mt-1 text-xs sm:text-sm text-white/90 line-clamp-2">{slides[index].note}</p>
                     <Link
                       href="/menu"
-                      className="mt-3 w-fit h-9 sm:h-10 px-5 inline-flex items-center justify-center gap-2 rounded-full bg-white text-zred text-xs sm:text-sm font-bold shadow-md transition-transform hover:-translate-y-0.5"
+                      className="mt-3 w-fit h-8 sm:h-10 px-4 sm:px-5 inline-flex items-center justify-center gap-1.5 rounded-full bg-white text-[#E23744] hover:bg-[#E23744] hover:text-white text-xs sm:text-sm font-black shadow-lg transition-all hover:scale-105 active:scale-95"
                     >
                       Order now <span className="text-sm">›</span>
                     </Link>

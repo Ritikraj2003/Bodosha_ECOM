@@ -257,7 +257,7 @@ function OrderConfirmedContent() {
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-amber-500/15 text-xs text-ztext-lighter">
-                📍 {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}, Near CIT Kokrajhar 2nd Gate
+                📍 {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}{publicSettings.address ? `, ${publicSettings.address}` : ''}
               </div>
             </div>
           ) : order.order_type === 'dine_in' || order.order_type === 'in_store' ? (

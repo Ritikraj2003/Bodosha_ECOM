@@ -1,6 +1,7 @@
 'use client';
 
 import { Printer, X } from 'lucide-react';
+import { usePublicSettings } from '@/hooks/usePublicSettings';
 
 export interface PrintableReceiptProps {
   order: {
@@ -28,6 +29,8 @@ export interface PrintableReceiptProps {
 }
 
 export function PrintableReceipt({ order, onClose }: PrintableReceiptProps) {
+  const settings = usePublicSettings();
+
   function handlePrint() {
     window.print();
   }
@@ -61,8 +64,12 @@ export function PrintableReceipt({ order, onClose }: PrintableReceiptProps) {
         <div id="receipt-printable-area" className="space-y-4 text-xs font-mono text-ztext print:text-black print:w-full">
           {/* Header */}
           <div className="text-center border-b border-dashed border-zborder print:border-black pb-3">
-            <h1 className="text-base font-black tracking-tight text-ztext print:text-black">BODOSA</h1>
-            <p className="text-[10px] text-ztext-light print:text-black">Near CIT Kokrajhar, Kokrajhar, Assam</p>
+            <h1 className="text-base font-black tracking-tight text-ztext print:text-black">
+              {process.env.NEXT_PUBLIC_APP_NAME || 'BODOSA'}
+            </h1>
+            {settings.address && (
+              <p className="text-[10px] text-ztext-light print:text-black">{settings.address}</p>
+            )}
             <p className="text-[10px] font-bold text-zred print:text-black mt-1 uppercase tracking-wider">
               {isTakeaway ? '*** TAKE AWAY RECEIPT ***' : '*** IN-STORE COUNTER RECEIPT ***'}
             </p>

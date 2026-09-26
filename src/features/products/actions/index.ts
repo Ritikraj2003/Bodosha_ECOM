@@ -62,10 +62,10 @@ async function getMerchantRestaurantId(): Promise<string | null> {
         $1,
         $2,
         $3,
-        'Near CIT Kokrajhar Campus',
-        'Kokrajhar',
+        'Dolaigaon Rd, near Aim Academy, New Colony, Natunpara',
+        'Bongaigaon',
         'Assam',
-        '783370',
+        '783380',
         true,
         true
       )
@@ -101,9 +101,7 @@ import { createAdminClient } from '@/infrastructure/supabase/admin';
 const PBUCKET = 'product-images';
 
 /**
- * Persist a product image. Uploads to Supabase Storage (works on serverless
- * hosts like Vercel where the local filesystem is read-only), falling back to
- * the local `public/uploads` directory in case the bucket does not exist yet.
+ * Persist a product image to local public/uploads/products directory.
  */
 export async function processImageFile(file: File | null): Promise<string | undefined> {
   if (!file || typeof file === 'string' || file.size === 0) return undefined;
@@ -112,33 +110,16 @@ export async function processImageFile(file: File | null): Promise<string | unde
     const buffer = Buffer.from(bytes);
 
     const fileExt = path.extname(file.name) || '.jpg';
-    const cleanBaseName = path.basename(file.name, fileExt).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const cleanBaseName = path.basename(file.name, fileExt).toLowerCase().replace(/[^a-z0-9]/g, '-').slice(0, 40) || 'product';
     const fileName = `product-${cleanBaseName}-${Date.now()}${fileExt}`;
 
-    // Prefer Supabase Storage so uploads survive across serverless instances.
-    try {
-      const admin = createAdminClient();
-      const { error } = await admin.storage.from(PBUCKET).upload(fileName, buffer, {
-        contentType: file.type || 'image/jpeg',
-        cacheControl: '3600',
-        upsert: true,
-      });
-      if (!error) {
-        const { data } = admin.storage.from(PBUCKET).getPublicUrl(fileName);
-        if (data?.publicUrl) return data.publicUrl;
-      } else {
-        console.error('Storage upload failed, falling back to local:', error.message);
-      }
-    } catch (err) {
-      console.error('Storage upload threw, falling back to local:', err);
-    }
-
-    // Fallback: local filesystem (for local dev / non-serverless hosting).
-    const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    // Save directly into public/uploads/products/
+    const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'products');
     await mkdir(uploadsDir, { recursive: true });
     const filePath = path.join(uploadsDir, fileName);
     await writeFile(filePath, buffer);
-    return `/uploads/${fileName}`;
+
+    return `/uploads/products/${fileName}`;
   } catch (err) {
     console.error('Failed to save product image file:', err);
     return undefined;
@@ -164,11 +145,13 @@ export async function createProductFromFormData(formData: FormData): Promise<Api
   if (!name) return { success: false, error: 'Product name is required' };
   if (!price || price <= 0) return { success: false, error: 'Product price must be greater than 0' };
 
-  let imagePath: string | undefined = (formData.get('image') as string) || undefined;
-  const file = (formData.get('file') || formData.get('image_file')) as File | null;
-  if (file && file instanceof File && file.size > 0) {
-    const uploadedPath = await processImageFile(file);
-    if (uploadedPath) imagePath = uploadedPath;
+  let imagePath: string | undefined = (formData.get('image') as string)?.trim() || undefined;
+  if (!imagePath) {
+    const file = (formData.get('file') || formData.get('image_file')) as File | null;
+    if (file && file instanceof File && file.size > 0) {
+      const uploadedPath = await processImageFile(file);
+      if (uploadedPath) imagePath = uploadedPath;
+    }
   }
 
   const description = (formData.get('description') as string)?.trim() || undefined;
@@ -260,13 +243,15 @@ export async function updateProductFromFormData(productId: string, formData: For
   if (!existing) return { success: false, error: 'Product not found' };
 
   let imagePath: string | null | undefined = existing.image;
-  const file = (formData.get('file') || formData.get('image_file')) as File | null;
-  if (file && file instanceof File && file.size > 0) {
-    const uploadedPath = await processImageFile(file);
-    if (uploadedPath) imagePath = uploadedPath;
-  } else if (formData.has('image')) {
+  if (formData.has('image')) {
     const rawImage = (formData.get('image') as string)?.trim();
     imagePath = rawImage ? rawImage : null;
+  } else {
+    const file = (formData.get('file') || formData.get('image_file')) as File | null;
+    if (file && file instanceof File && file.size > 0) {
+      const uploadedPath = await processImageFile(file);
+      if (uploadedPath) imagePath = uploadedPath;
+    }
   }
 
   const name = formData.has('name') ? ((formData.get('name') as string)?.trim() || existing.name) : existing.name;

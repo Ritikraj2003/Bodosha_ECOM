@@ -34,16 +34,46 @@ export class AdminRepository {
           (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $3)::numeric AS today_revenue,
           (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $4)::numeric AS weekly_revenue,
           (SELECT COALESCE(SUM(total_amount), 0) FROM public.orders WHERE status IN ('completed', 'delivered') AND created_at >= $5)::numeric AS monthly_revenue,
-          (SELECT COALESCE(SUM(used_credit), 0) FROM public.credit_accounts)::numeric AS bnpl_outstanding,
-          (SELECT COALESCE(SUM(credit_limit), 0) FROM public.credit_accounts)::numeric AS total_credit_issued,
-          (SELECT COALESCE(SUM(amount), 0) FROM public.credit_repayments WHERE status = 'paid')::numeric AS total_credit_repaid,
-          (SELECT COUNT(*) FROM public.credit_repayments WHERE status = 'pending' AND due_date < $3)::int AS total_overdue_accounts,
           (SELECT COUNT(*) FROM public.restaurants WHERE is_active = true AND deleted_at IS NULL)::int AS active_merchants,
           (SELECT COUNT(*) FROM public.restaurants WHERE is_active = false AND deleted_at IS NULL)::int AS pending_merchant_approvals,
           (SELECT COALESCE(SUM(amount), 0) FROM public.expense_transactions WHERE type = 'expense' AND ($6::date IS NULL OR transaction_date >= $6) AND ($7::date IS NULL OR transaction_date <= $7))::numeric AS total_expenses;
       `, [fromDate, toDate, today, weekStart.toISOString(), monthStart.toISOString(), fromDateStr, toDateStr]);
 
       const s = statsRes.rows[0] || {};
+
+      let bnplOutstanding = 0;
+      let totalCreditIssued = 0;
+      let totalCreditRepaid = 0;
+      let totalOverdueAccounts = 0;
+
+      try {
+        const creditRes = await query(`
+          SELECT
+            (SELECT COALESCE(SUM(COALESCE(used_credit, outstanding, 0)), 0) FROM public.credit_accounts)::numeric AS bnpl_outstanding,
+            (SELECT COALESCE(SUM(credit_limit), 0) FROM public.credit_accounts)::numeric AS total_credit_issued,
+            (SELECT COALESCE(SUM(amount), 0) FROM public.credit_repayments WHERE status = 'paid')::numeric AS total_credit_repaid,
+            (SELECT COUNT(*) FROM public.credit_repayments WHERE status = 'pending' AND due_date < $1)::int AS total_overdue_accounts
+        `, [today]);
+        const cr = creditRes.rows[0] || {};
+        bnplOutstanding = Number(cr.bnpl_outstanding || 0);
+        totalCreditIssued = Number(cr.total_credit_issued || 0);
+        totalCreditRepaid = Number(cr.total_credit_repaid || 0);
+        totalOverdueAccounts = Number(cr.total_overdue_accounts || 0);
+      } catch {
+        try {
+          const walletRes = await query(`
+            SELECT
+              COALESCE(SUM(CASE WHEN balance < 0 THEN ABS(balance) ELSE 0 END), 0)::numeric AS bnpl_outstanding,
+              COALESCE(SUM(credit_limit), 0)::numeric AS total_credit_issued,
+              COUNT(CASE WHEN balance < 0 THEN 1 END)::int AS total_overdue_accounts
+            FROM public.wallets
+          `);
+          const wr = walletRes.rows[0] || {};
+          bnplOutstanding = Number(wr.bnpl_outstanding || 0);
+          totalCreditIssued = Number(wr.total_credit_issued || 0);
+          totalOverdueAccounts = Number(wr.total_overdue_accounts || 0);
+        } catch { }
+      }
 
       const activityRes = await query(`
         SELECT a.id, a.action, a.table_name, a.record_id, a.created_at, a.user_id AS changed_by,
@@ -76,19 +106,22 @@ export class AdminRepository {
         room_delivery: 'Online Delivery',
         takeaway: 'Take Away',
         in_store: 'In Store',
-        dine_in: 'Dine In',
       };
 
       const orderTypeCounts: Record<string, number> = {
         room_delivery: 0,
         takeaway: 0,
         in_store: 0,
-        dine_in: 0,
       };
 
       for (const row of orderTypeRes.rows || []) {
-        const key = row.type || 'room_delivery';
-        orderTypeCounts[key] = (orderTypeCounts[key] || 0) + Number(row.count || 0);
+        let key = row.type || 'room_delivery';
+        if (key === 'dine_in') key = 'in_store';
+        if (orderTypeCounts[key] !== undefined) {
+          orderTypeCounts[key] += Number(row.count || 0);
+        } else {
+          orderTypeCounts['in_store'] += Number(row.count || 0);
+        }
       }
 
       const order_type_stats = Object.entries(orderTypeCounts).map(([type, count]) => ({
@@ -171,10 +204,10 @@ export class AdminRepository {
         today_revenue: Number(s.today_revenue || 0),
         weekly_revenue: Number(s.weekly_revenue || 0),
         monthly_revenue: Number(s.monthly_revenue || 0),
-        bnpl_outstanding: Number(s.bnpl_outstanding || 0),
-        total_credit_issued: Number(s.total_credit_issued || 0),
-        total_credit_repaid: Number(s.total_credit_repaid || 0),
-        total_overdue_accounts: s.total_overdue_accounts ?? 0,
+        bnpl_outstanding: bnplOutstanding,
+        total_credit_issued: totalCreditIssued,
+        total_credit_repaid: totalCreditRepaid,
+        total_overdue_accounts: totalOverdueAccounts,
         active_merchants: s.active_merchants ?? 0,
         pending_merchant_approvals: s.pending_merchant_approvals ?? 0,
         total_expenses: Number(s.total_expenses || 0),

@@ -68,11 +68,11 @@ export default function Navbar() {
         ) : (
           <Link href={isStaff ? '/admin/dashboard' : (isAuthenticated ? '/home/student' : '/')} className="flex items-center gap-2.5 shrink-0 group" aria-label={process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}>
             <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-full overflow-hidden shrink-0 border border-white/20 bg-black shadow-md flex items-center justify-center transition-transform group-hover:scale-105">
-              <img src="/logo.png" alt={`${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} Logo`} className="w-full h-full object-cover" />
+              <img src="/Logo/badmaas-logo.png" alt={`${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} Logo`} className="w-full h-full object-cover" />
             </div>
             <div className="flex flex-col">
-              <span className="text-xl sm:text-2xl font-black tracking-tight leading-none text-white">
-                <span className="text-zred font-extrabold tracking-wide">
+              <span className="text-xl sm:text-2xl font-black tracking-tight leading-none">
+                <span className="text-brand-red font-extrabold tracking-wide">
                   {(process.env.NEXT_PUBLIC_APP_NAME || 'BADMAAS').split(' ')[0]}
                 </span>
               </span>

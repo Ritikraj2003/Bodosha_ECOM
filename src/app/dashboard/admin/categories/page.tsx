@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import Image from 'next/image';
 import {
-  Plus, FolderTree, Edit3, Trash2, Eye, EyeOff, Save, X, Search, CheckCircle, AlertCircle, ChevronLeft, ChevronRight
+  Plus, FolderTree, Edit3, Trash2, Eye, EyeOff, Save, X, Search, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, ImageIcon
 } from 'lucide-react';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/features/products/actions';
 import type { Category } from '@/features/products/types';
@@ -26,6 +27,9 @@ export default function AdminCategoriesPage() {
   const [description, setDescription] = useState('');
   const [displayOrder, setDisplayOrder] = useState<number>(0);
   const [isActive, setIsActive] = useState<boolean>(true);
+  const [image, setImage] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState('');
   
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -65,6 +69,9 @@ export default function AdminCategoriesPage() {
     setDescription('');
     setDisplayOrder(0);
     setIsActive(true);
+    setImage('');
+    setImageFile(null);
+    setImagePreview('');
     setError('');
   }, []);
 
@@ -81,6 +88,9 @@ export default function AdminCategoriesPage() {
     setDescription(cat.description ?? '');
     setDisplayOrder(cat.display_order ?? 0);
     setIsActive(cat.is_active ?? true);
+    setImage(cat.image ?? '');
+    setImageFile(null);
+    setImagePreview(cat.image ?? '');
     setShowForm(true);
   };
 
@@ -92,10 +102,31 @@ export default function AdminCategoriesPage() {
     }
     setSaving(true);
     try {
+      let finalImageUrl: string | null = image.trim() || null;
+
+      // If user uploaded a new image file, upload it to /api/upload
+      if (imageFile) {
+        const uploadFd = new FormData();
+        uploadFd.append('file', imageFile);
+        uploadFd.append('category', 'category');
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          body: uploadFd,
+        });
+        const uploadData = await uploadRes.json();
+        if (!uploadData.success || !uploadData.url) {
+          setError(uploadData.error || 'Failed to upload category image');
+          setSaving(false);
+          return;
+        }
+        finalImageUrl = uploadData.url;
+      }
+
       if (editing) {
         const res = await updateCategory(editing.id, {
           name: name.trim(),
           description: description.trim() || undefined,
+          image: finalImageUrl,
           display_order: displayOrder,
           is_active: isActive,
         });
@@ -103,11 +134,14 @@ export default function AdminCategoriesPage() {
           showToast(`Category "${name.trim()}" updated successfully!`);
         } else {
           setError(res.error || 'Failed to update category');
+          setSaving(false);
+          return;
         }
       } else {
         const res = await createCategory({
           name: name.trim(),
           description: description.trim() || undefined,
+          image: finalImageUrl,
           display_order: displayOrder,
           is_active: isActive,
         });
@@ -115,6 +149,8 @@ export default function AdminCategoriesPage() {
           showToast(`Category "${name.trim()}" created successfully!`);
         } else {
           setError(res.error || 'Failed to create category');
+          setSaving(false);
+          return;
         }
       }
       resetForm();
@@ -259,6 +295,87 @@ export default function AdminCategoriesPage() {
               />
             </div>
 
+            {/* Category Image: Upload File or Direct URL */}
+            <div className="sm:col-span-2">
+              <label className="text-xs font-semibold text-ztext-lighter block mb-1">Category Image</label>
+              <div className="grid sm:grid-cols-2 gap-3 items-center">
+                <div>
+                  <span className="text-[11px] text-ztext-lighter block mb-1">Upload File to Server</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setImageFile(file);
+                      if (file) {
+                        setImagePreview(URL.createObjectURL(file));
+                      } else {
+                        setImagePreview(image);
+                      }
+                    }}
+                    className="input-z text-xs file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:bg-zred file:text-white cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <span className="text-[11px] text-ztext-lighter block mb-1">Or Image URL</span>
+                  <input
+                    type="text"
+                    value={image}
+                    onChange={(e) => {
+                      setImage(e.target.value);
+                      if (!imageFile) setImagePreview(e.target.value);
+                    }}
+                    placeholder="https://... or /images/... (Optional)"
+                    className="input-z text-xs"
+                  />
+                </div>
+              </div>
+
+              {/* Image Preview */}
+              {(imagePreview || image) && (
+                <div className="mt-2.5 flex items-center justify-between gap-2 text-xs text-ztext-light bg-zgray/50 p-2.5 rounded-xl border border-zborder">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-12 h-12 rounded-xl bg-zcard border border-zborder overflow-hidden shrink-0 relative">
+                      <Image
+                        src={imagePreview || image || '/images/category-placeholder.jpg'}
+                        alt="Category Preview"
+                        fill
+                        className="object-cover"
+                        unoptimized={!!imageFile}
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          if (!target.src.includes('category-placeholder.jpg')) {
+                            target.src = '/images/category-placeholder.jpg';
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="truncate">
+                      <p className="text-xs font-semibold text-ztext truncate">
+                        {imageFile ? imageFile.name : image}
+                      </p>
+                      <p className="text-[11px] text-ztext-muted">
+                        {imageFile ? 'Selected for upload' : 'Direct URL configured'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImage('');
+                      setImageFile(null);
+                      setImagePreview('');
+                    }}
+                    className="p-1.5 text-ztext-lighter hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors shrink-0"
+                    title="Remove image"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              )}
+            </div>
+
             <div className="sm:col-span-2 flex items-center gap-3 pt-1">
               <label className="flex items-center gap-2 text-xs font-medium text-ztext cursor-pointer select-none">
                 <input
@@ -312,6 +429,7 @@ export default function AdminCategoriesPage() {
               <thead className="bg-zgray/50 border-b border-zborder text-ztext-lighter text-xs uppercase tracking-wider">
                 <tr>
                   <th className="px-5 py-3.5 font-semibold">Order</th>
+                  <th className="px-5 py-3.5 font-semibold">Image</th>
                   <th className="px-5 py-3.5 font-semibold">Category Name</th>
                   <th className="px-5 py-3.5 font-semibold">Description</th>
                   <th className="px-5 py-3.5 font-semibold">Products</th>
@@ -326,6 +444,23 @@ export default function AdminCategoriesPage() {
                       <span className="font-mono text-xs text-ztext-lighter bg-zgray px-2.5 py-1 rounded-md border border-zborder">
                         #{cat.display_order ?? 0}
                       </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="w-10 h-10 rounded-xl bg-zgray border border-zborder overflow-hidden relative shrink-0">
+                        <Image
+                          src={cat.image && cat.image.trim() ? cat.image : '/images/category-placeholder.jpg'}
+                          alt={cat.name}
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            if (!target.src.includes('category-placeholder.jpg')) {
+                              target.src = '/images/category-placeholder.jpg';
+                            }
+                          }}
+                        />
+                      </div>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex flex-col">

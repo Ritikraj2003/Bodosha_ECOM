@@ -73,6 +73,7 @@ export interface Category {
   name: string;
   slug: string;
   description: string | null;
+  image?: string | null;
   display_order: number;
   is_active: boolean;
   created_at: string;
@@ -83,6 +84,7 @@ export interface Category {
 export interface CategoryFormData {
   name: string;
   description?: string;
+  image?: string | null;
   display_order?: number;
   is_active?: boolean;
 }

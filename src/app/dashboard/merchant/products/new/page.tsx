@@ -83,12 +83,24 @@ export default function NewProductPage() {
     if (form.track_inventory) fd.append('track_inventory', 'true');
     fd.append('packaging_big_qty', String(form.packaging_big_qty || 0));
     fd.append('packaging_small_qty', String(form.packaging_small_qty || 0));
-    if (form.tags) fd.append('tags', form.tags);
-    if (form.image) fd.append('image', form.image);
-
+    let finalImage = form.image.trim() || undefined;
     if (imageFile) {
-      fd.append('file', imageFile);
+      const uploadFd = new FormData();
+      uploadFd.append('file', imageFile);
+      uploadFd.append('category', 'product');
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        body: uploadFd,
+      });
+      const uploadData = await uploadRes.json();
+      if (!uploadData.success || !uploadData.url) {
+        setError(uploadData.error || 'Failed to upload product image');
+        setSaving(false);
+        return;
+      }
+      finalImage = uploadData.url;
     }
+    if (finalImage) fd.append('image', finalImage);
 
     const res = await createProductFromFormData(fd);
     setSaving(false);

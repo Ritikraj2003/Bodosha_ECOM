@@ -388,7 +388,9 @@ export default function OrdersPage() {
                 <h1 className="flex items-center gap-1.5 text-base font-bold text-ztext">
                   <MapPin size={14} className="text-zred" /> {process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'} <ChevronDown size={12} className="text-ztext-lighter" />
                 </h1>
-                <p className="text-[11px] text-ztext-light mt-0.5">Near CIT Kokrajhar, 2nd Gate</p>
+                {publicSettings.address && (
+                  <p className="text-[11px] text-ztext-light mt-0.5">{publicSettings.address}</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {/* <Link href="/dashboard/student/credit" aria-label="Ethics Pay credit" title="Ethics Pay credit" className="w-9 h-9 rounded-full border border-zborder bg-zcard flex items-center justify-center text-ztext-light shadow-sm hover:border-zred/40 hover:text-zred transition-colors">

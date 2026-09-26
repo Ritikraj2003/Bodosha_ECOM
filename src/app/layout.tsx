@@ -25,12 +25,13 @@ export const metadata: Metadata = {
   description: `${APP_NAME} — Premium coffee, quick bites, hot meals, and delicious combos. Order online for delivery or dine-in.`,
   icons: {
     icon: [
-      { url: '/logo.png', type: 'image/png' },
+      { url: '/Logo/favicon.ico', sizes: 'any' },
+      { url: '/Logo/badmaas-logo.png', type: 'image/png' },
     ],
     apple: [
-      { url: '/logo.png', type: 'image/png' },
+      { url: '/Logo/badmaas-logo.png', type: 'image/png' },
     ],
-    shortcut: '/logo.png',
+    shortcut: '/Logo/badmaas-logo.png',
   },
 };
 
