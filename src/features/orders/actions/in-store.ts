@@ -228,8 +228,8 @@ export async function createInStoreOrder(params: InStoreOrderParams) {
     for (const li of priceResolution.lineItems) {
       await query(`
         INSERT INTO public.order_items (
-          order_id, product_id, product_name, product_price, unit_price, quantity, subtotal, item_total, notes, special_instructions, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8, NOW())
+          order_id, product_id, product_name, product_price, unit_price, quantity, subtotal, item_total, notes, special_instructions, variant_name, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8, $9, NOW())
       `, [
         order.id,
         li.product_id || null,
@@ -239,6 +239,7 @@ export async function createInStoreOrder(params: InStoreOrderParams) {
         li.quantity,
         li.subtotal,
         li.special_instructions || null,
+        li.variant_name || null,
       ]);
     }
 
@@ -371,7 +372,7 @@ export async function getInStoreOrdersAndStats(filter: InStoreFilter = {}) {
     const itemsMap: Record<string, any[]> = {};
     if (orderIds.length > 0) {
       const itemsRes = await query<any>(`
-        SELECT id, order_id, product_name, quantity, COALESCE(unit_price, product_price, 0)::numeric as unit_price, COALESCE(subtotal, item_total, 0)::numeric as subtotal
+        SELECT id, order_id, product_name, quantity, COALESCE(unit_price, product_price, 0)::numeric as unit_price, COALESCE(subtotal, item_total, 0)::numeric as subtotal, variant_name
         FROM public.order_items
         WHERE order_id = ANY($1::uuid[])
       `, [orderIds]);

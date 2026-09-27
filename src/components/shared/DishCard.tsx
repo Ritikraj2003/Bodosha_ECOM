@@ -19,6 +19,8 @@ export interface DishCardItem extends Partial<MenuItem> {
   img: string;
   rating?: number;
   compare_at_price?: number | null;
+  has_variants?: boolean;
+  variants?: Array<{ id: string; name: string; price: number; compare_at_price?: number | null; pieces?: string | null }>;
 }
 
 interface DishCardProps {
@@ -52,7 +54,14 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
     allergens: dish.allergens || menu?.allergens,
     prepTime: dish.prepTime || menu?.prepTime || 15,
     deliveryTime: dish.deliveryTime || menu?.deliveryTime || '20–30 min',
+    has_variants: dish.has_variants ?? menu?.has_variants,
+    variants: dish.variants ?? menu?.variants,
   };
+
+  const effectiveVariants = dish.variants || menu?.variants || [];
+  const hasVariants = Boolean((dish.has_variants || menu?.has_variants) && effectiveVariants.length > 0);
+  const minPrice = hasVariants ? Math.min(...effectiveVariants.map((v) => Number(v.price))) : dish.price;
+  const maxPrice = hasVariants ? Math.max(...effectiveVariants.map((v) => Number(v.price))) : dish.price;
 
   if (variant === 'menu') {
     return (
@@ -97,14 +106,27 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
                 <span />
               )}
               <div className="flex items-baseline gap-1.5">
-                <span className="text-[13px] font-bold text-ztext">₹{dish.price}</span>
-                {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
-                  <span className="text-[11px] text-ztext-muted line-through">₹{dish.compare_at_price}</span>
+                {hasVariants ? (
+                  <span className="text-[13px] font-bold text-ztext">₹{minPrice} – ₹{maxPrice}</span>
+                ) : (
+                  <>
+                    <span className="text-[13px] font-bold text-ztext">₹{dish.price}</span>
+                    {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
+                      <span className="text-[11px] text-ztext-muted line-through">₹{dish.compare_at_price}</span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
             <div onClick={(e) => e.stopPropagation()}>
-              {qty === 0 ? (
+              {hasVariants ? (
+                <button
+                  onClick={() => setShowDetail(true)}
+                  className="mt-1.5 w-full h-7 flex items-center justify-center gap-1 rounded-md text-[11px] font-bold text-zred bg-zred/10 border border-zred/40 transition-all hover:bg-zred hover:text-white hover:shadow-z"
+                >
+                  <Plus size={11} /> <span>Half / Full</span>
+                </button>
+              ) : qty === 0 ? (
                 <button
                   onClick={(e) => onAdd(e)}
                   className="mt-1.5 w-full h-7 flex items-center justify-center gap-1 rounded-md text-[12px] font-bold text-zred bg-zred/10 border border-zred/40 transition-all hover:bg-zred hover:text-white hover:shadow-z"
@@ -160,7 +182,14 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
             </span>
           )}
           <div className="absolute right-2 bottom-2 z-10" onClick={(e) => e.stopPropagation()}>
-            {qty === 0 ? (
+            {hasVariants ? (
+              <button
+                onClick={() => setShowDetail(true)}
+                className="h-7 px-2.5 flex items-center justify-center gap-1 text-[11px] font-bold text-zred bg-white rounded-md shadow-md hover:bg-zred/10 transition-colors"
+              >
+                <Plus size={11} /> Half / Full
+              </button>
+            ) : qty === 0 ? (
               <button
                 onClick={(e) => onAdd(e)}
                 className="h-7 min-w-[54px] px-2 flex items-center justify-center gap-1 text-[12px] font-bold text-zred bg-white rounded-md shadow-md hover:bg-zred/10 transition-colors"
@@ -195,9 +224,15 @@ export default function DishCard({ dish, qty, onAdd, onUpdateQuantity, variant =
           <h3 className="mt-1 text-sm font-bold text-ztext leading-snug line-clamp-2 min-h-[2.5em] group-hover:text-zred transition-colors">{dish.name}</h3>
           <p className="text-xs text-ztext-light mt-0.5 line-clamp-1">{dish.desc}</p>
           <div className="mt-1.5 flex items-baseline gap-1.5">
-            <span className="text-sm font-bold text-ztext">₹{dish.price}</span>
-            {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
-              <span className="text-xs text-ztext-muted line-through">₹{dish.compare_at_price}</span>
+            {hasVariants ? (
+              <span className="text-sm font-bold text-ztext">₹{minPrice} – ₹{maxPrice}</span>
+            ) : (
+              <>
+                <span className="text-sm font-bold text-ztext">₹{dish.price}</span>
+                {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
+                  <span className="text-xs text-ztext-muted line-through">₹{dish.compare_at_price}</span>
+                )}
+              </>
             )}
           </div>
         </div>

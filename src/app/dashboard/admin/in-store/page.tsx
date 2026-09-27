@@ -76,23 +76,35 @@ interface HistoryStats {
 
 interface InStoreProductCardProps {
   prod: Product;
-  inCart?: CartItem;
-  addToCart: (p: Product) => void;
+  cartItemsForProd: CartItem[];
+  addToCart: (p: Product, variant?: { id: string; name: string; price: number }) => void;
   updateQuantity: (id: string, delta: number) => void;
+  onOpenVariants: (p: Product) => void;
   idx: number;
 }
 
-function InStoreProductCard({ prod, inCart, addToCart, updateQuantity, idx }: InStoreProductCardProps) {
+function InStoreProductCard({ prod, cartItemsForProd, addToCart, updateQuantity, onOpenVariants, idx }: InStoreProductCardProps) {
   const [imgError, setImgError] = useState(false);
   const isOutOfStock = prod.track_inventory && prod.stock_quantity <= 0;
   const isAvailable = prod.is_available && prod.is_active && !isOutOfStock;
   const displayImg = imgError || !prod.image || !prod.image.trim() ? '/images/food-placeholder.jpg' : prod.image;
   const isVeg = prod.is_vegetarian !== false;
 
+  const hasVariants = Boolean(prod.has_variants && Array.isArray(prod.variants) && prod.variants.length > 0);
+  const minPrice = hasVariants ? Math.min(...prod.variants!.map((v) => Number(v.price))) : prod.price;
+  const maxPrice = hasVariants ? Math.max(...prod.variants!.map((v) => Number(v.price))) : prod.price;
+  const totalQtyInCart = cartItemsForProd.reduce((sum, item) => sum + item.quantity, 0);
+  const inCart = totalQtyInCart > 0;
+
   return (
     <div
       onClick={() => {
-        if (isAvailable && !inCart) addToCart(prod);
+        if (!isAvailable) return;
+        if (hasVariants) {
+          onOpenVariants(prod);
+        } else {
+          if (!inCart) addToCart(prod);
+        }
       }}
       className={`group bg-zcard rounded-xl border border-zborder overflow-hidden flex flex-col justify-between transition-all duration-200 hover:border-ztext-light hover:shadow-lg cursor-pointer ${
         inCart ? 'ring-2 ring-zred bg-red-500/5 border-zred' : ''
@@ -128,6 +140,31 @@ function InStoreProductCard({ prod, inCart, addToCart, updateQuantity, idx }: In
               Out of stock
             </span>
           </div>
+        ) : hasVariants ? (
+          /* Multi-variant (Half/Full) Button */
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenVariants(prod);
+            }}
+            className={`absolute right-2 bottom-2 z-10 px-2 py-0.5 rounded-md text-[11px] font-extrabold shadow flex items-center gap-1 transition-transform active:scale-95 ${
+              inCart
+                ? 'bg-zred text-white'
+                : 'bg-white hover:bg-neutral-100 text-zred border border-white/80'
+            }`}
+          >
+            {inCart ? (
+              <>
+                <span>{totalQtyInCart} in bill</span>
+                <span className="text-[9px] bg-white/20 px-1 rounded">Edit</span>
+              </>
+            ) : (
+              <>
+                <Plus size={12} strokeWidth={3} /> Half / Full
+              </>
+            )}
+          </button>
         ) : inCart ? (
           /* Counter Quick Increment/Decrement Controls on Image */
           <div
@@ -142,7 +179,7 @@ function InStoreProductCard({ prod, inCart, addToCart, updateQuantity, idx }: In
             >
               <Minus size={11} strokeWidth={2.5} />
             </button>
-            <span className="text-[11px] font-extrabold min-w-[14px] text-center">{inCart.quantity}</span>
+            <span className="text-[11px] font-extrabold min-w-[14px] text-center">{totalQtyInCart}</span>
             <button
               type="button"
               onClick={() => updateQuantity(prod.id, 1)}
@@ -196,7 +233,16 @@ function InStoreProductCard({ prod, inCart, addToCart, updateQuantity, idx }: In
         </div>
 
         <div className="flex items-center justify-between mt-0.5 pt-1 border-t border-zborder/40">
-          <span className="text-sm sm:text-base font-black text-ztext">₹{prod.price}</span>
+          <div className="flex items-baseline gap-1">
+            <span className="text-sm sm:text-base font-black text-ztext">
+              {hasVariants ? `₹${minPrice} - ₹${maxPrice}` : `₹${prod.price}`}
+            </span>
+            {hasVariants && (
+              <span className="text-[9px] font-bold text-amber-500 bg-amber-500/10 px-1 py-0.5 rounded">
+                Half/Full
+              </span>
+            )}
+          </div>
 
           {((Number(prod.packaging_big_qty) || 0) > 0 || (Number(prod.packaging_small_qty) || 0) > 0) ? (
             <span
@@ -215,7 +261,7 @@ function InStoreProductCard({ prod, inCart, addToCart, updateQuantity, idx }: In
             </span>
           ) : inCart ? (
             <span className="text-[10px] font-bold text-zred">
-              {inCart.quantity} in bill
+              {totalQtyInCart} in bill
             </span>
           ) : null}
         </div>
@@ -261,6 +307,7 @@ export default function InStorePage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isTakeaway, setIsTakeaway] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
+  const [selectedVariantProd, setSelectedVariantProd] = useState<Product | null>(null);
 
   // Payment & Checkout state
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'razorpay' | 'upi'>('cash');
@@ -431,20 +478,28 @@ export default function InStorePage() {
   }, [products, searchQuery, selectedCategory]);
 
   // Cart operations
-  function addToCart(product: Product) {
+  function addToCart(product: Product, variant?: { id: string; name: string; price: number }) {
     setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
+      const isVar = Boolean(variant);
+      const itemId = isVar ? `${product.id}_${variant!.id}` : product.id;
+      const itemName = isVar ? `${product.name} (${variant!.name})` : product.name;
+      const itemPrice = isVar ? Number(variant!.price) : Number(product.price);
+
+      const existing = prev.find((item) => item.id === itemId);
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === itemId ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
       return [
         ...prev,
         {
-          id: product.id,
-          name: product.name,
-          price: product.price,
+          id: itemId,
+          productId: product.id,
+          variantId: isVar ? variant!.id : undefined,
+          variantName: isVar ? variant!.name : undefined,
+          name: itemName,
+          price: itemPrice,
           quantity: 1,
           veg: product.is_vegetarian,
           image: product.image ?? '',
@@ -924,9 +979,10 @@ export default function InStorePage() {
                   <InStoreProductCard
                     key={prod.id}
                     prod={prod}
-                    inCart={cart.find((i) => i.id === prod.id)}
+                    cartItemsForProd={cart.filter((i) => i.productId === prod.id || i.id === prod.id || i.id.startsWith(prod.id + '_'))}
                     addToCart={addToCart}
                     updateQuantity={updateQuantity}
+                    onOpenVariants={(p) => setSelectedVariantProd(p)}
                     idx={idx}
                   />
                 ))}
@@ -1791,6 +1847,130 @@ export default function InStorePage() {
           order={printReceiptData}
           onClose={() => setPrintReceiptData(null)}
         />
+      )}
+
+      {/* QUICK PORTION SELECTOR MODAL (HALF / FULL) FOR IN-STORE POS */}
+      {selectedVariantProd && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in"
+          onClick={() => setSelectedVariantProd(null)}
+        >
+          <div
+            className="bg-zcard w-full max-w-md rounded-2xl border border-zborder shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-4 bg-zsurface border-b border-zborder flex items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span
+                  className={`w-3.5 h-3.5 border p-[1.5px] rounded-[2px] shrink-0 flex ${
+                    selectedVariantProd.is_vegetarian !== false ? 'border-green-600' : 'border-red-600'
+                  }`}
+                >
+                  <span
+                    className={`w-full h-full rounded-full ${
+                      selectedVariantProd.is_vegetarian !== false ? 'bg-green-600' : 'bg-red-600'
+                    }`}
+                  />
+                </span>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-sm text-ztext truncate">{selectedVariantProd.name}</h3>
+                  <p className="text-[11px] text-ztext-light">Select portion size for the bill</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedVariantProd(null)}
+                className="w-7 h-7 rounded-full bg-zgray flex items-center justify-center text-ztext-light hover:text-ztext hover:bg-zborder transition-colors text-base"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* Variants List */}
+            <div className="p-4 space-y-3 max-h-[60vh] overflow-y-auto">
+              {(selectedVariantProd.variants || []).map((v) => {
+                const itemKey = `${selectedVariantProd.id}_${v.id}`;
+                const currentInCart = cart.find((i) => i.id === itemKey);
+                const qty = currentInCart ? currentInCart.quantity : 0;
+
+                return (
+                  <div
+                    key={v.id}
+                    className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                      qty > 0
+                        ? 'bg-red-500/10 border-zred'
+                        : 'bg-zgray/50 border-zborder hover:border-ztext-lighter'
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-ztext">{v.name} Portion</span>
+                        {v.pieces && (
+                          <span className="text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-medium">
+                            {v.pieces}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-base font-black text-ztext mt-1">₹{v.price}</p>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="shrink-0">
+                      {qty === 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addToCart(selectedVariantProd, { id: v.id, name: v.name, price: Number(v.price) });
+                          }}
+                          className="px-3.5 py-1.5 rounded-lg bg-zred hover:bg-zred-dark text-white text-xs font-bold shadow flex items-center gap-1 transition-transform active:scale-95"
+                        >
+                          <Plus size={14} /> Add {v.name}
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 bg-zcard border border-zborder rounded-lg p-1 shadow-sm">
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(itemKey, -1)}
+                            className="w-7 h-7 flex items-center justify-center rounded bg-zgray text-ztext hover:bg-zborder transition-colors"
+                          >
+                            <Minus size={13} strokeWidth={2.5} />
+                          </button>
+                          <span className="text-xs font-black text-ztext min-w-[20px] text-center">
+                            {qty}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => updateQuantity(itemKey, 1)}
+                            className="w-7 h-7 flex items-center justify-center rounded bg-zred text-white hover:bg-zred-dark transition-colors"
+                          >
+                            <Plus size={13} strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Footer */}
+            <div className="p-3 bg-zsurface border-t border-zborder flex items-center justify-between">
+              <span className="text-xs text-ztext-light">
+                {cart
+                  .filter((i) => i.productId === selectedVariantProd.id || i.id.startsWith(selectedVariantProd.id + '_'))
+                  .reduce((s, i) => s + i.quantity, 0)}{' '}
+                portion(s) in current bill
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedVariantProd(null)}
+                className="px-4 py-1.5 rounded-lg bg-zred text-white text-xs font-bold hover:bg-zred-dark transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ORDER DETAILS MODAL (FROM HISTORY) */}

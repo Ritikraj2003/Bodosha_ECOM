@@ -193,6 +193,17 @@ export async function createProductFromFormData(formData: FormData): Promise<Api
   const tagsString = formData.get('tags') as string;
   const tags = tagsString ? tagsString.split(',').map((t) => t.trim()).filter(Boolean) : undefined;
 
+  const has_variants = formData.get('has_variants') === 'true' || formData.get('has_variants') === 'on';
+  let variants: any = undefined;
+  if (formData.has('variants')) {
+    try {
+      const parsed = JSON.parse(formData.get('variants') as string);
+      if (Array.isArray(parsed)) variants = parsed;
+    } catch {
+      variants = [];
+    }
+  }
+
   const productData: ProductFormData = {
     name,
     price,
@@ -221,6 +232,8 @@ export async function createProductFromFormData(formData: FormData): Promise<Api
     packaging_big_qty,
     packaging_small_qty,
     tags,
+    has_variants,
+    variants,
   };
 
   const product = await productRepository.create(restaurantId, productData);
@@ -288,6 +301,17 @@ export async function updateProductFromFormData(productId: string, formData: For
   const packaging_big_qty = formData.has('packaging_big_qty') ? Math.max(0, parseInt(String(formData.get('packaging_big_qty')), 10) || 0) : existing.packaging_big_qty;
   const packaging_small_qty = formData.has('packaging_small_qty') ? Math.max(0, parseInt(String(formData.get('packaging_small_qty')), 10) || 0) : existing.packaging_small_qty;
 
+  const has_variants = formData.has('has_variants') ? (formData.get('has_variants') === 'true' || formData.get('has_variants') === 'on') : existing.has_variants;
+  let variants = existing.variants;
+  if (formData.has('variants')) {
+    try {
+      const parsed = JSON.parse(formData.get('variants') as string);
+      if (Array.isArray(parsed)) variants = parsed;
+    } catch {
+      variants = [];
+    }
+  }
+
   const productData: Partial<ProductFormData> = {
     name,
     price,
@@ -313,6 +337,8 @@ export async function updateProductFromFormData(productId: string, formData: For
     stock_quantity,
     packaging_big_qty,
     packaging_small_qty,
+    has_variants,
+    variants,
   };
 
   const product = await productRepository.update(productId, existing.restaurant_id, productData);

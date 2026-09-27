@@ -35,6 +35,8 @@ export function mapProductRow(r: any): Product {
     packaging_small_qty: Number(r.packaging_small_qty) || 0,
     sort_order: Number(r.sort_order) || 0,
     tags: r.tags || null,
+    has_variants: Boolean(r.has_variants ?? false),
+    variants: Array.isArray(r.variants) ? r.variants : (r.variants ? (typeof r.variants === 'string' ? JSON.parse(r.variants) : r.variants) : []),
     created_at: r.created_at,
     updated_at: r.updated_at,
     deleted_at: r.deleted_at || null,
@@ -149,6 +151,7 @@ export class ProductRepository {
           is_vegetarian, is_vegan, is_gluten_free, spice_level, preparation_time,
           image, image_url, is_active, is_available, stock_quantity, track_inventory,
           packaging_big_qty, packaging_small_qty, tags,
+          has_variants, variants,
           is_veg, compare_price, cost_price, created_at, updated_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6,
@@ -157,6 +160,7 @@ export class ProductRepository {
           $18, $19, $20, $21, $22,
           $23, $23, $24, $25, $26, $27,
           $28, $29, $30,
+          $31, $32,
           $18, $8, $9, NOW(), NOW()
         )
         RETURNING *;
@@ -191,6 +195,8 @@ export class ProductRepository {
         Number(data.packaging_big_qty) || 0,
         Number(data.packaging_small_qty) || 0,
         data.tags || null,
+        Boolean(data.has_variants),
+        JSON.stringify(data.variants || []),
       ]);
 
       if (res.rows.length === 0) return null;
@@ -247,6 +253,8 @@ export class ProductRepository {
       if (data.is_available !== undefined) updates.is_available = Boolean(data.is_available);
       if (data.is_active !== undefined) updates.is_active = Boolean(data.is_active);
       if (data.tags !== undefined) updates.tags = data.tags;
+      if (data.has_variants !== undefined) updates.has_variants = Boolean(data.has_variants);
+      if (data.variants !== undefined) updates.variants = JSON.stringify(data.variants || []);
 
       const keys = Object.keys(updates);
       if (keys.length === 0) return this.findById(id);

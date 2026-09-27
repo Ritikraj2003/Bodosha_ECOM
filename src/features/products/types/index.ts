@@ -31,9 +31,19 @@ export interface Product {
   packaging_small_qty: number;
   sort_order: number;
   tags: string[] | null;
+  has_variants?: boolean;
+  variants?: ProductVariant[] | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+}
+
+export interface ProductVariant {
+  id: string; // e.g. 'half', 'full'
+  name: string; // e.g. 'Half', 'Full'
+  price: number;
+  compare_at_price?: number | null;
+  pieces?: string | null;
 }
 
 export interface ProductFormData {
@@ -65,6 +75,8 @@ export interface ProductFormData {
   is_available?: boolean;
   is_active?: boolean;
   tags?: string[] | null;
+  has_variants?: boolean;
+  variants?: ProductVariant[] | null;
 }
 
 export interface Category {

@@ -58,6 +58,11 @@ export default function AdminProductsPage() {
   const [packagingSmallQty, setPackagingSmallQty] = useState<string>('0');
   const [isAvailable, setIsAvailable] = useState(true);
   const [isActive, setIsActive] = useState(true);
+  const [hasVariants, setHasVariants] = useState(false);
+  const [halfPrice, setHalfPrice] = useState('');
+  const [halfPieces, setHalfPieces] = useState('5 Pcs');
+  const [fullPrice, setFullPrice] = useState('');
+  const [fullPieces, setFullPieces] = useState('10 Pcs');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -123,6 +128,11 @@ export default function AdminProductsPage() {
     setPackagingSmallQty('0');
     setIsAvailable(true);
     setIsActive(true);
+    setHasVariants(false);
+    setHalfPrice('');
+    setHalfPieces('5 Pcs');
+    setFullPrice('');
+    setFullPieces('10 Pcs');
     setError('');
   }, [categories]);
 
@@ -164,6 +174,20 @@ export default function AdminProductsPage() {
     setPackagingSmallQty((prod.packaging_small_qty ?? 0).toString());
     setIsAvailable(prod.is_available);
     setIsActive(prod.is_active);
+    setHasVariants(Boolean(prod.has_variants));
+    if (prod.has_variants && Array.isArray(prod.variants) && prod.variants.length > 0) {
+      const half = prod.variants.find((v) => v.id === 'half') || prod.variants[0];
+      const full = prod.variants.find((v) => v.id === 'full') || prod.variants[1];
+      setHalfPrice(half?.price ? String(half.price) : prod.price.toString());
+      setHalfPieces(half?.pieces || '5 Pcs');
+      setFullPrice(full?.price ? String(full.price) : '');
+      setFullPieces(full?.pieces || '10 Pcs');
+    } else {
+      setHalfPrice(prod.price.toString());
+      setHalfPieces('5 Pcs');
+      setFullPrice('');
+      setFullPieces('10 Pcs');
+    }
     setShowForm(true);
   };
 
@@ -173,9 +197,20 @@ export default function AdminProductsPage() {
       setError('Product name is required');
       return;
     }
-    if (!price || isNaN(Number(price)) || Number(price) <= 0) {
-      setError('Valid price is required');
-      return;
+    if (hasVariants) {
+      if (!halfPrice || isNaN(Number(halfPrice)) || Number(halfPrice) <= 0) {
+        setError('Valid Half portion price is required');
+        return;
+      }
+      if (!fullPrice || isNaN(Number(fullPrice)) || Number(fullPrice) <= 0) {
+        setError('Valid Full portion price is required');
+        return;
+      }
+    } else {
+      if (!price || isNaN(Number(price)) || Number(price) <= 0) {
+        setError('Valid price is required');
+        return;
+      }
     }
     setSaving(true);
     try {
@@ -201,7 +236,18 @@ export default function AdminProductsPage() {
 
       const formData = new FormData();
       formData.append('name', name.trim());
-      formData.append('price', price);
+      const effectivePrice = hasVariants ? halfPrice : price;
+      formData.append('price', effectivePrice);
+      formData.append('has_variants', String(hasVariants));
+      if (hasVariants) {
+        const variantsList = [
+          { id: 'half', name: 'Half', price: Number(halfPrice), pieces: halfPieces || undefined },
+          { id: 'full', name: 'Full', price: Number(fullPrice), pieces: fullPieces || undefined },
+        ];
+        formData.append('variants', JSON.stringify(variantsList));
+      } else {
+        formData.append('variants', '[]');
+      }
       formData.append('category_id', categoryId);
       formData.append('compare_at_price', compareAtPrice);
       formData.append('description', description.trim());
@@ -453,29 +499,130 @@ export default function AdminProductsPage() {
               </select>
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-ztext-lighter block mb-1">
-                Price (₹) <span className="text-zred">*</span>
+            {/* Half / Full Options Toggle */}
+            <div className="sm:col-span-2 p-3.5 rounded-xl bg-zgray/40 border border-zborder space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={hasVariants}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setHasVariants(checked);
+                    if (checked && !halfPrice && price) {
+                      setHalfPrice(price);
+                      setFullPrice(String(Math.round(Number(price) * 1.8)));
+                    }
+                  }}
+                  className="rounded border-zborder text-zred focus:ring-zred w-4 h-4 cursor-pointer"
+                />
+                <span className="text-sm font-semibold text-ztext">
+                  This item has Half &amp; Full portions (e.g. Momos, Fried Rice, Noodles)
+                </span>
               </label>
-              <input
-                type="number"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="e.g. 150"
-                className="input-z"
-              />
+              <p className="text-xs text-ztext-lighter ml-6">
+                Enable this if customers can order this dish in Half or Full portions with different prices.
+              </p>
+
+              {hasVariants && (
+                <div className="pt-2.5 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-zborder">
+                  {/* Half Portion Card */}
+                  <div className="p-3 bg-zcard rounded-lg border border-zborder space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-500 uppercase tracking-wider">Half Portion</span>
+                      <span className="text-[10px] text-ztext-lighter">Standard Half</span>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-ztext-lighter block mb-1">
+                        Half Price (₹) <span className="text-zred">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={halfPrice}
+                        onChange={(e) => setHalfPrice(e.target.value)}
+                        placeholder="e.g. 40"
+                        className="input-z"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-ztext-lighter block mb-1">
+                        Pieces / Portion (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={halfPieces}
+                        onChange={(e) => setHalfPieces(e.target.value)}
+                        placeholder="e.g. 5 Pcs"
+                        className="input-z"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Full Portion Card */}
+                  <div className="p-3 bg-zcard rounded-lg border border-zborder space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-zred uppercase tracking-wider">Full Portion</span>
+                      <span className="text-[10px] text-ztext-lighter">Standard Full</span>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-ztext-lighter block mb-1">
+                        Full Price (₹) <span className="text-zred">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={fullPrice}
+                        onChange={(e) => setFullPrice(e.target.value)}
+                        placeholder="e.g. 80"
+                        className="input-z"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-ztext-lighter block mb-1">
+                        Pieces / Portion (optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={fullPieces}
+                        onChange={(e) => setFullPieces(e.target.value)}
+                        placeholder="e.g. 10 Pcs"
+                        className="input-z"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="text-xs font-semibold text-ztext-lighter block mb-1">Compare at Price (₹)</label>
-              <input
-                type="number"
-                value={compareAtPrice}
-                onChange={(e) => setCompareAtPrice(e.target.value)}
-                placeholder="e.g. 180 (Optional original price)"
-                className="input-z"
-              />
-            </div>
+            {!hasVariants && (
+              <>
+                <div>
+                  <label className="text-xs font-semibold text-ztext-lighter block mb-1">
+                    Price (₹) <span className="text-zred">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    placeholder="e.g. 150"
+                    className="input-z"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-ztext-lighter block mb-1">Compare at Price (₹)</label>
+                  <input
+                    type="number"
+                    value={compareAtPrice}
+                    onChange={(e) => setCompareAtPrice(e.target.value)}
+                    placeholder="e.g. 180 (Optional original price)"
+                    className="input-z"
+                  />
+                </div>
+              </>
+            )}
 
             <div className="sm:col-span-2">
               <label className="text-xs font-semibold text-ztext-lighter block mb-1">Short Description</label>

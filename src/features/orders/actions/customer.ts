@@ -74,6 +74,7 @@ interface ResolvedLineItem {
   packaging_big_qty?: number;
   packaging_small_qty?: number;
   special_instructions?: string;
+  variant_name?: string;
 }
 
 export async function resolveAuthoritativeLineItems(
@@ -93,7 +94,8 @@ export async function resolveAuthoritativeLineItems(
   const rawIdToDbIdMap = new Map<string, string>();
 
   for (const item of items) {
-    const mappedUuid = STATIC_PRODUCT_IDS[item.id] ?? item.id;
+    const rawCandidate = item.productId || (item.id.includes('_') ? item.id.split('_')[0] : item.id);
+    const mappedUuid = STATIC_PRODUCT_IDS[rawCandidate] ?? rawCandidate;
     rawIdToDbIdMap.set(item.id, mappedUuid);
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mappedUuid);
     if (isUuid) {
@@ -102,14 +104,14 @@ export async function resolveAuthoritativeLineItems(
   }
 
   // Fetch current authoritative product records from DB
-  const dbProductMap = new Map<string, { id: string; name: string; price: number; is_active: boolean; is_available: boolean; deleted_at: string | null; packaging_big_qty: number; packaging_small_qty: number }>();
+  const dbProductMap = new Map<string, { id: string; name: string; price: number; is_active: boolean; is_available: boolean; deleted_at: string | null; packaging_big_qty: number; packaging_small_qty: number; has_variants: boolean; variants: any[] }>();
 
   if (dbIdsToQuery.length > 0) {
-    let dbProducts: Array<{ id: string; name: string; price: number; is_active: boolean; is_available: boolean; deleted_at: string | null; packaging_big_qty?: number; packaging_small_qty?: number }> | null = null;
+    let dbProducts: Array<{ id: string; name: string; price: number; is_active: boolean; is_available: boolean; deleted_at: string | null; packaging_big_qty?: number; packaging_small_qty?: number; has_variants?: boolean; variants?: any }> | null = null;
     try {
       const { query } = await import('@/infrastructure/db');
       const prodRes = await query<any>(
-        `SELECT id, name, price, is_active, is_available, deleted_at, packaging_big_qty, packaging_small_qty
+        `SELECT id, name, price, is_active, is_available, deleted_at, packaging_big_qty, packaging_small_qty, has_variants, variants
          FROM public.products
          WHERE id = ANY($1::uuid[])`,
         [dbIdsToQuery]
@@ -118,7 +120,7 @@ export async function resolveAuthoritativeLineItems(
     } catch {
       const { data } = await supabase
         .from('products')
-        .select('id, name, price, is_active, is_available, deleted_at, packaging_big_qty, packaging_small_qty')
+        .select('id, name, price, is_active, is_available, deleted_at, packaging_big_qty, packaging_small_qty, has_variants, variants')
         .in('id', dbIdsToQuery);
       dbProducts = data;
     }
@@ -134,6 +136,8 @@ export async function resolveAuthoritativeLineItems(
           deleted_at: p.deleted_at ?? null,
           packaging_big_qty: p.packaging_big_qty != null ? Number(p.packaging_big_qty) : 0,
           packaging_small_qty: p.packaging_small_qty != null ? Number(p.packaging_small_qty) : 0,
+          has_variants: Boolean(p.has_variants),
+          variants: Array.isArray(p.variants) ? p.variants : (p.variants ? (typeof p.variants === 'string' ? JSON.parse(p.variants) : p.variants) : []),
         });
       }
     }
@@ -153,6 +157,7 @@ export async function resolveAuthoritativeLineItems(
     let resolvedProductId: string | null = null;
     let packagingBigQty = 0;
     let packagingSmallQty = 0;
+    let variantLabel: string | undefined = item.variantName;
 
     if (dbProd) {
       if (!dbProd.is_active || dbProd.deleted_at) {
@@ -166,6 +171,18 @@ export async function resolveAuthoritativeLineItems(
       resolvedProductId = dbProd.id;
       packagingBigQty = dbProd.packaging_big_qty ?? 0;
       packagingSmallQty = dbProd.packaging_small_qty ?? 0;
+
+      const targetVariantId = item.variantId || (item.id.includes('_') ? item.id.split('_')[1] : undefined);
+      if (targetVariantId && dbProd.has_variants && Array.isArray(dbProd.variants)) {
+        const foundVariant = dbProd.variants.find((v: any) => v.id === targetVariantId);
+        if (foundVariant) {
+          authoritativePrice = Number(foundVariant.price);
+          variantLabel = foundVariant.name || item.variantName || 'Custom';
+          productName = `${dbProd.name} (${variantLabel})`;
+        }
+      } else if (item.variantName) {
+        productName = `${dbProd.name} (${item.variantName})`;
+      }
     } else if (fallbackProd) {
       if (fallbackProd.isAvailable === false) {
         return { success: false, error: `"${fallbackProd.name}" is currently sold out.` };
@@ -197,6 +214,7 @@ export async function resolveAuthoritativeLineItems(
       packaging_big_qty: packagingBigQty,
       packaging_small_qty: packagingSmallQty,
       special_instructions: undefined,
+      variant_name: variantLabel || undefined,
     });
   }
 
@@ -532,8 +550,8 @@ export async function createOrder(params: CreateOrderParams) {
       await query(`
         INSERT INTO public.order_items (
           order_id, product_id, product_name, product_price, unit_price, quantity,
-          subtotal, item_total, notes, special_instructions, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8, NOW())
+          subtotal, item_total, notes, special_instructions, variant_name, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8, $9, NOW())
       `, [
         order.id,
         li.product_id || null,
@@ -543,6 +561,7 @@ export async function createOrder(params: CreateOrderParams) {
         li.quantity,
         li.subtotal,
         li.special_instructions || null,
+        li.variant_name || null,
       ]);
     } catch (itemErr: any) {
       // retry without product_id if FK violation
@@ -550,8 +569,8 @@ export async function createOrder(params: CreateOrderParams) {
         await query(`
           INSERT INTO public.order_items (
             order_id, product_id, product_name, product_price, unit_price, quantity,
-            subtotal, item_total, notes, special_instructions, created_at
-          ) VALUES ($1, NULL, $2, $3, $4, $5, $6, $6, $7, $7, NOW())
+            subtotal, item_total, notes, special_instructions, variant_name, created_at
+          ) VALUES ($1, NULL, $2, $3, $4, $5, $6, $6, $7, $7, $8, NOW())
         `, [
           order.id,
           li.product_name,
@@ -560,6 +579,7 @@ export async function createOrder(params: CreateOrderParams) {
           li.quantity,
           li.subtotal,
           li.special_instructions || null,
+          li.variant_name || null,
         ]);
       } else {
         console.error('Failed to insert order item:', itemErr);

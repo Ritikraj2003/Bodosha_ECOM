@@ -25,21 +25,25 @@ export default function FoodDetailModal({ dish, isOpen, onClose }: FoodDetailMod
   const [imgError, setImgError] = useState(false);
   const headingId = useId();
 
+  const hasVariants = Boolean(dish?.has_variants && dish?.variants && dish.variants.length > 0);
+  const [selectedVariantId, setSelectedVariantId] = useState<string>('half');
+
   useEffect(() => {
-     
     setMounted(true);
   }, []);
 
   // Sync quantity and state when a dish is opened
   useEffect(() => {
     if (dish && isOpen) {
-      const existingInCart = cartItems.find((i) => i.id === dish.id);
-       
+      const firstId = dish.variants?.[0]?.id || 'half';
+      setSelectedVariantId(firstId);
+      const itemKey = dish.has_variants && dish.variants?.length ? `${dish.id}_${firstId}` : dish.id;
+      const existingInCart = cartItems.find((i) => i.id === itemKey);
       setModalQty(existingInCart ? existingInCart.quantity : 1);
       setAddedAnimation(false);
       setImgError(false);
     }
-  }, [dish, isOpen, cartItems]);
+  }, [dish, isOpen]);
 
   // Lock body scroll and listen for Escape key
   useEffect(() => {
@@ -64,20 +68,31 @@ export default function FoodDetailModal({ dish, isOpen, onClose }: FoodDetailMod
   const displayImg = imgError || !dish.img ? '/images/food-placeholder.jpg' : dish.img;
   const rating = dish.rating ?? 4.8;
   const descriptionText = dish.fullDesc || dish.desc;
-  const totalPrice = dish.price * modalQty;
-  const inCart = cartItems.some((i) => i.id === dish.id);
+  const activeVariant = hasVariants ? dish.variants?.find((v) => v.id === selectedVariantId) || dish.variants?.[0] : null;
+  const currentUnitPrice = activeVariant ? Number(activeVariant.price) : dish.price;
+  const totalPrice = currentUnitPrice * modalQty;
+  const currentItemKey = activeVariant ? `${dish.id}_${activeVariant.id}` : dish.id;
+  const inCart = cartItems.some((i) => i.id === currentItemKey);
 
   function handleAddToCart() {
     if (!dish) return;
-    const existing = cartItems.find((i) => i.id === dish.id);
+    const isVar = hasVariants && activeVariant;
+    const itemId = isVar ? `${dish.id}_${activeVariant.id}` : dish.id;
+    const itemPrice = isVar ? Number(activeVariant.price) : dish.price;
+    const itemName = isVar ? `${dish.name} (${activeVariant.name})` : dish.name;
+
+    const existing = cartItems.find((i) => i.id === itemId);
     if (existing) {
-      updateQuantity(dish.id, modalQty);
+      updateQuantity(itemId, modalQty);
     } else {
       addItem(
         {
-          id: dish.id,
-          name: dish.name,
-          price: dish.price,
+          id: itemId,
+          productId: dish.id,
+          variantId: isVar ? activeVariant.id : undefined,
+          variantName: isVar ? activeVariant.name : undefined,
+          name: itemName,
+          price: itemPrice,
           veg: dish.veg,
           image: displayImg,
           packagingBigQty: dish.packagingBigQty,
@@ -175,18 +190,71 @@ export default function FoodDetailModal({ dish, isOpen, onClose }: FoodDetailMod
               </div>
             </div>
 
-            {/* Dish Title & Price */}
-            <div>
-              <h2 id={headingId} className="text-lg sm:text-xl font text-white leading-tight">
-                {dish.name}
-              </h2>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-xl sm:text-2xl font text-white">₹{dish.price}</span>
-                {dish.compare_at_price != null && dish.compare_at_price > dish.price && (
-                  <span className="text-sm text-zinc-400 line-through">₹{dish.compare_at_price}</span>
-                )}
+              {/* Dish Title & Price */}
+              <div>
+                <h2 id={headingId} className="text-lg sm:text-xl font text-white leading-tight">
+                  {dish.name}
+                </h2>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-xl sm:text-2xl font text-white">₹{currentUnitPrice}</span>
+                  {activeVariant ? (
+                    <span className="text-xs text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                      {activeVariant.name} {activeVariant.pieces ? `(${activeVariant.pieces})` : ''}
+                    </span>
+                  ) : dish.compare_at_price != null && dish.compare_at_price > dish.price ? (
+                    <span className="text-sm text-zinc-400 line-through">₹{dish.compare_at_price}</span>
+                  ) : null}
+                </div>
               </div>
-            </div>
+
+              {/* Portion Selector (Half / Full) */}
+              {hasVariants && dish.variants && dish.variants.length > 0 && (
+                <div className="space-y-2 p-3 rounded-xl bg-zinc-800/80 border border-white/10">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-zinc-200 uppercase tracking-wider">Select Portion</span>
+                    <span className="text-[10px] text-zinc-400">Choose portion size</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {dish.variants.map((v) => {
+                      const isSelected = selectedVariantId === v.id;
+                      return (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedVariantId(v.id);
+                            const variantKey = `${dish.id}_${v.id}`;
+                            const found = cartItems.find((i) => i.id === variantKey);
+                            setModalQty(found ? found.quantity : 1);
+                          }}
+                          className={`p-2.5 rounded-lg border text-left transition-all flex flex-col justify-between cursor-pointer ${
+                            isSelected
+                              ? 'border-red-500 bg-red-500/15 shadow-sm'
+                              : 'border-white/10 bg-zinc-900/60 hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className={`text-xs font-bold ${isSelected ? 'text-red-400' : 'text-zinc-200'}`}>
+                              {v.name}
+                            </span>
+                            <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                              isSelected ? 'border-red-500 bg-red-500' : 'border-zinc-500'
+                            }`}>
+                              {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-baseline justify-between gap-1">
+                            <span className="text-xs font-extrabold text-white">₹{v.price}</span>
+                            {v.pieces && (
+                              <span className="text-[10px] text-zinc-400 font-medium">{v.pieces}</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
             {/* Description */}
             {descriptionText && (

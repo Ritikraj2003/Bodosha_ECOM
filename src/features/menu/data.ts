@@ -23,6 +23,14 @@ export interface MenuItem {
   packagingSmallQty?: number;
   isAvailable?: boolean;
   compare_at_price?: number | null;
+  has_variants?: boolean;
+  variants?: Array<{
+    id: string;
+    name: string;
+    price: number;
+    compare_at_price?: number | null;
+    pieces?: string | null;
+  }>;
 }
 
 export interface MenuSection {

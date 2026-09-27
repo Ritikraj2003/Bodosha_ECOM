@@ -1,5 +1,8 @@
 export interface CartItem {
   id: string;
+  productId?: string;
+  variantId?: string;
+  variantName?: string;
   name: string;
   price: number;
   quantity: number;
@@ -35,7 +38,7 @@ export interface CartStore extends CartState {
   markCartViewed: () => void;
   setPricing: (pricing: CartPricing) => void;
   setOrderType: (orderType: 'room_delivery' | 'takeaway') => void;
-  syncPrices: (menuItems: Array<{ id: string; name: string; price: number; img?: string; veg?: boolean; packagingBigQty?: number; packagingSmallQty?: number }>) => void;
+  syncPrices: (menuItems: Array<{ id: string; name: string; price: number; img?: string; veg?: boolean; packagingBigQty?: number; packagingSmallQty?: number; variants?: any[] }>) => void;
   totalItems: () => number;
   subtotal: () => number;
   deliveryFee: () => number;

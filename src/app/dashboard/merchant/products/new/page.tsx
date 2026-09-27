@@ -36,6 +36,8 @@ export default function NewProductPage() {
     stock_quantity: number; track_inventory: boolean;
     packaging_big_qty: number; packaging_small_qty: number;
     image: string; tags: string;
+    has_variants: boolean;
+    variants: Array<{ id: string; name: string; price: number; pieces?: string }>;
   }>({
     name: '', description: '', full_description: '',
     servings: '', pieces: '', portion_size: '',
@@ -46,6 +48,11 @@ export default function NewProductPage() {
     stock_quantity: 0, track_inventory: false,
     packaging_big_qty: 0, packaging_small_qty: 0,
     image: '', tags: '',
+    has_variants: false,
+    variants: [
+      { id: 'half', name: 'Half', price: 0, pieces: '5 Pcs' },
+      { id: 'full', name: 'Full', price: 0, pieces: '10 Pcs' },
+    ],
   });
 
   useEffect(() => {
@@ -56,12 +63,26 @@ export default function NewProductPage() {
     e.preventDefault();
     setError('');
     if (!form.name.trim()) { setError('Name is required'); return; }
-    if (form.price <= 0) { setError('Price must be greater than 0'); return; }
+
+    let effectivePrice = form.price;
+    if (form.has_variants) {
+      const halfPrice = form.variants?.find((v) => v.id === 'half')?.price ?? 0;
+      const fullPrice = form.variants?.find((v) => v.id === 'full')?.price ?? 0;
+      if (halfPrice <= 0 || fullPrice <= 0) {
+        setError('Both Half and Full prices must be greater than 0');
+        return;
+      }
+      effectivePrice = halfPrice;
+    } else {
+      if (form.price <= 0) { setError('Price must be greater than 0'); return; }
+    }
     setSaving(true);
 
     const fd = new FormData();
     fd.append('name', form.name.trim());
-    fd.append('price', String(form.price));
+    fd.append('price', String(effectivePrice));
+    fd.append('has_variants', String(form.has_variants));
+    fd.append('variants', JSON.stringify(form.has_variants ? form.variants : []));
     if (form.description.trim()) fd.append('description', form.description.trim());
     if (form.full_description.trim()) fd.append('full_description', form.full_description.trim());
     if (form.servings.trim()) fd.append('servings', form.servings.trim());
@@ -131,14 +152,126 @@ export default function NewProductPage() {
             <label className="text-xs font-medium text-ztext-lighter">Full Detailed Description (for Food Details View)</label>
             <textarea value={form.full_description} onChange={(e) => update('full_description', e.target.value)} className="input-z mt-1 h-20 resize-none" placeholder="Complete meal overview..." />
           </div>
-          <div>
-            <label className="text-xs font-medium text-ztext-lighter">Price (₹) *</label>
-            <input type="number" min={0} step={1} value={form.price} onChange={(e) => update('price', Number(e.target.value))} className="input-z mt-1" />
+
+          {/* Half / Full Options Toggle */}
+          <div className="sm:col-span-2 p-4 rounded-xl bg-zgray/40 border border-zborder space-y-3">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.has_variants}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  update('has_variants', checked);
+                  if (checked && (!form.variants || form.variants.length < 2)) {
+                    update('variants', [
+                      { id: 'half', name: 'Half', price: form.price > 0 ? form.price : 0, pieces: '5 Pcs' },
+                      { id: 'full', name: 'Full', price: form.price > 0 ? Math.round(form.price * 1.8) : 0, pieces: '10 Pcs' },
+                    ]);
+                  }
+                }}
+                className="rounded border-zborder text-zred focus:ring-zred w-4 h-4 cursor-pointer"
+              />
+              <span className="text-sm font-semibold text-ztext">
+                This item has Half &amp; Full portions (e.g. Momos, Fried Rice, Noodles)
+              </span>
+            </label>
+            <p className="text-xs text-ztext-lighter ml-6">
+              Enable this if customer can order this dish in Half or Full with different prices.
+            </p>
+
+            {form.has_variants && (
+              <div className="pt-3 grid grid-cols-1 sm:grid-cols-2 gap-3.5 border-t border-zborder">
+                {/* Half Portion */}
+                <div className="p-3 bg-zcard rounded-lg border border-zborder space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-500 uppercase tracking-wider">Half Portion</span>
+                    <span className="text-[10px] text-ztext-lighter">Standard Half</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-ztext-lighter">Half Price (₹) *</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={form.variants.find((v) => v.id === 'half')?.price || ''}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        const updated = form.variants.map((v) => v.id === 'half' ? { ...v, price: val } : v);
+                        update('variants', updated);
+                        update('price', val);
+                      }}
+                      className="input-z mt-1"
+                      placeholder="e.g. 40"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-ztext-lighter">Pieces / Portion (optional)</label>
+                    <input
+                      value={form.variants.find((v) => v.id === 'half')?.pieces ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const updated = form.variants.map((v) => v.id === 'half' ? { ...v, pieces: val } : v);
+                        update('variants', updated);
+                      }}
+                      className="input-z mt-1"
+                      placeholder="e.g. 5 Pcs"
+                    />
+                  </div>
+                </div>
+
+                {/* Full Portion */}
+                <div className="p-3 bg-zcard rounded-lg border border-zborder space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-zred uppercase tracking-wider">Full Portion</span>
+                    <span className="text-[10px] text-ztext-lighter">Standard Full</span>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-ztext-lighter">Full Price (₹) *</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={form.variants.find((v) => v.id === 'full')?.price || ''}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        const updated = form.variants.map((v) => v.id === 'full' ? { ...v, price: val } : v);
+                        update('variants', updated);
+                      }}
+                      className="input-z mt-1"
+                      placeholder="e.g. 80"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-ztext-lighter">Pieces / Portion (optional)</label>
+                    <input
+                      value={form.variants.find((v) => v.id === 'full')?.pieces ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const updated = form.variants.map((v) => v.id === 'full' ? { ...v, pieces: val } : v);
+                        update('variants', updated);
+                      }}
+                      className="input-z mt-1"
+                      placeholder="e.g. 10 Pcs"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <div>
-            <label className="text-xs font-medium text-ztext-lighter">Compare at price (₹)</label>
-            <input type="number" min={0} value={form.compare_at_price} onChange={(e) => update('compare_at_price', Number(e.target.value))} className="input-z mt-1" />
-          </div>
+
+          {!form.has_variants && (
+            <>
+              <div>
+                <label className="text-xs font-medium text-ztext-lighter">Price (₹) *</label>
+                <input type="number" min={0} step={1} value={form.price} onChange={(e) => update('price', Number(e.target.value))} className="input-z mt-1" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-ztext-lighter">Compare at price (₹)</label>
+                <input type="number" min={0} value={form.compare_at_price} onChange={(e) => update('compare_at_price', Number(e.target.value))} className="input-z mt-1" />
+              </div>
+            </>
+          )}
+
           <div>
             <label className="text-xs font-medium text-ztext-lighter">Servings</label>
             <input value={form.servings} onChange={(e) => update('servings', e.target.value)} className="input-z mt-1" placeholder="e.g. 1 person" />

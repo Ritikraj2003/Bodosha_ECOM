@@ -59,18 +59,32 @@ export const useCartStore = create<CartStore>()(
 
       syncPrices: (menuItems) => {
         if (!menuItems || menuItems.length === 0) return;
-        const map = new Map<string, { id: string; name: string; price: number; img?: string; veg?: boolean; packagingBigQty?: number; packagingSmallQty?: number }>();
+        const map = new Map<string, any>();
         for (const m of menuItems) {
           map.set(m.id, m);
         }
         set({
           items: get().items.map((cartItem) => {
-            const fresh = map.get(cartItem.id);
+            const prodId = cartItem.productId || cartItem.id.split('_')[0];
+            const fresh = map.get(prodId) || map.get(cartItem.id);
             if (!fresh) return cartItem;
+
+            let price = Number(fresh.price);
+            if (cartItem.variantId && Array.isArray(fresh.variants)) {
+              const matchedVariant = fresh.variants.find((v: any) => v.id === cartItem.variantId);
+              if (matchedVariant) {
+                price = Number(matchedVariant.price);
+              } else {
+                price = cartItem.price;
+              }
+            } else if (cartItem.variantId) {
+              price = cartItem.price;
+            }
+
             return {
               ...cartItem,
-              name: fresh.name || cartItem.name,
-              price: Number(fresh.price),
+              name: cartItem.variantName ? `${fresh.name} (${cartItem.variantName})` : (fresh.name || cartItem.name),
+              price,
               veg: fresh.veg ?? cartItem.veg,
               image: fresh.img || cartItem.image,
               packagingBigQty: fresh.packagingBigQty ?? cartItem.packagingBigQty,

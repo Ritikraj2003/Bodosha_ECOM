@@ -337,6 +337,8 @@ CREATE TABLE IF NOT EXISTS public.products (
   packaging_small_qty INTEGER NOT NULL DEFAULT 0,
   sort_order          INTEGER NOT NULL DEFAULT 0,
   tags                TEXT[],
+  has_variants        BOOLEAN NOT NULL DEFAULT false,
+  variants            JSONB DEFAULT '[]'::jsonb,
   CONSTRAINT products_restaurant_id_slug_key UNIQUE (restaurant_id, slug),
   CONSTRAINT products_check CHECK (compare_price IS NULL OR compare_price >= price)
 );
@@ -445,7 +447,8 @@ CREATE TABLE IF NOT EXISTS public.order_items (
   created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
   unit_price           NUMERIC(10, 2),
   subtotal             NUMERIC(10, 2),
-  special_instructions TEXT
+  special_instructions TEXT,
+  variant_name         TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_order_items_order ON public.order_items(order_id);
