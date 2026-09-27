@@ -46,17 +46,55 @@ export async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
     return false;
   }
 
+  const appName = process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe';
+
   try {
     const cfg = await smtpConfig();
+    const fromAddress = cfg?.from ? `"${appName}" <${cfg.from}>` : `"${appName}" <noreply@dilipda.com>`;
+
     await t.sendMail({
-      from: cfg?.from || 'noreply@dilipda.com',
+      from: fromAddress,
       to,
-      subject: 'Your CIT Student Verification OTP',
-      text: `Your OTP for CIT student verification is: ${otp}\n\nThis OTP expires in 10 minutes.\n\n- ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}`,
-      html: `<p>Your OTP for CIT student verification is:</p><h2>${otp}</h2><p>This OTP expires in <strong>10 minutes</strong>.</p><p>- ${process.env.NEXT_PUBLIC_APP_NAME || 'Badmaas House Cafe'}</p>`,
+      subject: `Your Verification Code: ${otp} — ${appName}`,
+      text: `Your verification code for ${appName} is: ${otp}\n\nThis OTP is valid for 10 minutes. Please do not share this code with anyone.\n\nThank you,\n${appName} Team`,
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 28px 24px; background: #ffffff; border-radius: 14px; border: 1px solid #e5e7eb;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #E50914; font-size: 24px; margin: 0; font-weight: 800; letter-spacing: -0.5px;">${appName}</h1>
+            <p style="color: #6b7280; font-size: 13px; margin: 4px 0 0 0;">Customer Account Verification</p>
+          </div>
+          
+          <div style="background: #f9fafb; border-radius: 12px; padding: 24px; text-align: center; border: 1px solid #f3f4f6; margin-bottom: 20px;">
+            <p style="color: #374151; font-size: 14px; margin: 0 0 12px 0;">Use the following One-Time Password (OTP) to complete your verification:</p>
+            <div style="display: inline-block; background: #ffffff; border: 2px dashed #E50914; border-radius: 10px; padding: 12px 28px; margin: 6px 0;">
+              <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #111827; font-family: monospace;">${otp}</span>
+            </div>
+            <p style="color: #6b7280; font-size: 12px; margin: 12px 0 0 0;">
+              This OTP is valid for <strong>10 minutes</strong>. Please do not share this code with anyone.
+            </p>
+          </div>
+
+          <p style="color: #9ca3af; font-size: 12px; line-height: 1.5; margin: 0 0 16px 0; text-align: center;">
+            If you did not request this verification code, please ignore this email or contact support.
+          </p>
+
+          <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 20px 0;" />
+          
+          <div style="text-align: center;">
+            <p style="color: #9ca3af; font-size: 11px; margin: 0;">
+              © ${new Date().getFullYear()} ${appName}. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
     });
     return true;
-  } catch {
+  } catch (err) {
+    console.error('Failed to send OTP email via SMTP:', err);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[DEV EMAIL FALLBACK] To: ${to}, OTP: ${otp}`);
+      return true;
+    }
     return false;
   }
 }
