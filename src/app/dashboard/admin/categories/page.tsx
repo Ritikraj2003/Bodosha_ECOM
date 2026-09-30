@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Image from 'next/image';
 import {
-  Plus, FolderTree, Edit3, Trash2, Eye, EyeOff, Save, X, Search, CheckCircle, AlertCircle, ChevronLeft, ChevronRight, ImageIcon
+  Plus, FolderTree, Edit3, Trash2, Eye, EyeOff, Save, X, Search, CheckCircle, AlertCircle, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { getCategories, createCategory, updateCategory, deleteCategory } from '@/features/products/actions';
 import type { Category } from '@/features/products/types';

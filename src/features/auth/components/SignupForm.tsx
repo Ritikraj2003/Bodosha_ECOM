@@ -2,8 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useAuthStore } from '../store';
-import { authService } from '../services/auth-service';
 import { sendSignupOtp, verifySignupOtp } from '@/features/cit-student/actions';
 import { confirmSignupEmail, isEmailRegistered, createUserAccount } from '@/features/auth/actions';
 import { isCitStudentEmail } from '@/config/auth-access';

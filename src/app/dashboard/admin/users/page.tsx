@@ -82,7 +82,6 @@ export default function AdminUsersPage() {
   const canAddEmployee = hasPermission(userPermissions, [PERMISSION_CODES.USER_EMP_ADD, 'USERS_MANAGE', 'users.manage'], userRole);
   const canEditEmployee = hasPermission(userPermissions, [PERMISSION_CODES.USER_EMP_EDIT, 'USERS_MANAGE', 'users.manage'], userRole);
   const canDeleteEmployee = hasPermission(userPermissions, [PERMISSION_CODES.USER_EMP_DEL, 'USERS_MANAGE', 'users.manage'], userRole);
-  const canManageUsers = canAddEmployee || canEditEmployee || canDeleteEmployee;
 
   // Roles cache for modals and filters (loaded from public.roles)
   const [availableRoles, setAvailableRoles] = useState<RoleWithPermissions[]>([]);

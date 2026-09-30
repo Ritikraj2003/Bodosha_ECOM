@@ -30,14 +30,6 @@ export async function proxy(request: NextRequest) {
   const session = token ? await verifyToken(token) : null;
   const role = session?.role?.toLowerCase() || '';
 
-  const isPublicRoute =
-    pathname === '/' ||
-    pathname === '/browser' ||
-    pathname === '/menu' ||
-    pathname.startsWith('/auth') ||
-    pathname.startsWith('/api') ||
-    pathname.startsWith('/uploads');
-
   const isProtectedRoute =
     pathname === '/profile' ||
     pathname === '/cart' ||

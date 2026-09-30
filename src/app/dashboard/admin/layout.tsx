@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, ShoppingBag, Banknote,
   LogOut, Menu, X, Bell, FolderTree, UtensilsCrossed,
   ClipboardList, Settings, Megaphone, Store, ShieldCheck, WalletCards,
-  UserCog, KeyRound, ShieldAlert, ArrowRight, ChevronDown, GraduationCap,
+  UserCog, KeyRound, ShieldAlert, ChevronDown,
   Loader2
 } from 'lucide-react';
 import { getServerSession } from '@/features/auth/actions';

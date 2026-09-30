@@ -4,6 +4,9 @@ import { query } from '@/infrastructure/db';
 import { type MenuItem, type MenuSection } from '../data';
 
 export async function getPublicMenu(): Promise<{ success: boolean; sections: MenuSection[]; source: 'db' | 'fallback' }> {
+  if (!process.env.DATABASE_URL) {
+    return { success: false, sections: [], source: 'fallback' };
+  }
   try {
     // 1. Fetch active categories
     const catRes = await query(`

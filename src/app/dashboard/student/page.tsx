@@ -4,7 +4,7 @@ import { getServerSession } from '@/features/auth/actions';
 import { getUserOrders } from '@/features/orders/actions/customer';
 import { getWalletDetails } from '@/features/wallet/actions';
 import { getCreditAccount } from '@/features/bnpl/actions';
-import { Clock, CreditCard, ShoppingBag, Wallet, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { Clock, CreditCard, ShoppingBag, Wallet, ChevronRight } from 'lucide-react';
 import { orderTypeLabel, ACTIVE_ORDER_STATUSES } from '@/features/orders/types';
 
 export default async function StudentDashboardPage() {

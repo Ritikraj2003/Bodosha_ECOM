@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, LogOut, Menu, X, ShoppingBag, Banknote, Bike,
@@ -27,7 +27,6 @@ const sidebarItems: SidebarItem[] = [
 
 export default function OwnerShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isActive = useCallback((href: string) => {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Eye, XCircle, Clock, Bike, Loader2, QrCode, CheckCircle2 } from 'lucide-react';
 import { DataTable, SearchInput, StatusFilter, PageHeader, ConfirmDialog, ToastContainer, useToast } from '@/components/ui/data-table';
 import DateFilter, { type DateFilterValue } from '@/components/ui/date-filter';
@@ -121,7 +121,9 @@ export default function AdminOrdersPage() {
   };
 
   const pageRef = useRef(page);
-  pageRef.current = page;
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
 
   const fetchOrders = useCallback(async (p?: number, silent = false) => {
     if (!silent) setLoading(true);

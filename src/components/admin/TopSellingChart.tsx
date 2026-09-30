@@ -27,12 +27,15 @@ export default function TopSellingChart({
   const [items, setItems] = useState<TopSellingItem[]>(() => initialData || []);
   const [loading, setLoading] = useState<boolean>(false);
 
+  const fromDate = dateFilter?.fromDate;
+  const toDate = dateFilter?.toDate;
+
   const fetchTopItems = React.useCallback(async (targetLimit: number) => {
     setLoading(true);
     try {
       const res = await getTopSellingItems({
-        fromDate: dateFilter?.fromDate,
-        toDate: dateFilter?.toDate,
+        fromDate,
+        toDate,
         limit: Math.max(targetLimit, 10),
       });
       if (res.success && res.data) {
@@ -43,7 +46,7 @@ export default function TopSellingChart({
     } finally {
       setLoading(false);
     }
-  }, [dateFilter?.fromDate, dateFilter?.toDate]);
+  }, [fromDate, toDate]);
 
   // Sync with initialData changes from parent
   useEffect(() => {

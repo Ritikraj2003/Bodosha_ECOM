@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
 const { Client } = pg;

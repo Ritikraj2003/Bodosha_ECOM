@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
   getDeliveryDashboard,
   getDeliveryHistory,
@@ -99,7 +98,6 @@ export default function DeliveryDashboard() {
   const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<'scan' | 'active'>('scan');
   const [now, setNow] = useState(0);
-  const router = useRouter();
   const { signOut } = useAuthStore();
 
   useEffect(() => {

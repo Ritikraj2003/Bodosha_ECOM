@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { ClipboardList, ChefHat, ShoppingBag, Loader2, XCircle, Clock, Search, MapPin, ChevronDown, ChevronRight, Wallet, UserRound, MoreVertical, X, Copy, RotateCcw } from 'lucide-react';
+import { ClipboardList, ChefHat, ShoppingBag, Loader2, XCircle, Clock, Search, MapPin, ChevronDown, ChevronRight, UserRound, MoreVertical, X, Copy, RotateCcw } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthStore } from '@/features/auth/store';

@@ -1,6 +1,6 @@
 // Service Worker for Native Web Push Notifications (Dilip Da)
 
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 

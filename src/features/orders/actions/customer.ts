@@ -539,6 +539,28 @@ export async function createOrder(params: CreateOrderParams) {
       return { success: false, error: 'Failed to create order' };
     }
     order = orderInsert.rows[0];
+
+    if (slotPayload.delivery_slot_id) {
+      try {
+        await query(
+          `UPDATE public.orders
+           SET delivery_slot_id = $1,
+               delivery_slot_label = $2,
+               delivery_slot_time = $3,
+               delivery_slot_date = $4,
+               delivery_slot_cutoff = $5
+           WHERE id = $6`,
+          [
+            slotPayload.delivery_slot_id,
+            slotPayload.delivery_slot_label,
+            slotPayload.delivery_slot_time,
+            slotPayload.delivery_slot_date,
+            slotPayload.delivery_slot_cutoff,
+            order.id,
+          ]
+        );
+      } catch {}
+    }
   } catch (orderErr: any) {
     console.error('Order insert failed:', orderErr);
     return { success: false, error: orderErr?.message || 'Failed to create order' };

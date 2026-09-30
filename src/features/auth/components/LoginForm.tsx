@@ -19,7 +19,7 @@ export default function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [registeredNotice, setRegisteredNotice] = useState(() => {
+  const [registeredNotice] = useState(() => {
     if (typeof window !== 'undefined') {
       return new URLSearchParams(window.location.search).get('registered') === 'true'
         ? 'Account created successfully! Please sign in.'

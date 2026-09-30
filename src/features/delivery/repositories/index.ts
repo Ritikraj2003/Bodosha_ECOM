@@ -1,9 +1,6 @@
-import { createServiceClient } from '@/infrastructure/supabase/service';
 import { query } from '@/infrastructure/db';
 import type { DeliveryAssignment, DeliveryPartnerRow } from '../types';
 import type { Order } from '@/features/orders/types';
-
-const ORDER_EMBED = 'orders!delivery_assignments_order_id_fkey(*, order_items(*))';
 
 // Delivery partners must never receive the OTP value or hash — it is shown only to the customer
 function sanitizeAssignment<T extends { otp_value?: unknown; otp_hash?: unknown }>(row: T): Omit<T, 'otp_value' | 'otp_hash'> {

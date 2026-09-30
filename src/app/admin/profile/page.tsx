@@ -1,17 +1,14 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import {
-  User, ShieldCheck, Mail, Phone, KeyRound, LogOut,
+  ShieldCheck, Mail, Phone, KeyRound, LogOut,
   LayoutDashboard, ArrowRight, CheckCircle2, Lock, ArrowLeft
 } from 'lucide-react';
 import { useAuthStore } from '@/features/auth/store';
 import { getFirstAllowedAdminPage } from '@/lib/permissions';
 
 export default function AdminProfilePage() {
-  const router = useRouter();
   const { user, signOut } = useAuthStore();
   const permissions = (user as any)?.permissions || [];
 

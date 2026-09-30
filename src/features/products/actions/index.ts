@@ -96,9 +96,6 @@ export async function getProduct(productId: string): Promise<ApiResponse<Product
 
 import { writeFile, mkdir } from 'fs/promises';
 import path from 'path';
-import { createAdminClient } from '@/infrastructure/supabase/admin';
-
-const PBUCKET = 'product-images';
 
 /**
  * Persist a product image to local public/uploads/products directory.

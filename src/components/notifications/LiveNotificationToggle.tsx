@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Bell, BellOff, Loader2, X, Sliders, CheckCircle2, RotateCw } from 'lucide-react';
+import { BellOff, Loader2, X, RotateCw } from 'lucide-react';
 import { savePushSubscription, removePushSubscription, sendTestPushNotification } from '@/features/notifications/actions/push';
 
 function urlBase64ToUint8Array(base64String: string): BufferSource {
@@ -128,7 +128,7 @@ export default function LiveNotificationToggle() {
     try {
       const reg = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
+      const sub = await reg.pushManager.getSubscription();
 
       if (isEnabled) {
         // Turn OFF

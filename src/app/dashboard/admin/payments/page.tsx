@@ -9,28 +9,6 @@ import type { PaymentAdmin } from '@/features/admin/types';
 import { useAuthStore } from '@/features/auth/store';
 import { hasPermission, PERMISSION_CODES } from '@/lib/permissions';
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  processing: 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400',
-  confirmed: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  collected: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
-  failed: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-  refunded: 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
-  partially_refunded: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400',
-  cancelled: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  pending: 'Pending',
-  processing: 'Processing',
-  confirmed: 'Success',
-  collected: 'Collected',
-  failed: 'Failed',
-  refunded: 'Refunded',
-  partially_refunded: 'Part Refund',
-  cancelled: 'Cancelled',
-};
-
 function getPaymentBadge(p: PaymentAdmin): { label: string; color: string } | null {
   if (p.order?.status === 'cancelled' || p.status === 'cancelled') {
     return { label: 'Canceled', color: 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400' };
@@ -109,7 +87,9 @@ export default function AdminPaymentsPage() {
   const { toasts, addToast, removeToast } = useToast();
 
   const pageRef = useRef(page);
-  pageRef.current = page;
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
 
   const fetchPayments = useCallback(async (p?: number) => {
     setLoading(true);
