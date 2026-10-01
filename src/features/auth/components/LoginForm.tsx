@@ -9,9 +9,14 @@ import type { Role } from '../types';
 import { getFirstAllowedAdminPage, canAccessAdminPage } from '@/lib/permissions';
 
 export default function LoginForm() {
-  const [email, setEmail] = useState(() => {
+  const [identifier, setIdentifier] = useState(() => {
     if (typeof window !== 'undefined') {
-      return new URLSearchParams(window.location.search).get('email') || '';
+      return (
+        new URLSearchParams(window.location.search).get('email') ||
+        new URLSearchParams(window.location.search).get('phone') ||
+        new URLSearchParams(window.location.search).get('identifier') ||
+        ''
+      );
     }
     return '';
   });
@@ -33,15 +38,20 @@ export default function LoginForm() {
     e.preventDefault();
     setError('');
 
-    const normalizedEmail = email.toLowerCase().trim();
+    const cleanIdentifier = identifier.trim();
+    if (!cleanIdentifier) {
+      setError('Please enter your email or phone number');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const res = await loginWithCredentials(normalizedEmail, password);
+      const res = await loginWithCredentials(cleanIdentifier, password);
       setLoading(false);
 
       if (!res.success || !res.user) {
-        setError(res.error || 'Sign-in failed. Please check your email and password.');
+        setError(res.error || 'Sign-in failed. Please check your email/phone and password.');
         return;
       }
 
@@ -117,8 +127,19 @@ export default function LoginForm() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-ztext mb-1.5">Email</label>
-                <input id="email" type="email" className="input-z" placeholder="youremail@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <label htmlFor="identifier" className="block text-sm font-medium text-ztext mb-1.5">
+                  Email or Phone Number
+                </label>
+                <input
+                  id="identifier"
+                  type="text"
+                  className="input-z"
+                  placeholder="Enter email or 10-digit phone"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
               </div>
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-ztext mb-1.5">Password</label>

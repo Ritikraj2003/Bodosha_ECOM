@@ -24,18 +24,22 @@ export interface AuthResponse {
 }
 
 export async function loginWithCredentials(
-  emailInput: string,
+  identifierInput: string,
   passwordInput: string
 ): Promise<AuthResponse> {
-  const email = emailInput?.toLowerCase().trim();
+  const rawIdentifier = identifierInput?.trim() || '';
   const password = passwordInput?.trim();
 
-  if (!email || !password) {
-    return { success: false, error: 'Email and password are required' };
+  if (!rawIdentifier || !password) {
+    return { success: false, error: 'Email/phone and password are required' };
   }
 
+  // Extract 10-digit phone if user entered a phone number
+  const digitsOnly = rawIdentifier.replace(/\D/g, '');
+  const tenDigitPhone = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : '';
+
   try {
-    // 1. Verify user with password match via pgcrypto
+    // 1. Verify user with password match via pgcrypto (matching by email OR phone)
     const res = await query<{
       id: string;
       email: string;
@@ -51,14 +55,22 @@ export async function loginWithCredentials(
         id, email, full_name, phone, avatar_url, role, is_active,
         (password_hash IS NOT NULL AND password_hash = crypt($2, password_hash)) AS password_match
       FROM public.users
-      WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false
+      WHERE (
+        LOWER(email) = LOWER($1)
+        OR phone = $1
+        OR ($3 != '' AND (
+          phone = $3 
+          OR RIGHT(regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $3
+        ))
+      )
+      AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false
       LIMIT 1;
       `,
-      [email, password]
+      [rawIdentifier.toLowerCase(), password, tenDigitPhone]
     );
 
     if (res.rows.length === 0 || !res.rows[0].password_match) {
-      return { success: false, error: 'Invalid email or password' };
+      return { success: false, error: 'Invalid email/phone or password' };
     }
 
     const user = res.rows[0];

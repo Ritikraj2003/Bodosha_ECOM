@@ -19,6 +19,12 @@ import {
   Loader2,
   ExternalLink,
   Info,
+  Mail,
+  Phone,
+  Calendar,
+  Copy,
+  Hash,
+  Pencil,
 } from 'lucide-react';
 import {
   DataTable,
@@ -32,6 +38,7 @@ import { getAdminUsers, deleteUser, restoreUser } from '@/features/admin/actions
 import {
   assignUserRole,
   createAdminUser,
+  updateAdminUser,
   getRolesWithPermissions,
   getUserRoleAndPermissions,
   type RoleWithPermissions,
@@ -107,6 +114,22 @@ export default function AdminUsersPage() {
   const [createRole, setCreateRole] = useState('staff');
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // View employee modal
+  const [viewUser, setViewUser] = useState<AdminUser | null>(null);
+  const [viewUserPerms, setViewUserPerms] = useState<string[]>([]);
+  const [viewPermsLoading, setViewPermsLoading] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Edit employee modal
+  const [editUser, setEditUser] = useState<AdminUser | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editRole, setEditRole] = useState('staff');
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
 
   // Manage permissions modal
   const [inspectUser, setInspectUser] = useState<AdminUser | null>(null);
@@ -209,6 +232,11 @@ export default function AdminUsersPage() {
       setCreateError('Please enter email address');
       return;
     }
+    const cleanPhone = createPhone.trim().replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      setCreateError('Phone number is mandatory and must be at least 10 digits');
+      return;
+    }
     if (!createPassword.trim() || createPassword.length < 6) {
       setCreateError('Password must be at least 6 characters');
       return;
@@ -219,7 +247,7 @@ export default function AdminUsersPage() {
       fullName: createName.trim(),
       email: createEmail.trim(),
       password: createPassword.trim(),
-      phone: createPhone.trim() || undefined,
+      phone: cleanPhone.slice(-10),
       role: createRole,
     });
     setCreateLoading(false);
@@ -235,6 +263,55 @@ export default function AdminUsersPage() {
       fetchUsers(1);
     } else {
       setCreateError(res.error || 'Failed to create user');
+    }
+  };
+
+  const openEditModal = (u: AdminUser) => {
+    setEditUser(u);
+    setEditName(u.full_name || '');
+    setEditEmail(u.email || '');
+    setEditPhone(u.phone || '');
+    setEditRole(u.role || 'staff');
+    setEditIsActive(u.is_active);
+    setEditError('');
+  };
+
+  const handleEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editUser) return;
+    setEditError('');
+
+    if (!editName.trim()) {
+      setEditError('Please enter full name');
+      return;
+    }
+    if (!editEmail.trim() || !editEmail.includes('@')) {
+      setEditError('Please enter a valid email address');
+      return;
+    }
+    const cleanDigits = editPhone.trim().replace(/\D/g, '');
+    if (!cleanDigits || cleanDigits.length < 10) {
+      setEditError('Phone number is mandatory and must be at least 10 digits');
+      return;
+    }
+
+    setEditLoading(true);
+    const res = await updateAdminUser({
+      userId: editUser.id,
+      fullName: editName.trim(),
+      email: editEmail.trim(),
+      phone: cleanDigits.slice(-10),
+      role: editRole,
+      isActive: editIsActive,
+    });
+    setEditLoading(false);
+
+    if (res.success) {
+      addToast(`Employee ${editName} updated successfully!`, 'success');
+      setEditUser(null);
+      fetchUsers();
+    } else {
+      setEditError(res.error || 'Failed to update employee');
     }
   };
 
@@ -268,6 +345,31 @@ export default function AdminUsersPage() {
     setInspectUpdating(false);
   };
 
+  const openViewModal = async (u: AdminUser) => {
+    setViewUser(u);
+    setViewPermsLoading(true);
+    try {
+      const res = await getUserRoleAndPermissions(u.id);
+      if (res.success && res.permissionCodes) {
+        setViewUserPerms(res.permissionCodes);
+      } else {
+        setViewUserPerms([]);
+      }
+    } catch {
+      setViewUserPerms([]);
+    } finally {
+      setViewPermsLoading(false);
+    }
+  };
+
+  const handleCopy = (text: string, field: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 1500);
+    }
+  };
+
   // Find permission count / preview for currently selected createRole
   const activeCreateRoleMeta = availableRoles.find((r) => r.slug === createRole || r.name.toLowerCase() === createRole);
 
@@ -277,12 +379,16 @@ export default function AdminUsersPage() {
       header: 'Name',
       sortable: true,
       render: (u: AdminUser) => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-zgray flex items-center justify-center text-sm font-medium text-ztext shrink-0">
+        <div
+          className="flex items-center gap-3 cursor-pointer group"
+          onClick={() => openViewModal(u)}
+          title="Click to view employee details"
+        >
+          <div className="w-8 h-8 rounded-full bg-zsurface flex items-center justify-center font-bold text-xs border border-zborder group-hover:border-zred transition-colors shrink-0">
             {u.full_name?.charAt(0)?.toUpperCase() || 'U'}
           </div>
           <div>
-            <div className="font-medium text-ztext">{u.full_name}</div>
+            <div className="font-medium text-ztext group-hover:text-zred transition-colors">{u.full_name}</div>
             <div className="text-xs text-ztext-lighter">{u.email}</div>
           </div>
         </div>
@@ -353,6 +459,22 @@ export default function AdminUsersPage() {
       header: 'Actions',
       render: (u: AdminUser) => (
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => openViewModal(u)}
+            className="p-1.5 rounded-lg text-emerald-500 hover:bg-emerald-500/10 transition-colors"
+            title="View employee details"
+          >
+            <Eye size={16} />
+          </button>
+          {canEditEmployee && !u.is_deleted && (
+            <button
+              onClick={() => openEditModal(u)}
+              className="p-1.5 rounded-lg text-amber-500 hover:bg-amber-500/10 transition-colors"
+              title="Edit employee details"
+            >
+              <Pencil size={16} />
+            </button>
+          )}
           {canEditEmployee && !u.is_deleted && u.role !== 'student' && (
             <button
               onClick={() => openInspectModal(u)}
@@ -529,13 +651,14 @@ export default function AdminUsersPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-ztext mb-1.5">
-                    Phone Number
+                    Phone Number <span className="text-zred">*</span>
                   </label>
                   <input
                     type="tel"
-                    placeholder="9876543210"
+                    required
+                    placeholder="9876543210 (10 digits)"
                     value={createPhone}
-                    onChange={(e) => setCreatePhone(e.target.value)}
+                    onChange={(e) => setCreatePhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     className="input-z w-full"
                   />
                 </div>
@@ -628,6 +751,341 @@ export default function AdminUsersPage() {
                     <>
                       <Check size={14} />
                       Create Employee
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW EMPLOYEE DETAILS MODAL */}
+      {viewUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-zcard border border-zborder rounded-2xl max-w-lg w-full p-6 shadow-z-modal animate-scale-up max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between pb-4 border-b border-zborder mb-5">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-zred/20 to-zred/5 border border-zred/30 flex items-center justify-center text-zred font-extrabold text-lg shadow-sm">
+                  {viewUser.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-ztext leading-tight">{viewUser.full_name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border ${roleBadge[viewUser.role] || 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`}>
+                      {availableRoles.find((r) => r.slug === viewUser.role)?.name || viewUser.role}
+                    </span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                      viewUser.is_deleted
+                        ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                        : viewUser.is_active
+                        ? 'bg-green-500/10 text-green-500 border border-green-500/20'
+                        : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${viewUser.is_deleted ? 'bg-amber-500' : viewUser.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
+                      {viewUser.is_deleted ? 'Soft Deleted' : viewUser.is_active ? 'Active' : 'Suspended'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewUser(null)}
+                className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zsurface transition-colors"
+                title="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Profile Info Grid */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Email */}
+                <div className="p-3 rounded-xl bg-zsurface border border-zborder">
+                  <div className="flex items-center justify-between text-xs text-ztext-light mb-1">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Mail size={13} className="text-ztext-light" /> Email
+                    </span>
+                    <button
+                      onClick={() => handleCopy(viewUser.email, 'email')}
+                      className="text-[10px] text-zred hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      {copiedField === 'email' ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                      {copiedField === 'email' ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="text-xs font-semibold text-ztext break-all">{viewUser.email}</p>
+                </div>
+
+                {/* Phone */}
+                <div className="p-3 rounded-xl bg-zsurface border border-zborder">
+                  <div className="flex items-center justify-between text-xs text-ztext-light mb-1">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Phone size={13} className="text-ztext-light" /> Phone Number
+                    </span>
+                    {viewUser.phone && (
+                      <button
+                        onClick={() => handleCopy(viewUser.phone!, 'phone')}
+                        className="text-[10px] text-zred hover:underline flex items-center gap-1 font-semibold"
+                      >
+                        {copiedField === 'phone' ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                        {copiedField === 'phone' ? 'Copied' : 'Copy'}
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs font-semibold text-ztext">
+                    {viewUser.phone || <span className="text-ztext-light italic">Not provided</span>}
+                  </p>
+                </div>
+
+                {/* User ID */}
+                <div className="p-3 rounded-xl bg-zsurface border border-zborder">
+                  <div className="flex items-center justify-between text-xs text-ztext-light mb-1">
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Hash size={13} className="text-ztext-light" /> Employee ID
+                    </span>
+                    <button
+                      onClick={() => handleCopy(viewUser.id, 'id')}
+                      className="text-[10px] text-zred hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      {copiedField === 'id' ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
+                      {copiedField === 'id' ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+                  <p className="text-xs font-mono font-semibold text-ztext truncate" title={viewUser.id}>
+                    {viewUser.id}
+                  </p>
+                </div>
+
+                {/* Joined Date */}
+                <div className="p-3 rounded-xl bg-zsurface border border-zborder">
+                  <div className="flex items-center gap-1.5 text-xs text-ztext-light mb-1 font-medium">
+                    <Calendar size={13} className="text-ztext-light" /> Joined Date
+                  </div>
+                  <p className="text-xs font-semibold text-ztext">
+                    {new Date(viewUser.created_at).toLocaleString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Permissions Preview */}
+              <div className="p-3.5 rounded-xl bg-zsurface border border-zborder">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-ztext flex items-center gap-1.5">
+                    <KeyRound size={13} className="text-blue-500" /> Assigned Permissions ({viewUserPerms.length})
+                  </span>
+                  {canEditEmployee && !viewUser.is_deleted && (
+                    <button
+                      onClick={() => {
+                        const target = viewUser;
+                        setViewUser(null);
+                        openInspectModal(target);
+                      }}
+                      className="text-[11px] text-blue-500 font-semibold hover:underline flex items-center gap-1"
+                    >
+                      Manage Role & Permissions →
+                    </button>
+                  )}
+                </div>
+
+                {viewPermsLoading ? (
+                  <div className="py-4 flex justify-center text-ztext-light">
+                    <Loader2 size={16} className="animate-spin" />
+                  </div>
+                ) : viewUserPerms.length === 0 ? (
+                  <p className="text-xs text-ztext-light italic">No explicit role permissions assigned.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                    {viewUserPerms.map((code) => (
+                      <span
+                        key={code}
+                        className="px-2 py-0.5 rounded-md bg-zcard border border-zborder text-[10px] font-medium text-ztext flex items-center gap-1"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        {code}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-3 border-t border-zborder flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {canEditEmployee && !viewUser.is_deleted && (
+                    <button
+                      onClick={() => {
+                        const target = viewUser;
+                        setViewUser(null);
+                        openEditModal(target);
+                      }}
+                      className="button-z button-z-secondary text-xs h-9 px-3.5 flex items-center gap-1.5 font-semibold text-amber-500 hover:text-amber-400"
+                    >
+                      <Pencil size={14} /> Edit Details
+                    </button>
+                  )}
+                  {canEditEmployee && !viewUser.is_deleted && (
+                    <button
+                      onClick={() => {
+                        const target = viewUser;
+                        setViewUser(null);
+                        openInspectModal(target);
+                      }}
+                      className="button-z button-z-secondary text-xs h-9 px-3.5 flex items-center gap-1.5 font-semibold text-blue-500"
+                    >
+                      <KeyRound size={14} /> Change Role
+                    </button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setViewUser(null)}
+                  className="button-z button-z-primary text-xs px-5 h-9 font-bold"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT EMPLOYEE MODAL */}
+      {editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-zcard border border-zborder rounded-2xl max-w-lg w-full p-6 shadow-z-modal animate-scale-up max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3.5 border-b border-zborder mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+                  <Pencil size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-ztext">Edit Employee</h3>
+                  <p className="text-xs text-ztext-light">Update employee profile, contact details and status</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditUser(null)}
+                className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zsurface transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditUser} className="space-y-4">
+              {editError && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-500 font-medium">
+                  {editError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-ztext mb-1.5">
+                  Full Name <span className="text-zred">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ramesh Kalita"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="input-z w-full"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-ztext mb-1.5">
+                    Email Address <span className="text-zred">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="staff@dilipda.com"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="input-z w-full"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-ztext mb-1.5">
+                    Phone Number <span className="text-zred">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="9876543210 (10 digits)"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    className="input-z w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-ztext mb-1.5">
+                    Assign Store Role <span className="text-zred">*</span>
+                  </label>
+                  <select
+                    value={editRole}
+                    onChange={(e) => setEditRole(e.target.value)}
+                    className="input-z w-full text-xs font-medium"
+                  >
+                    {availableRoles.map((r) => (
+                      <option key={r.id} value={r.slug}>
+                        {r.name || r.slug}
+                      </option>
+                    ))}
+                    {editRole && !availableRoles.some((r) => r.slug === editRole) && (
+                      <option value={editRole}>{editRole}</option>
+                    )}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-ztext mb-1.5">
+                    Account Status <span className="text-zred">*</span>
+                  </label>
+                  <select
+                    value={editIsActive ? 'active' : 'suspended'}
+                    onChange={(e) => setEditIsActive(e.target.value === 'active')}
+                    className="input-z w-full text-xs font-medium"
+                  >
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zborder">
+                <button
+                  type="button"
+                  onClick={() => setEditUser(null)}
+                  className="button-z button-z-secondary text-xs px-4 h-9"
+                  disabled={editLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="button-z button-z-primary text-xs px-5 h-9 font-bold flex items-center gap-1.5"
+                  disabled={editLoading}
+                >
+                  {editLoading ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={14} />
+                      Save Changes
                     </>
                   )}
                 </button>

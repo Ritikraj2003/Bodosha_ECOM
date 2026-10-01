@@ -375,7 +375,7 @@ export async function createAdminUser(data: {
   fullName: string;
   email: string;
   password: string;
-  phone?: string;
+  phone: string;
   role: string;
 }): Promise<{ success: boolean; user?: any; error?: string }> {
   try {
@@ -384,17 +384,31 @@ export async function createAdminUser(data: {
     const fullName = data.fullName?.trim();
     const email = data.email?.toLowerCase().trim();
     const password = data.password?.trim();
-    const phone = data.phone?.trim() || null;
+    const rawPhone = data.phone?.trim() || '';
+    const digitsOnly = rawPhone.replace(/\D/g, '');
+    const phone = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
     const roleSlug = data.role?.trim().toLowerCase() || 'staff';
 
     if (!fullName) return { success: false, error: 'Full name is required' };
     if (!email || !email.includes('@')) return { success: false, error: 'Valid email is required' };
+    if (!phone || phone.length < 10) return { success: false, error: 'Phone number is mandatory and must be at least 10 digits' };
     if (!password || password.length < 6) return { success: false, error: 'Password must be at least 6 characters' };
 
-    // Check if user already exists
-    const existing = await query('SELECT id FROM public.users WHERE LOWER(email) = LOWER($1)', [email]);
-    if (existing.rows.length > 0) {
+    // Check if email already exists
+    const existingEmail = await query('SELECT id FROM public.users WHERE LOWER(email) = LOWER($1)', [email]);
+    if (existingEmail.rows.length > 0) {
       return { success: false, error: 'A user with this email already exists' };
+    }
+
+    // Check if phone already exists
+    const existingPhone = await query(`
+      SELECT id FROM public.users 
+      WHERE (phone = $1 OR RIGHT(regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $1)
+      AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false
+      LIMIT 1;
+    `, [phone]);
+    if (existingPhone.rows.length > 0) {
+      return { success: false, error: 'A user with this phone number already exists' };
     }
 
     // Verify role exists in public.roles
@@ -456,7 +470,7 @@ export async function createAdminUser(data: {
     await query(`
       INSERT INTO public.audit_logs (table_name, record_id, action, new_data, user_id, created_at)
       VALUES ('users', $1, 'create_user', $2, $3, NOW())
-    `, [newUser.id, JSON.stringify({ email, full_name: fullName, role: actualSlug }), currentAdmin.id]);
+    `, [newUser.id, JSON.stringify({ email, full_name: fullName, phone, role: actualSlug }), currentAdmin.id]);
 
     revalidatePath('/dashboard/admin/users');
 
@@ -475,5 +489,116 @@ export async function createAdminUser(data: {
   } catch (err: any) {
     console.error('createAdminUser error:', err);
     return { success: false, error: err.message || 'Failed to create user' };
+  }
+}
+
+/**
+ * Update an existing employee/user's full name, email, phone, role, and active status.
+ */
+export async function updateAdminUser(data: {
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  role: string;
+  isActive?: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { user: currentAdmin } = await checkAdminAuth();
+    const userId = data.userId;
+    const fullName = data.fullName?.trim();
+    const email = data.email?.toLowerCase().trim();
+    const rawPhone = data.phone?.trim() || '';
+    const digitsOnly = rawPhone.replace(/\D/g, '');
+    const phone = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+    const roleSlug = data.role?.trim().toLowerCase() || 'staff';
+    const isActive = data.isActive !== undefined ? Boolean(data.isActive) : true;
+
+    if (!userId) return { success: false, error: 'User ID is required' };
+    if (!fullName) return { success: false, error: 'Full name is required' };
+    if (!email || !email.includes('@')) return { success: false, error: 'Valid email is required' };
+    if (!phone || phone.length < 10) return { success: false, error: 'Phone number is mandatory and must be at least 10 digits' };
+
+    // Check duplicate email for other users
+    const existingEmail = await query('SELECT id FROM public.users WHERE LOWER(email) = LOWER($1) AND id != $2', [email, userId]);
+    if (existingEmail.rows.length > 0) {
+      return { success: false, error: 'Another user is already registered with this email' };
+    }
+
+    // Check duplicate phone for other users
+    const existingPhone = await query(`
+      SELECT id FROM public.users 
+      WHERE (phone = $1 OR RIGHT(regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $1)
+      AND id != $2
+      AND deleted_at IS NULL AND COALESCE(is_deleted, false) = false
+      LIMIT 1;
+    `, [phone, userId]);
+    if (existingPhone.rows.length > 0) {
+      return { success: false, error: 'Another user is already registered with this phone number' };
+    }
+
+    // Verify role exists in public.roles
+    const roleRes = await query('SELECT id, slug, name FROM public.roles WHERE slug = $1 OR name = $1 LIMIT 1', [roleSlug]);
+    let targetRoleId: string | null = null;
+    let actualSlug = roleSlug;
+    if (roleRes.rows.length > 0) {
+      targetRoleId = roleRes.rows[0].id;
+      actualSlug = roleRes.rows[0].slug;
+    }
+
+    // Update public.users
+    await query(`
+      UPDATE public.users
+      SET full_name = $1, email = $2, phone = $3, role = $4, is_active = $5, updated_at = NOW()
+      WHERE id = $6
+    `, [fullName, email, phone, actualSlug, isActive, userId]);
+
+    // Keep public.profiles in sync
+    await query(`
+      UPDATE public.profiles
+      SET full_name = $1, email = $2, phone = $3, role = $4, is_active = $5, updated_at = NOW()
+      WHERE id = $6
+    `, [fullName, email, phone, actualSlug, isActive, userId]);
+
+    // Update user_roles
+    if (targetRoleId) {
+      await query('DELETE FROM public.user_roles WHERE user_id = $1', [userId]);
+      await query(`
+        INSERT INTO public.user_roles (user_id, role_id, created_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (user_id, role_id) DO NOTHING;
+      `, [userId, targetRoleId]);
+    }
+
+    // Sync delivery partners if role changed
+    if (actualSlug === 'delivery') {
+      await query(`
+        INSERT INTO public.delivery_partners (id, user_id, vehicle_type, vehicle_no, license_plate, is_available, is_online, total_deliveries, rating, created_at, updated_at)
+        VALUES ($1, $1, 'Bike', null, null, true, true, 0, 5.0, NOW(), NOW())
+        ON CONFLICT (id) DO UPDATE SET 
+          user_id = EXCLUDED.user_id,
+          is_available = true, 
+          is_online = true, 
+          updated_at = NOW()
+      `, [userId]);
+    } else {
+      await query(`
+        UPDATE public.delivery_partners 
+        SET is_available = false, is_online = false, updated_at = NOW() 
+        WHERE user_id = $1 OR id = $1
+      `, [userId]);
+    }
+
+    // Audit log
+    await query(`
+      INSERT INTO public.audit_logs (table_name, record_id, action, new_data, user_id, created_at)
+      VALUES ('users', $1, 'update_user', $2, $3, NOW())
+    `, [userId, JSON.stringify({ email, full_name: fullName, phone, role: actualSlug, is_active: isActive }), currentAdmin.id]);
+
+    revalidatePath('/dashboard/admin/users');
+    return { success: true };
+  } catch (err: any) {
+    console.error('updateAdminUser error:', err);
+    return { success: false, error: err.message || 'Failed to update user' };
   }
 }
