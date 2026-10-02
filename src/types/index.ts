@@ -16,6 +16,13 @@ export interface Address {
   id: string;
   userId: string;
   label: string;
+  name?: string;
+  phone?: string;
+  alternatePhone?: string;
+  locality?: string;
+  landmark?: string;
+  addressLine1?: string;
+  addressLine2?: string;
   fullAddress: string;
   city: string;
   state: string;
@@ -24,6 +31,7 @@ export interface Address {
   longitude?: number;
   isDefault: boolean;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface PaginatedResponse<T> {

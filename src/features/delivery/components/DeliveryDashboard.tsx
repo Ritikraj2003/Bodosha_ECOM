@@ -23,7 +23,7 @@ import { showToast } from '@/components/shared/Toast';
 import { useAuthStore } from '@/features/auth/store';
 import { groupDeliveriesByDay } from '@/features/delivery/lib/history';
 import { useCamera } from '@/hooks/useCamera';
-import { Loader2, Bike, QrCode, ScanLine, KeyRound, Banknote, CheckCircle2, Check, Clock, Phone, ChevronDown, ChevronUp, User, LogOut, Upload, MapPin, CameraOff, Camera, TrendingUp, Wallet, Search, CalendarDays } from 'lucide-react';
+import { Loader2, Bike, QrCode, ScanLine, KeyRound, Banknote, CheckCircle2, Check, Clock, Phone, ChevronDown, ChevronUp, User, LogOut, Upload, MapPin, CameraOff, Camera, TrendingUp, Wallet, Search, CalendarDays, Navigation } from 'lucide-react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 
@@ -510,7 +510,11 @@ function OrderCard({ assignment, order, now, setModal, busy, run }: {
   run: (a: string, fn: () => Promise<{ success: boolean; error?: string }>) => Promise<void>;
 }) {
   if (!order) return null;
-  const address = order.delivery_address as Record<string, string> | null;
+  const address = order.delivery_address as Record<string, any> | null;
+  const deliveryLat = address?.latitude ?? (order as any).delivery_latitude;
+  const deliveryLng = address?.longitude ?? (order as any).delivery_longitude;
+  const hasCoords = deliveryLat !== undefined && deliveryLat !== null && !isNaN(Number(deliveryLat)) &&
+                    deliveryLng !== undefined && deliveryLng !== null && !isNaN(Number(deliveryLng));
   const isCod = order.payment_method === 'cod';
   const otpVerified = !!assignment.otp_verified_at;
   const otpActive = !!assignment.otp_expires_at && new Date(assignment.otp_expires_at).getTime() > now;
@@ -558,6 +562,23 @@ function OrderCard({ assignment, order, now, setModal, busy, run }: {
             <span className="text-ztext-light">
               {address.address}{address.city ? `, ${address.city}` : ''}{address.pincode ? ` - ${address.pincode}` : ''}
             </span>
+          </div>
+        )}
+        {hasCoords && (
+          <div className="pt-2 border-t border-zborder/60 flex items-center justify-between gap-2">
+            <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              📍 GPS Location Available
+            </span>
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}&travelmode=driving`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 border border-blue-500/25 text-xs font-bold hover:bg-blue-500/25 transition-colors"
+            >
+              <Navigation size={13} />
+              Open Maps Route →
+            </a>
           </div>
         )}
       </div>
@@ -619,6 +640,17 @@ function OrderCard({ assignment, order, now, setModal, busy, run }: {
         )}
         {order.status === 'out_for_delivery' && (
           <>
+            {hasCoords && (
+              <a
+                href={`https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}&travelmode=driving`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="button-z button-z-secondary text-xs h-9 flex items-center gap-1.5 font-bold text-blue-400 border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20"
+              >
+                <Navigation size={14} className="text-blue-400" />
+                Live GPS Path
+              </a>
+            )}
             {!otpVerified && !otpActive && (
               <button onClick={() => setModal({ type: 'otp', orderId: order.id })} className="button-z button-z-outline text-xs h-9 flex items-center gap-1.5 disabled:opacity-50" disabled={!isCod && !paymentCollected}>
                 <KeyRound size={14} /> {assignment.otp_expires_at ? 'Resend OTP' : 'Generate OTP'}

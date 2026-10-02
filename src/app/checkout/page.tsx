@@ -1,11 +1,17 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { MapPin, Phone, User, CreditCard, Banknote, ArrowLeft, Loader2, ShoppingBag, Shield, Wallet, CheckCircle2, AlertCircle, Clock, AlertTriangle } from 'lucide-react';
+import { MapPin, Phone, User, CreditCard, Banknote, ArrowLeft, Loader2, ShoppingBag, Shield, Wallet, CheckCircle2, AlertCircle, Clock, AlertTriangle, Navigation, Check } from 'lucide-react';
 import HamsterLoader from '@/components/ui/HamsterLoader';
+
+const AddressMapPicker = dynamic(() => import('@/components/maps/AddressMapPicker'), { ssr: false });
+import type { Address } from '@/types';
+import { getUserAddresses, saveUserAddress, deleteUserAddress, type AddressInput } from '@/features/addresses/actions';
+import CheckoutAddressCard from '@/features/addresses/components/CheckoutAddressCard';
 import { useCartStore } from '@/features/cart/store';
 import { useAuthStore } from '@/features/auth/store';
 import { loadRazorpayScript, openRazorpayCheckout } from '@/features/payments/services/razorpay';
@@ -42,8 +48,13 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState('');
   const [isCustomAddress, setIsCustomAddress] = useState(false);
   const [customAddress, setCustomAddress] = useState('');
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [deliveryLat, setDeliveryLat] = useState<number | null>(null);
+  const [deliveryLng, setDeliveryLng] = useState<number | null>(null);
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerName, setCustomerName] = useState(user?.fullName ?? '');
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
+  const [selectedSavedAddress, setSelectedSavedAddress] = useState<Address | null>(null);
   const [notes, setNotes] = useState('');
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState('');
@@ -119,6 +130,69 @@ export default function CheckoutPage() {
     }
   }, [user?.phone, user?.fullName]);
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      getUserAddresses().then((res) => {
+        if (res.success && res.addresses) {
+          setSavedAddresses(res.addresses);
+          const defaultAddr = res.addresses.find((a) => a.isDefault) || res.addresses[0];
+          if (defaultAddr) {
+            setSelectedSavedAddress(defaultAddr);
+            setAddress(defaultAddr.fullAddress || defaultAddr.addressLine1 || '');
+            if (defaultAddr.phone) setCustomerPhone(defaultAddr.phone);
+            if (defaultAddr.name) setCustomerName(defaultAddr.name);
+            if (defaultAddr.latitude) setDeliveryLat(defaultAddr.latitude);
+            if (defaultAddr.longitude) setDeliveryLng(defaultAddr.longitude);
+          }
+        }
+      }).catch(console.error);
+    }
+  }, [isAuthenticated]);
+
+  function handleSelectSavedAddress(addr: Address) {
+    setSelectedSavedAddress(addr);
+    setAddress(addr.fullAddress || addr.addressLine1 || '');
+    if (addr.phone) setCustomerPhone(addr.phone);
+    if (addr.name) setCustomerName(addr.name);
+    setDeliveryLat(addr.latitude ?? null);
+    setDeliveryLng(addr.longitude ?? null);
+    setIsCustomAddress(false);
+  }
+
+  async function handleSaveNewAddress(input: AddressInput) {
+    const res = await saveUserAddress(input);
+    if (res.success && res.address) {
+      const refreshed = await getUserAddresses();
+      if (refreshed.success && refreshed.addresses) {
+        setSavedAddresses(refreshed.addresses);
+      }
+      handleSelectSavedAddress(res.address);
+    }
+    return res;
+  }
+
+  async function handleDeleteSavedAddress(addressId: string) {
+    const res = await deleteUserAddress(addressId);
+    if (res.success) {
+      const refreshed = await getUserAddresses();
+      if (refreshed.success && refreshed.addresses) {
+        setSavedAddresses(refreshed.addresses);
+        if (selectedSavedAddress?.id === addressId) {
+          const next = refreshed.addresses.find((a) => a.isDefault) || refreshed.addresses[0] || null;
+          if (next) {
+            handleSelectSavedAddress(next);
+          } else {
+            setSelectedSavedAddress(null);
+            setAddress('');
+            setDeliveryLat(null);
+            setDeliveryLng(null);
+          }
+        }
+      }
+    }
+    return res;
+  }
+
   async function handleAuthRejected(errorMessage?: string | null) {
     if (!errorMessage) return false;
     const m = errorMessage.toLowerCase();
@@ -168,6 +242,8 @@ export default function CheckoutPage() {
       total: total(),
       paymentMethod: pm,
       address,
+      latitude: deliveryLat,
+      longitude: deliveryLng,
       notes,
       customerPhone: effectivePhone,
       customerName: customerName || user?.fullName || undefined,
@@ -463,46 +539,43 @@ export default function CheckoutPage() {
 
               {/* Delivery Address Section */}
               {isDelivery ? (
-                <div className="bg-zcard rounded-xl border border-zborder p-4">
-                  <h2 className="font-semibold text-ztext mb-3 flex items-center gap-1.5 text-sm">
-                    <MapPin size={15} className="text-zred shrink-0" /> Delivery address
-                  </h2>
-                  <div>
-                    <label className="text-[10px] font-semibold text-ztext uppercase tracking-wide mb-1.5 block">Delivery location</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {deliveryLocations.length > 0 && deliveryLocations.map((opt) => (
-                        <button key={opt.value} type="button" onClick={() => handleLocationSelect(opt.value)}
-                          className={`w-full text-left px-3 py-2.5 rounded-xl border text-sm transition-all ${
-                            address === opt.value && !isCustomAddress ? 'border-zred bg-red-500/10' : 'border-zborder hover:border-ztext-light'
-                          }`}
-                        >
-                          <span className="font-medium text-ztext">{opt.label}</span>
-                          {address === opt.value && !isCustomAddress && <span className="float-right w-3.5 h-3.5 rounded-full bg-zred flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-zcard" /></span>}
-                        </button>
-                      ))}
-                      <div className="w-full text-left px-3 py-2.5 rounded-xl border text-sm transition-all border-zborder opacity-50">
-                        <span className="text-ztext-light font-medium text-xs">Soon available for nearby PG</span>
+                <div className="space-y-3">
+                  <CheckoutAddressCard
+                    addresses={savedAddresses}
+                    selectedAddress={selectedSavedAddress}
+                    onSelectAddress={handleSelectSavedAddress}
+                    onSaveAddress={handleSaveNewAddress}
+                    onDeleteAddress={handleDeleteSavedAddress}
+                    defaultName={user?.fullName || customerName}
+                    defaultPhone={user?.phone || customerPhone}
+                  />
+
+                  {deliveryLocations.length > 0 && (
+                    <div className="bg-zcard rounded-xl border border-zborder p-4">
+                      <label className="text-[10px] font-semibold text-ztext-light uppercase tracking-wider mb-2 block">
+                        Campus Delivery Presets (Quick Select)
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {deliveryLocations.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            onClick={() => {
+                              handleLocationSelect(opt.value);
+                              setSelectedSavedAddress(null);
+                            }}
+                            className={`w-full text-left px-3 py-2.5 rounded-xl border text-xs transition-all ${
+                              address === opt.value && !isCustomAddress
+                                ? 'border-zred bg-red-500/10 text-zred font-bold'
+                                : 'border-zborder hover:border-ztext-light text-ztext'
+                            }`}
+                          >
+                            <span className="font-medium">{opt.label}</span>
+                          </button>
+                        ))}
                       </div>
-                      <button type="button" onClick={handleCustomToggle}
-                        className={`w-full text-left px-3 py-2.5 rounded-xl border text-sm transition-all col-span-2 ${
-                          isCustomAddress ? 'border-zred bg-red-500/10' : 'border-zborder hover:border-ztext-light'
-                        }`}
-                      >
-                        <span className="font-medium text-ztext">Other (write your own)</span>
-                        {isCustomAddress && <span className="float-right w-3.5 h-3.5 rounded-full bg-zred flex items-center justify-center"><span className="w-1.5 h-1.5 rounded-full bg-zcard" /></span>}
-                      </button>
-                      {isCustomAddress && (
-                        <input
-                          type="text"
-                          value={customAddress}
-                          onChange={(e) => { setCustomAddress(e.target.value); setAddress(e.target.value); }}
-                          placeholder="Type your full address..."
-                          className="input-z text-sm col-span-2"
-                          autoFocus
-                        />
-                      )}
                     </div>
-                  </div>
+                  )}
                 </div>
               ) : (
                 <div className="bg-zcard rounded-xl border border-zborder p-4">
@@ -790,6 +863,22 @@ export default function CheckoutPage() {
           </div>
         </div>
       </div>
+
+      {showMapPicker && (
+        <AddressMapPicker
+          initialAddress={address}
+          initialLat={deliveryLat}
+          initialLng={deliveryLng}
+          onSelectLocation={(loc) => {
+            setAddress(loc.address);
+            setCustomAddress(loc.address);
+            setIsCustomAddress(true);
+            setDeliveryLat(loc.latitude);
+            setDeliveryLng(loc.longitude);
+          }}
+          onClose={() => setShowMapPicker(false)}
+        />
+      )}
     </div>
   );
 }

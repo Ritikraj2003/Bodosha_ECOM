@@ -8,6 +8,9 @@ import Link from 'next/link';
 import { useAuthStore } from '@/features/auth/store';
 import { showToast } from '@/components/shared/Toast';
 import { updateServerProfile, updateServerAddress, getProfileOverview } from '@/features/auth/actions';
+import type { Address } from '@/types';
+import { getUserAddresses, saveUserAddress, deleteUserAddress, setDefaultUserAddress, type AddressInput } from '@/features/addresses/actions';
+import AddressSelectorModal from '@/features/addresses/components/AddressSelectorModal';
 import type { Order } from '@/features/orders/types';
 import WalletKycModal from '@/features/wallet/components/WalletKycModal';
 import type { Wallet } from '@/features/wallet/types';
@@ -66,6 +69,8 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [address, setAddress] = useState('');
   const [addressLoading, setAddressLoading] = useState(true);
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
+  const [showAddressModal, setShowAddressModal] = useState(false);
 
   const [myRecentOrders, setMyRecentOrders] = useState<Order[]>([]);
   const [orderCount, setOrderCount] = useState(0);
@@ -81,13 +86,23 @@ export default function ProfilePage() {
 
   async function loadProfileData() {
     try {
-      const data = await getProfileOverview();
-      setAddress(data.address || '');
+      const [data, addrRes] = await Promise.all([
+        getProfileOverview(),
+        getUserAddresses(),
+      ]);
       setMyRecentOrders(data.orders || []);
       setOrderCount(data.orderCount || 0);
       setWalletCash(data.walletCash);
       setWalletStatus(data.walletStatus);
       setFullWalletData(data.fullWalletData);
+
+      if (addrRes.success && addrRes.addresses && addrRes.addresses.length > 0) {
+        setSavedAddresses(addrRes.addresses);
+        const def = addrRes.addresses.find((a) => a.isDefault) || addrRes.addresses[0];
+        setAddress(def.fullAddress || def.addressLine1 || '');
+      } else {
+        setAddress(data.address || '');
+      }
     } catch (err) {
       console.error('Failed to load profile data:', err);
     } finally {
@@ -430,32 +445,35 @@ export default function ProfilePage() {
               <div className="p-4 flex items-start gap-3">
                 <MapPin size={18} className="text-zred shrink-0 mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-ztext text-sm">Delivery address</p>
-                  {editingField === 'address' ? (
-                    <textarea
-                      className="input-z mt-1 text-sm resize-none h-20"
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      autoFocus
-                    />
-                  ) : (
-                    <p className="text-xs text-ztext-light mt-0.5">
-                      {addressLoading ? (
-                        <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Loading...</span>
-                      ) : address ? (
-                        <span className="inline-flex flex-wrap items-center gap-1.5">
-                          <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-zred bg-zred/10 border border-zred/20 rounded-full px-1.5 py-0.5">Deliver here</span>
-                          {address}
-                        </span>
-                      ) : 'No address saved'}
-                    </p>
-                  )}
+                  <div className="flex items-center justify-between">
+                    <p className="font-semibold text-ztext text-sm">Delivery addresses</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddressModal(true)}
+                      className="text-xs text-blue-500 font-bold hover:underline"
+                    >
+                      {savedAddresses.length > 0 ? `Manage (${savedAddresses.length})` : '+ Add Address'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-ztext-light mt-1">
+                    {addressLoading ? (
+                      <span className="inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Loading...</span>
+                    ) : address ? (
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-zred bg-zred/10 border border-zred/20 rounded-full px-1.5 py-0.5">Default</span>
+                        {address}
+                      </span>
+                    ) : 'No address saved yet'}
+                  </p>
                 </div>
-                {editingField === 'address' ? renderEditActions() : (
-                  <button onClick={() => startEdit('address', address)} className="size-7 grid place-items-center rounded-md hover:bg-zgray text-ztext-muted transition-colors shrink-0 mt-0.5">
-                    <Pencil size={14} />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setShowAddressModal(true)}
+                  className="size-7 grid place-items-center rounded-md hover:bg-zgray text-ztext-muted hover:text-blue-500 transition-colors shrink-0 mt-0.5"
+                  title="Manage addresses"
+                >
+                  <Pencil size={14} />
+                </button>
               </div>
 
               {/* Email */}
@@ -585,6 +603,50 @@ export default function ProfilePage() {
           loadProfileData();
         }}
       />
+
+      {showAddressModal && (
+        <AddressSelectorModal
+          isOpen={showAddressModal}
+          onClose={() => setShowAddressModal(false)}
+          addresses={savedAddresses}
+          selectedAddressId={savedAddresses.find((a) => a.isDefault)?.id || savedAddresses[0]?.id}
+          onSelectAddress={async (addr) => {
+            await setDefaultUserAddress(addr.id);
+            setAddress(addr.fullAddress || addr.addressLine1 || '');
+            const res = await getUserAddresses();
+            if (res.success && res.addresses) setSavedAddresses(res.addresses);
+            showToast('Default address updated');
+          }}
+          onSaveAddress={async (input) => {
+            const res = await saveUserAddress(input);
+            if (res.success) {
+              const refreshed = await getUserAddresses();
+              if (refreshed.success && refreshed.addresses) {
+                setSavedAddresses(refreshed.addresses);
+                const def = refreshed.addresses.find((a) => a.isDefault) || refreshed.addresses[0];
+                if (def) setAddress(def.fullAddress || def.addressLine1 || '');
+              }
+              showToast('Address saved successfully');
+            }
+            return res;
+          }}
+          onDeleteAddress={async (id) => {
+            const res = await deleteUserAddress(id);
+            if (res.success) {
+              const refreshed = await getUserAddresses();
+              if (refreshed.success && refreshed.addresses) {
+                setSavedAddresses(refreshed.addresses);
+                const def = refreshed.addresses.find((a) => a.isDefault) || refreshed.addresses[0];
+                setAddress(def ? (def.fullAddress || def.addressLine1 || '') : '');
+              }
+              showToast('Address removed');
+            }
+            return res;
+          }}
+          defaultName={user?.fullName || ''}
+          defaultPhone={user?.phone || ''}
+        />
+      )}
     </div>
   );
 }

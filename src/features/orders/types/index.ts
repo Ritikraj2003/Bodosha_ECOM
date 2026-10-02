@@ -63,6 +63,8 @@ export interface Order {
   customer_email: string | null;
   customer_phone: string | null;
   delivery_address: Record<string, unknown> | null;
+  delivery_latitude?: number | null;
+  delivery_longitude?: number | null;
   delivery_notes: string | null;
   payment_method: PaymentMethod | null;
   payment_status: PaymentStatus;

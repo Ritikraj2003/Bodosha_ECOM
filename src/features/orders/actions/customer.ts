@@ -292,6 +292,8 @@ interface CreateOrderParams {
   address: string;
   city?: string;
   pincode?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   notes?: string;
   customerPhone?: string;
   customerName?: string;
@@ -492,8 +494,17 @@ export async function createOrder(params: CreateOrderParams) {
     }
   }
 
+  const numLat = params.latitude !== undefined && params.latitude !== null && !isNaN(Number(params.latitude)) ? Number(params.latitude) : null;
+  const numLng = params.longitude !== undefined && params.longitude !== null && !isNaN(Number(params.longitude)) ? Number(params.longitude) : null;
+
   const deliveryAddressJson = orderType === 'room_delivery' || !orderType
-    ? { address, city: params.city ?? '', pincode: params.pincode ?? '' }
+    ? {
+        address,
+        city: params.city ?? '',
+        pincode: params.pincode ?? '',
+        latitude: numLat,
+        longitude: numLng,
+      }
     : { address: 'Take away from restaurant' };
 
   const trackingCode = `DD-${Math.random().toString(36).substring(2, 9).toUpperCase()}`;
@@ -508,6 +519,7 @@ export async function createOrder(params: CreateOrderParams) {
         delivery_address, delivery_address_json, delivery_notes, special_instructions,
         customer_name, customer_phone, customer_email,
         payment_method, payment_status,
+        delivery_latitude, delivery_longitude,
         placed_at, created_at, updated_at
       ) VALUES (
         $1, $2, $3, 'placed', $4,
@@ -515,6 +527,7 @@ export async function createOrder(params: CreateOrderParams) {
         $10, $10, $11, $11,
         $12, $13, $14,
         $15, 'pending',
+        $16, $17,
         NOW(), NOW(), NOW()
       )
       RETURNING id, tracking_code
@@ -534,6 +547,8 @@ export async function createOrder(params: CreateOrderParams) {
       customerPhone || null,
       customerEmail || user?.email || null,
       paymentMethodDb,
+      numLat,
+      numLng,
     ]);
     if (!orderInsert.rows[0]) {
       return { success: false, error: 'Failed to create order' };
