@@ -1,14 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Navigation, MapPin, Loader2 } from 'lucide-react';
 import type { Address } from '@/types';
 import type { AddressInput } from '../actions';
-import dynamic from 'next/dynamic';
-import type { LocationResult } from '@/components/maps/AddressMapPicker';
 import { getPreciseDeviceLocation } from '@/lib/device-location';
-
-const AddressMapPicker = dynamic(() => import('@/components/maps/AddressMapPicker'), { ssr: false });
 
 export const INDIAN_STATES = [
   'Andaman and Nicobar Islands',
@@ -80,10 +76,31 @@ export default function AddressModal({
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
 
-  const [showMapModal, setShowMapModal] = useState(false);
   const [locating, setLocating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [geoPermission, setGeoPermission] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown');
+
+  const hasAutoRequestedLoc = useRef(false);
+
+  // Monitor browser geolocation permission state
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (typeof navigator !== 'undefined' && 'permissions' in navigator && navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((status) => {
+          setGeoPermission(status.state as any);
+          status.onchange = () => {
+            setGeoPermission(status.state as any);
+          };
+        })
+        .catch(() => {
+          setGeoPermission('unknown');
+        });
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (initialData) {
@@ -117,6 +134,19 @@ export default function AddressModal({
     }
     setError('');
   }, [initialData, defaultName, defaultPhone, isOpen]);
+
+  // As soon as user opens modal to add an address, automatically ask for device location
+  useEffect(() => {
+    if (!isOpen) {
+      hasAutoRequestedLoc.current = false;
+      return;
+    }
+
+    if (!initialData && !hasAutoRequestedLoc.current) {
+      hasAutoRequestedLoc.current = true;
+      handleUseCurrentLocation();
+    }
+  }, [isOpen, initialData]);
 
   if (!isOpen) return null;
 
@@ -218,42 +248,16 @@ export default function AddressModal({
 
     try {
       const loc = await getPreciseDeviceLocation();
+      setGeoPermission('granted');
       await fillFromCoords(loc.latitude, loc.longitude);
       setError('');
     } catch (err: any) {
       console.warn('Location detection warning:', err);
-      setError(err?.message || 'Could not detect location. Please use "Pin from Map" to choose your location.');
+      setGeoPermission('denied');
+      setError(err?.message || 'Location access was denied. Please enter Latitude and Longitude manually below.');
     } finally {
       setLocating(false);
     }
-  }
-
-  function handleMapPicked(data: LocationResult) {
-    setError('');
-    setLatitude(data.latitude);
-    setLongitude(data.longitude);
-    if (data.addressLine1) {
-      setAddressLine1(data.addressLine1);
-    } else if (data.address) {
-      setAddressLine1(data.address);
-    }
-    if (data.locality) {
-      setLocality(data.locality);
-    }
-    if (data.city) {
-      setCity(data.city);
-    }
-    if (data.state) {
-      const matched = INDIAN_STATES.find(
-        (s) => s.toLowerCase() === data.state?.toLowerCase() || data.state?.toLowerCase().includes(s.toLowerCase())
-      );
-      if (matched) setState(matched);
-      else setState(data.state);
-    }
-    if (data.pincode) {
-      setPostalCode(data.pincode);
-    }
-    setShowMapModal(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -333,63 +337,125 @@ export default function AddressModal({
 
           <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 flex-1">
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-500 font-medium flex items-center justify-between gap-2">
-                <span>{error}</span>
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs flex items-center justify-between gap-2 text-amber-300">
+                <span className="font-semibold">{error}</span>
                 <button
                   type="button"
                   onClick={() => setError('')}
-                  className="p-1 hover:bg-red-500/20 rounded-md text-red-400 transition-colors shrink-0"
+                  className="p-1 hover:bg-amber-500/20 rounded text-amber-400"
                 >
                   <X size={14} />
                 </button>
               </div>
             )}
 
-            {/* Top Location Fetcher Buttons */}
-            <div className="flex flex-col sm:flex-row gap-2.5">
+            {/* Top Location Fetcher Button */}
+            <div>
               <button
                 type="button"
                 onClick={handleUseCurrentLocation}
                 disabled={locating || saving}
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
                 {locating ? <Loader2 size={16} className="animate-spin text-white" /> : <Navigation size={16} />}
                 <span>{locating ? 'Detecting Location...' : 'Use Current Location'}</span>
               </button>
-
-              <button
-                type="button"
-                onClick={() => setShowMapModal(true)}
-                className="px-5 py-3 bg-zgray hover:bg-zborder border border-zborder text-ztext rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <MapPin size={16} className="text-red-500" />
-                <span>{latitude && longitude ? 'Change Pin from Map' : 'Pin from Map'}</span>
-              </button>
             </div>
 
-            {/* Accurate Coordinates & Location Status Banner */}
-            {latitude !== null && longitude !== null && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-1.5 animate-fade-in">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                    <span className="text-xs font-bold text-emerald-300">
-                      📍 GPS Coordinates: {latitude.toFixed(5)}, {longitude.toFixed(5)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowMapModal(true)}
-                    className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
-                  >
-                    Adjust on Map
-                  </button>
+            {/* Locating banner */}
+            {locating && (
+              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center gap-3 animate-pulse">
+                <Loader2 size={18} className="animate-spin text-blue-400 shrink-0" />
+                <div className="text-xs text-blue-200">
+                  <span className="font-bold">Requesting device location...</span>
+                  <p className="text-[11px] text-blue-300/80">Please click "Allow" on the browser popup to auto-fill Latitude & Longitude.</p>
                 </div>
-                <p className="text-[11px] text-emerald-400/80">
-                  Address details auto-filled below. You can edit any field if needed.
-                </p>
               </div>
             )}
+
+            {/* Direct GPS Coordinates: Latitude & Longitude Input Boxes */}
+            <div className="p-3.5 bg-zsurface/80 border border-zborder rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MapPin size={16} className="text-blue-500" />
+                  <span className="text-xs font-bold text-ztext uppercase tracking-wider">
+                    GPS Coordinates
+                  </span>
+                </div>
+                {/* Dynamic Permission Status Badge */}
+                {geoPermission === 'granted' ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-[11px] font-bold text-emerald-400 font-mono shadow-sm">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    GPS Permission Granted
+                  </span>
+                ) : geoPermission === 'denied' ? (
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocation}
+                    disabled={locating}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-[11px] font-bold text-rose-300 transition-all cursor-pointer active:scale-95 shadow-sm"
+                    title="Permission was blocked. Click to re-request"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-rose-400" />
+                    <span>Permission Blocked (Click to Retry)</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleUseCurrentLocation}
+                    disabled={locating}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-[11px] font-bold text-amber-300 transition-all cursor-pointer active:scale-95 shadow-sm"
+                    title="Click to allow device location permission"
+                  >
+                    {locating ? (
+                      <Loader2 size={12} className="animate-spin text-amber-400" />
+                    ) : (
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    )}
+                    <span>{locating ? 'Requesting...' : 'Allow GPS Permission'}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                    Latitude
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={latitude !== null ? latitude : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLatitude(val === '' ? null : parseFloat(val));
+                    }}
+                    placeholder="e.g. 12.89949"
+                    className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm font-mono text-ztext placeholder:text-ztext-light/40 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                    Longitude
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={longitude !== null ? longitude : ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setLongitude(val === '' ? null : parseFloat(val));
+                    }}
+                    placeholder="e.g. 77.60812"
+                    className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm font-mono text-ztext placeholder:text-ztext-light/40 focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+              </div>
+              <p className="text-[11px] text-ztext-light">
+                Auto-filled via "Use Current Location" or enter coordinates manually.
+              </p>
+            </div>
 
             {/* Row 1: Name & 10-digit mobile */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -615,17 +681,6 @@ export default function AddressModal({
           </form>
         </div>
       </div>
-
-      {/* Interactive Map Picker Modal */}
-      {showMapModal && (
-        <AddressMapPicker
-          initialAddress={[addressLine1, locality, city, state].filter(Boolean).join(', ')}
-          initialLat={latitude || undefined}
-          initialLng={longitude || undefined}
-          onSelectLocation={handleMapPicked}
-          onClose={() => setShowMapModal(false)}
-        />
-      )}
     </>
   );
 }

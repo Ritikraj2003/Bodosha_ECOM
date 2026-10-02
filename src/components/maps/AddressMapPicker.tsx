@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapPin, Navigation, Search, X, Check, Loader2, AlertCircle } from 'lucide-react';
+import { MapPin, Search, X, Check, Loader2, AlertCircle } from 'lucide-react';
 import { getPreciseDeviceLocation } from '@/lib/device-location';
 
 export interface LocationResult {
@@ -27,7 +27,6 @@ interface AddressMapPickerProps {
 declare global {
   interface Window {
     google?: any;
-    L?: any;
     gm_authFailure?: () => void;
   }
 }
@@ -43,7 +42,7 @@ export default function AddressMapPicker({
   const mapRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Dynamic user coordinates (no hardcoded locations)
+  // Dynamic user coordinates
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(() => {
     if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng)) {
       return { lat: initialLat, lng: initialLng };
@@ -62,19 +61,16 @@ export default function AddressMapPicker({
   const [locatingUser, setLocatingUser] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searching, setSearching] = useState<boolean>(false);
-  const [useOsmMode, setUseOsmMode] = useState<boolean>(false);
-  const [authFailed, setAuthFailed] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [useEmbedFallback, setUseEmbedFallback] = useState<boolean>(false);
 
-  // Map instances
+  // Google Map instances
   const googleMapInstance = useRef<any>(null);
   const googleMarkerInstance = useRef<any>(null);
-  const leafletMapInstance = useRef<any>(null);
-  const leafletMarkerInstance = useRef<any>(null);
 
   // Reverse geocode to get street address from coordinates
   const reverseGeocode = useCallback((lat: number, lng: number) => {
-    if (window.google?.maps?.Geocoder && !authFailed) {
+    if (window.google?.maps?.Geocoder) {
       const geocoder = new window.google.maps.Geocoder();
       geocoder.geocode({ location: { lat, lng } }, (results: any[], status: string) => {
         if (status === 'OK' && results && results[0]) {
@@ -107,14 +103,14 @@ export default function AddressMapPicker({
           setAddressLine1(line1);
           return;
         }
-        fetchOsmReverse(lat, lng);
+        fetchReverseFallback(lat, lng);
       });
     } else {
-      fetchOsmReverse(lat, lng);
+      fetchReverseFallback(lat, lng);
     }
-  }, [authFailed]);
+  }, []);
 
-  const fetchOsmReverse = (lat: number, lng: number) => {
+  const fetchReverseFallback = (lat: number, lng: number) => {
     fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
       .then((res) => res.json())
       .then((data) => {
@@ -153,12 +149,6 @@ export default function AddressMapPicker({
         const newPos = new window.google.maps.LatLng(lat, lng);
         googleMapInstance.current.panTo(newPos);
         googleMarkerInstance.current.setPosition(newPos);
-      }
-
-      // Update Leaflet marker if active
-      if (leafletMapInstance.current && leafletMarkerInstance.current) {
-        leafletMapInstance.current.setView([lat, lng], leafletMapInstance.current.getZoom());
-        leafletMarkerInstance.current.setLatLng([lat, lng]);
       }
 
       if (shouldGeocode) {
@@ -215,100 +205,23 @@ export default function AddressMapPicker({
       });
   }, [initialAddress, initialLat, initialLng, reverseGeocode]);
 
-  // Load Leaflet map
-  const initLeafletMap = useCallback((currentCoords: { lat: number; lng: number }) => {
-    if (!mapRef.current) return;
-
-    const setupL = () => {
-      if (!window.L || !mapRef.current) return;
-      if (leafletMapInstance.current) {
-        leafletMapInstance.current.remove();
-        leafletMapInstance.current = null;
-      }
-
-      mapRef.current.innerHTML = '';
-
-      const L = window.L;
-      const map = L.map(mapRef.current).setView([currentCoords.lat, currentCoords.lng], 16);
-
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors',
-      }).addTo(map);
-
-      // Custom Red Pin Icon
-      const redIcon = L.divIcon({
-        className: 'custom-leaflet-pin',
-        html: `<div style="background-color: #ef4444; width: 22px; height: 22px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2.5px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"></div>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 22],
-      });
-
-      const marker = L.marker([currentCoords.lat, currentCoords.lng], {
-        draggable: true,
-        icon: redIcon,
-      }).addTo(map);
-
-      leafletMapInstance.current = map;
-      leafletMarkerInstance.current = marker;
-
-      marker.on('dragend', () => {
-        const pos = marker.getLatLng();
-        handlePositionChange(pos.lat, pos.lng, true);
-      });
-
-      map.on('click', (e: any) => {
-        marker.setLatLng(e.latlng);
-        handlePositionChange(e.latlng.lat, e.latlng.lng, true);
-      });
-
-      setTimeout(() => map.invalidateSize(), 200);
-      setLoadingMap(false);
-    };
-
-    if (window.L) {
-      setupL();
-    } else {
-      if (!document.getElementById('leaflet-css')) {
-        const link = document.createElement('link');
-        link.id = 'leaflet-css';
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        document.head.appendChild(link);
-      }
-      if (!document.getElementById('leaflet-js')) {
-        const script = document.createElement('script');
-        script.id = 'leaflet-js';
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.onload = setupL;
-        document.head.appendChild(script);
-      } else {
-        const check = setInterval(() => {
-          if (window.L) {
-            clearInterval(check);
-            setupL();
-          }
-        }, 100);
-      }
-    }
-  }, [handlePositionChange]);
-
-  // Listen for Google Auth Failure (e.g. no billing on Google Cloud project)
+  // Google Maps Auth Failure listener
   useEffect(() => {
     window.gm_authFailure = () => {
-      console.warn('Google Maps auth failure detected. Switching to OpenStreetMap engine.');
-      setAuthFailed(true);
-      setUseOsmMode(true);
+      console.warn('Google Maps auth failure detected. Switching to Google Embed view.');
+      setUseEmbedFallback(true);
+      setLoadingMap(false);
     };
   }, []);
 
-  // Initialize Map (Google Maps or OpenStreetMap fallback)
+  // Initialize Google Map
   useEffect(() => {
     if (!coords) return;
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-    if (!apiKey || useOsmMode || authFailed) {
-      initLeafletMap(coords);
+    if (!apiKey) {
+      setUseEmbedFallback(true);
+      setLoadingMap(false);
       return;
     }
 
@@ -317,7 +230,8 @@ export default function AddressMapPicker({
 
     const setupGoogle = () => {
       if (!window.google?.maps || !mapRef.current) {
-        initLeafletMap(coords);
+        setUseEmbedFallback(true);
+        setLoadingMap(false);
         return;
       }
 
@@ -370,8 +284,9 @@ export default function AddressMapPicker({
 
         setLoadingMap(false);
       } catch (e) {
-        console.error('Google Map setup failed, switching to OSM:', e);
-        setUseOsmMode(true);
+        console.error('Google Map setup failed:', e);
+        setUseEmbedFallback(true);
+        setLoadingMap(false);
       }
     };
 
@@ -385,13 +300,16 @@ export default function AddressMapPicker({
         script.async = true;
         script.defer = true;
         script.onload = setupGoogle;
-        script.onerror = () => setUseOsmMode(true);
+        script.onerror = () => {
+          setUseEmbedFallback(true);
+          setLoadingMap(false);
+        };
         document.head.appendChild(script);
       } else {
         script.addEventListener('load', setupGoogle);
       }
     }
-  }, [coords, useOsmMode, authFailed, handlePositionChange, initLeafletMap]);
+  }, [coords, handlePositionChange]);
 
   // Handle Search submit
   const handleSearchSubmit = async (e: React.FormEvent) => {
@@ -432,13 +350,10 @@ export default function AddressMapPicker({
       if (googleMapInstance.current) {
         googleMapInstance.current.setZoom(17);
       }
-      if (leafletMapInstance.current) {
-        leafletMapInstance.current.setZoom(17);
-      }
     } catch (err: any) {
       console.warn('GPS location request error:', err);
       if (err?.isPermissionDenied) {
-        setErrorMsg('Location access is blocked in Windows or Browser. Tap anywhere on map or drag pin.');
+        setErrorMsg('Location access is blocked. Tap anywhere on map or drag pin.');
       } else {
         setErrorMsg('Could not detect device GPS. Please drag the pin or search your area.');
       }
@@ -534,17 +449,6 @@ export default function AddressMapPicker({
         </button>
       </form>
 
-      {/* Notification if switched to OpenStreetMap fallback */}
-      {authFailed && (
-        <div className="px-3 py-1 bg-amber-500/10 border-b border-amber-500/20 text-amber-400 text-[10px] sm:text-[11px] flex items-center justify-between shrink-0">
-          <span className="flex items-center gap-1.5">
-            <AlertCircle size={12} />
-            <span>OpenStreetMap Active (Free Map Service).</span>
-          </span>
-          <span className="font-semibold">GPS Active</span>
-        </div>
-      )}
-
       {/* Error notification banner if location blocked */}
       {errorMsg && (
         <div className="px-3 py-1.5 bg-red-500/15 border-b border-red-500/25 text-red-400 text-xs flex items-center justify-between shrink-0">
@@ -562,9 +466,19 @@ export default function AddressMapPicker({
         </div>
       )}
 
-      {/* Map Container - min-h-0 allows flexbox to shrink without cutting off the footer */}
+      {/* Map Container */}
       <div className="relative flex-1 min-h-[160px] min-w-0 bg-zsurface flex items-center justify-center overflow-hidden">
-        <div ref={mapRef} className="w-full h-full" />
+        {useEmbedFallback && coords ? (
+          <iframe
+            title="Google Maps Location Picker"
+            src={`https://maps.google.com/maps?q=${coords.lat},${coords.lng}&hl=en&z=17&output=embed`}
+            className="w-full h-full border-0 absolute inset-0"
+            loading="lazy"
+            allowFullScreen
+          />
+        ) : (
+          <div ref={mapRef} className="w-full h-full" />
+        )}
 
         {(loadingMap || locatingUser) && (
           <div className="absolute inset-0 bg-zsurface/85 backdrop-blur-sm flex flex-col items-center justify-center gap-2 z-10">
@@ -583,7 +497,7 @@ export default function AddressMapPicker({
           </div>
         )}
 
-        {/* Floating "Your Location" Crosshair Target Button on Map (Google Maps Style) */}
+        {/* Floating "Your Location" Crosshair Target Button on Map */}
         <button
           type="button"
           onClick={handleReLocate}
@@ -610,7 +524,7 @@ export default function AddressMapPicker({
         </button>
       </div>
 
-      {/* Selected Address & Confirm Footer - ALWAYS VISIBLE */}
+      {/* Selected Address & Confirm Footer */}
       <div className="p-2.5 sm:p-3 bg-zsurface border-t border-zborder shrink-0 space-y-2 z-20">
         <div className="bg-zcard p-2 sm:p-2.5 rounded-xl border border-zborder flex items-start justify-between gap-2">
           <div className="flex items-start gap-1.5 flex-1 min-w-0">

@@ -27,7 +27,7 @@ interface DeliveryMapModalProps {
   onClose: () => void;
 }
 
-type MapViewMode = 'pin' | 'route' | 'satellite' | 'osm';
+type MapViewMode = 'pin' | 'route' | 'satellite';
 
 // Calculate distance in kilometers between two GPS coordinates
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -115,15 +115,6 @@ export default function DeliveryMapModal({
         : 'Current+Location';
       return `https://maps.google.com/maps?saddr=${origin}&daddr=${lat},${lng}&hl=en&output=embed`;
     }
-    if (mapMode === 'osm') {
-      const delta = 0.005;
-      const minLng = lng - delta;
-      const minLat = lat - delta;
-      const maxLng = lng + delta;
-      const maxLat = lat + delta;
-      return `https://www.openstreetmap.org/export/embed.html?bbox=${minLng}%2C${minLat}%2C${maxLng}%2C${maxLat}&layer=mapnik&marker=${lat}%2C${lng}`;
-    }
-    // Default: Google Maps centered on destination coordinates
     return `https://maps.google.com/maps?q=${lat},${lng}&hl=en&z=16&output=embed`;
   }, [mapMode, lat, lng, riderCoords]);
 
