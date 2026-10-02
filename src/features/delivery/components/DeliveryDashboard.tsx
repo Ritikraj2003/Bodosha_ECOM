@@ -26,6 +26,7 @@ import { useCamera } from '@/hooks/useCamera';
 import { Loader2, Bike, QrCode, ScanLine, KeyRound, Banknote, CheckCircle2, Check, Clock, Phone, ChevronDown, ChevronUp, User, LogOut, Upload, MapPin, CameraOff, Camera, TrendingUp, Wallet, Search, CalendarDays, Navigation } from 'lucide-react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
+import DeliveryMapFullPage from './DeliveryMapFullPage';
 
 function decodeQrFromFile(file: File): Promise<string | null> {
   return new Promise((resolve) => {
@@ -90,6 +91,16 @@ type ModalState =
   | { type: 'otp'; orderId: string }
   | { type: 'verify'; orderId: string; paymentSettled: boolean }
   | { type: 'pay'; orderId: string }
+  | {
+      type: 'map';
+      orderId: string;
+      trackingCode: string;
+      customerName: string;
+      customerPhone?: string;
+      address: string;
+      lat: number;
+      lng: number;
+    }
   | null;
 
 export default function DeliveryDashboard() {
@@ -162,6 +173,20 @@ export default function DeliveryDashboard() {
   }
 
   const firstActive = data.active[0];
+
+  if (modal?.type === 'map') {
+    return (
+      <DeliveryMapFullPage
+        trackingCode={modal.trackingCode}
+        customerName={modal.customerName}
+        customerPhone={modal.customerPhone}
+        address={modal.address}
+        lat={modal.lat}
+        lng={modal.lng}
+        onBack={() => setModal(null)}
+      />
+    );
+  }
 
   return (
     <div className="page-pad pb-28">
@@ -565,20 +590,35 @@ function OrderCard({ assignment, order, now, setModal, busy, run }: {
           </div>
         )}
         {hasCoords && (
-          <div className="pt-2 border-t border-zborder/60 flex items-center justify-between gap-2">
-            <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              📍 GPS Location Available
-            </span>
-            <a
-              href={`https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}&travelmode=driving`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 border border-blue-500/25 text-xs font-bold hover:bg-blue-500/25 transition-colors"
+          <div className="pt-2 border-t border-zborder/60 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                📍 GPS Location Available
+              </span>
+              <p className="text-[10px] text-ztext-lighter font-mono mt-0.5">
+                Lat: {Number(deliveryLat).toFixed(5)}, Lng: {Number(deliveryLng).toFixed(5)}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setModal({
+                  type: 'map',
+                  orderId: order.id,
+                  trackingCode: order.tracking_code,
+                  customerName: order.customer_name ?? 'Customer',
+                  customerPhone: order.customer_phone ?? undefined,
+                  address: address?.address ? `${address.address}${address.city ? `, ${address.city}` : ''}${address.pincode ? ` - ${address.pincode}` : ''}` : '',
+                  lat: Number(deliveryLat),
+                  lng: Number(deliveryLng),
+                })
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 border border-blue-500/25 text-xs font-bold hover:bg-blue-500/25 transition-colors cursor-pointer"
             >
               <Navigation size={13} />
               Open Maps Route →
-            </a>
+            </button>
           </div>
         )}
       </div>
@@ -641,15 +681,25 @@ function OrderCard({ assignment, order, now, setModal, busy, run }: {
         {order.status === 'out_for_delivery' && (
           <>
             {hasCoords && (
-              <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${deliveryLat},${deliveryLng}&travelmode=driving`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="button-z button-z-secondary text-xs h-9 flex items-center gap-1.5 font-bold text-blue-400 border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20"
+              <button
+                type="button"
+                onClick={() =>
+                  setModal({
+                    type: 'map',
+                    orderId: order.id,
+                    trackingCode: order.tracking_code,
+                    customerName: order.customer_name ?? 'Customer',
+                    customerPhone: order.customer_phone ?? undefined,
+                    address: address?.address ? `${address.address}${address.city ? `, ${address.city}` : ''}${address.pincode ? ` - ${address.pincode}` : ''}` : '',
+                    lat: Number(deliveryLat),
+                    lng: Number(deliveryLng),
+                  })
+                }
+                className="button-z button-z-secondary text-xs h-9 flex items-center gap-1.5 font-bold text-blue-400 border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 cursor-pointer"
               >
                 <Navigation size={14} className="text-blue-400" />
                 Live GPS Path
-              </a>
+              </button>
             )}
             {!otpVerified && !otpActive && (
               <button onClick={() => setModal({ type: 'otp', orderId: order.id })} className="button-z button-z-outline text-xs h-9 flex items-center gap-1.5 disabled:opacity-50" disabled={!isCod && !paymentCollected}>
