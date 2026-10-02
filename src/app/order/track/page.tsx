@@ -310,7 +310,7 @@ function TrackContent() {
                 </div>
 
                 <p className="text-[11px] text-ztext-light mt-2 leading-relaxed">
-                  Need to cancel? You can cancel within the store's cancellation window.
+                  Need to cancel? You can cancel within the store&apos;s cancellation window.
                 </p>
               </div>
             )}

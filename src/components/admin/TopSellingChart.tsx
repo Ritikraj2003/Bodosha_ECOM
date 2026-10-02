@@ -43,7 +43,7 @@ export default function TopSellingChart({
     } finally {
       setLoading(false);
     }
-  }, [dateFilter?.fromDate, dateFilter?.toDate]);
+  }, [dateFilter]);
 
   // Sync with initialData changes from parent
   useEffect(() => {

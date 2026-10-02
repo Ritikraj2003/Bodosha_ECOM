@@ -565,9 +565,9 @@ export async function getProfileOverview() {
     getWalletDetails(),
   ]);
 
-  let address = addressRes.address?.full_address || '';
-  let orders = ordersRes.success && ordersRes.data ? ordersRes.data.orders : [];
-  let orderCount = ordersRes.success && ordersRes.data ? ordersRes.data.total : 0;
+  const address = addressRes.address?.full_address || '';
+  const orders = ordersRes.success && ordersRes.data ? ordersRes.data.orders : [];
+  const orderCount = ordersRes.success && ordersRes.data ? ordersRes.data.total : 0;
   let walletCash: number | null = null;
   let walletStatus = 'unverified';
   let fullWalletData: any = null;

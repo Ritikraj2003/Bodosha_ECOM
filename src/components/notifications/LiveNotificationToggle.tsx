@@ -128,7 +128,7 @@ export default function LiveNotificationToggle() {
     try {
       const reg = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
+      const sub = await reg.pushManager.getSubscription();
 
       if (isEnabled) {
         // Turn OFF
