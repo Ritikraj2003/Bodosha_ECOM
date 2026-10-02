@@ -64,6 +64,7 @@ export default function AddressMapPicker({
   const [searching, setSearching] = useState<boolean>(false);
   const [useOsmMode, setUseOsmMode] = useState<boolean>(false);
   const [authFailed, setAuthFailed] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   // Map instances
   const googleMapInstance = useRef<any>(null);
@@ -424,6 +425,7 @@ export default function AddressMapPicker({
   // Re-fetch Live GPS
   const handleReLocate = async () => {
     setLocatingUser(true);
+    setErrorMsg('');
     try {
       const loc = await getPreciseDeviceLocation();
       handlePositionChange(loc.latitude, loc.longitude, true);
@@ -436,9 +438,9 @@ export default function AddressMapPicker({
     } catch (err: any) {
       console.warn('GPS location request error:', err);
       if (err?.isPermissionDenied) {
-        alert('Location permission is blocked in your browser. Please click the site settings icon next to the URL and choose "Allow" for Location.');
+        setErrorMsg('Location access is blocked in Windows or Browser. Tap anywhere on map or drag pin.');
       } else {
-        alert('Could not automatically detect GPS on this device. Please search your area or drag the red pin directly to your building.');
+        setErrorMsg('Could not detect device GPS. Please drag the pin or search your area.');
       }
     } finally {
       setLocatingUser(false);
@@ -540,6 +542,23 @@ export default function AddressMapPicker({
             <span>OpenStreetMap Active (Free Map Service).</span>
           </span>
           <span className="font-semibold">GPS Active</span>
+        </div>
+      )}
+
+      {/* Error notification banner if location blocked */}
+      {errorMsg && (
+        <div className="px-3 py-1.5 bg-red-500/15 border-b border-red-500/25 text-red-400 text-xs flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <AlertCircle size={14} className="shrink-0 text-red-400" />
+            <span className="truncate">{errorMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setErrorMsg('')}
+            className="text-red-400 hover:text-white text-xs ml-2 px-1 rounded cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
       )}
 
