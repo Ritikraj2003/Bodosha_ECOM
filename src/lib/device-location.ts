@@ -1,3 +1,5 @@
+import { getApproximateServerLocation } from '@/features/addresses/actions';
+
 export interface DeviceCoordinates {
   latitude: number;
   longitude: number;
@@ -12,25 +14,22 @@ export interface LocationError {
 }
 
 /**
- * Fallback to IP-based Geolocation when hardware GPS/browser permission is blocked or unavailable
- * (Common on Windows laptops without GPS hardware).
+ * Fallback to Server-side Geolocation (via Vercel IP headers or server lookup)
+ * when hardware GPS / browser permission is blocked on Windows laptops.
  */
-async function tryIpFallback(): Promise<DeviceCoordinates | null> {
+async function tryServerLocationFallback(): Promise<DeviceCoordinates | null> {
   try {
-    const res = await fetch('https://ipwho.is/');
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success !== false && data.latitude && data.longitude) {
-        return {
-          latitude: Number(data.latitude),
-          longitude: Number(data.longitude),
-          accuracy: 2500,
-          isApproximate: true,
-        };
-      }
+    const res = await getApproximateServerLocation();
+    if (res.success && res.latitude && res.longitude) {
+      return {
+        latitude: res.latitude,
+        longitude: res.longitude,
+        accuracy: 2500,
+        isApproximate: true,
+      };
     }
   } catch (e) {
-    console.warn('IP fallback failed:', e);
+    console.warn('Server location fallback error:', e);
   }
   return null;
 }
@@ -38,13 +37,12 @@ async function tryIpFallback(): Promise<DeviceCoordinates | null> {
 /**
  * Gets exact device coordinates using hardware GPS and WiFi positioning:
  * - Uses enableHighAccuracy: true with 20s timeout for precise meter-level coordinates
- * - Falls back to standard network triangulation if GPS hardware is not present
- * - Automatically falls back to IP Geolocation if Windows/Browser denies permission
+ * - Automatically falls back to Server/Vercel IP Geolocation if Windows/Browser denies permission
  */
 export function getPreciseDeviceLocation(): Promise<DeviceCoordinates> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      tryIpFallback().then((ipLoc) => {
+      tryServerLocationFallback().then((ipLoc) => {
         if (ipLoc) return resolve(ipLoc);
         reject({
           code: 0,
@@ -58,8 +56,8 @@ export function getPreciseDeviceLocation(): Promise<DeviceCoordinates> {
     let settled = false;
 
     const handleFinalFailure = async (code: number, defaultMsg: string) => {
-      // Smart Fallback: Attempt IP-based location before rejecting
-      const ipLoc = await tryIpFallback();
+      // Smart Server Fallback: Uses Vercel IP geolocation headers
+      const ipLoc = await tryServerLocationFallback();
       if (ipLoc) {
         if (settled) return;
         settled = true;
@@ -89,7 +87,7 @@ export function getPreciseDeviceLocation(): Promise<DeviceCoordinates> {
       },
       (err1) => {
         if (err1.code === 1) {
-          // Permission denied by browser / Windows OS -> trigger smart IP fallback
+          // Permission denied by browser / Windows OS -> trigger smart server fallback
           handleFinalFailure(
             1,
             'Location access was blocked. Please allow location access in your browser or use "Pin from Map".'

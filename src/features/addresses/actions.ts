@@ -233,3 +233,55 @@ export async function deleteUserAddress(addressId: string): Promise<{ success: b
     return { success: false, error: err.message || 'Failed to delete address' };
   }
 }
+
+export async function getApproximateServerLocation(): Promise<{
+  success: boolean;
+  latitude?: number;
+  longitude?: number;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  error?: string;
+}> {
+  try {
+    const { headers } = await import('next/headers');
+    const h = await headers();
+    const lat = h.get('x-vercel-ip-latitude');
+    const lng = h.get('x-vercel-ip-longitude');
+    const city = h.get('x-vercel-ip-city');
+    const region = h.get('x-vercel-ip-country-region');
+    const postal = h.get('x-vercel-ip-postal-code');
+
+    if (lat && lng && !isNaN(Number(lat)) && !isNaN(Number(lng))) {
+      return {
+        success: true,
+        latitude: parseFloat(lat),
+        longitude: parseFloat(lng),
+        city: city ? decodeURIComponent(city) : undefined,
+        state: region ? decodeURIComponent(region) : undefined,
+        pincode: postal || undefined,
+      };
+    }
+
+    // Fallback to server-side IP lookup (No browser CORS or Adblocker issues)
+    const res = await fetch('https://ipwho.is/', { next: { revalidate: 60 } });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success !== false && data.latitude && data.longitude) {
+        return {
+          success: true,
+          latitude: Number(data.latitude),
+          longitude: Number(data.longitude),
+          city: data.city,
+          state: data.region,
+          pincode: data.postal,
+        };
+      }
+    }
+
+    return { success: false, error: 'Could not determine location' };
+  } catch (err: any) {
+    console.warn('getApproximateServerLocation error:', err);
+    return { success: false, error: err?.message || 'Server location error' };
+  }
+}
