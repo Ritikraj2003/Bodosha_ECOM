@@ -53,8 +53,16 @@ export default function AddressMapPicker({
 }: AddressMapPickerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Center coordinates (Default to initial or Bilekahalli, Bengaluru)
+  // Center coordinates (current map camera view)
   const [center, setCenter] = useState<{ lat: number; lng: number }>(() => {
+    if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng)) {
+      return { lat: initialLat, lng: initialLng };
+    }
+    return { lat: 12.89968, lng: 77.60822 };
+  });
+
+  // Pin coordinates (the dynamic delivery point placed on the map)
+  const [pin, setPin] = useState<{ lat: number; lng: number }>(() => {
     if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng)) {
       return { lat: initialLat, lng: initialLng };
     }
@@ -63,6 +71,16 @@ export default function AddressMapPicker({
 
   const [zoom, setZoom] = useState<number>(17);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 600, h: 400 });
+
+  // Screen pixel position of the dynamic pin marker
+  const pinScreenPos = useMemo(() => {
+    const centerPixel = latLngToPixel(center.lat, center.lng, zoom);
+    const pinPixel = latLngToPixel(pin.lat, pin.lng, zoom);
+    return {
+      x: containerSize.w / 2 + (pinPixel.x - centerPixel.x),
+      y: containerSize.h / 2 + (pinPixel.y - centerPixel.y),
+    };
+  }, [center, pin, zoom, containerSize]);
 
   // Address details
   const [formattedAddress, setFormattedAddress] = useState<string>(initialAddress);
@@ -171,6 +189,7 @@ export default function AddressMapPicker({
   useEffect(() => {
     if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng)) {
       setCenter({ lat: initialLat, lng: initialLng });
+      setPin({ lat: initialLat, lng: initialLng });
       reverseGeocode(initialLat, initialLng);
       return;
     }
@@ -179,14 +198,18 @@ export default function AddressMapPicker({
     getPreciseDeviceLocation()
       .then((loc) => {
         setCenter({ lat: loc.latitude, lng: loc.longitude });
+        setPin({ lat: loc.latitude, lng: loc.longitude });
         reverseGeocode(loc.latitude, loc.longitude);
       })
       .catch(() => {
         // Keep default Bengaluru center
+        setPin({ lat: 12.89968, lng: 77.60822 });
         reverseGeocode(12.89968, 77.60822);
       })
       .finally(() => setLocatingUser(false));
   }, [initialLat, initialLng, reverseGeocode]);
+
+  const lastWheelTimeRef = useRef<number>(0);
 
   // Pointer Drag Handlers
   const handlePointerDown = (e: React.PointerEvent) => {
@@ -229,18 +252,80 @@ export default function AddressMapPicker({
     try {
       (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
     } catch {}
-    // Reverse geocode new center when drag stops
-    reverseGeocode(center.lat, center.lng);
+
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    const dist = Math.hypot(dx, dy);
+
+    // CLICK-TO-POINT: User clicked on a specific spot on the map!
+    // Move the red pin directly to that clicked spot WITHOUT moving the map!
+    if (dist < 6 && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const clickOffsetX = e.clientX - centerX;
+      const clickOffsetY = e.clientY - centerY;
+
+      const currentCenterPixel = latLngToPixel(center.lat, center.lng, zoom);
+      const clickedPixel = {
+        x: currentCenterPixel.x + clickOffsetX,
+        y: currentCenterPixel.y + clickOffsetY,
+      };
+      const clickedLatLng = pixelToLatLng(clickedPixel.x, clickedPixel.y, zoom);
+
+      // Pin moves directly to clicked location! Map stays in place!
+      setPin(clickedLatLng);
+      reverseGeocode(clickedLatLng.lat, clickedLatLng.lng);
+      return;
+    }
+
+    // DRAG COMPLETED: Map panned, calculate exact final center from drag start
+    const startPixel = latLngToPixel(
+      dragRef.current.startCenter.lat,
+      dragRef.current.startCenter.lng,
+      zoom
+    );
+    const finalPixel = {
+      x: startPixel.x - dx,
+      y: startPixel.y - dy,
+    };
+    const finalCenter = pixelToLatLng(finalPixel.x, finalPixel.y, zoom);
+    setCenter(finalCenter);
   };
 
-  // Wheel Zoom with preventDefault
+  // Wheel Zoom with smooth step throttling
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    const now = Date.now();
+    if (now - lastWheelTimeRef.current < 150) return;
+    lastWheelTimeRef.current = now;
+
     if (e.deltaY < 0) {
       setZoom((z) => Math.min(19, z + 1));
     } else if (e.deltaY > 0) {
       setZoom((z) => Math.max(5, z - 1));
     }
+  };
+
+  // Double Click Zoom In right onto clicked spot
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const clickOffsetX = e.clientX - centerX;
+    const clickOffsetY = e.clientY - centerY;
+
+    const currentCenterPixel = latLngToPixel(center.lat, center.lng, zoom);
+    const clickedPixel = {
+      x: currentCenterPixel.x + clickOffsetX,
+      y: currentCenterPixel.y + clickOffsetY,
+    };
+    const clickedLatLng = pixelToLatLng(clickedPixel.x, clickedPixel.y, zoom);
+    setPin(clickedLatLng);
+    setZoom((z) => Math.min(19, z + 1));
+    reverseGeocode(clickedLatLng.lat, clickedLatLng.lng);
   };
 
   // Search Address / Landmark
@@ -261,6 +346,7 @@ export default function AddressMapPicker({
         const newLat = parseFloat(data[0].lat);
         const newLng = parseFloat(data[0].lon);
         setCenter({ lat: newLat, lng: newLng });
+        setPin({ lat: newLat, lng: newLng });
         setZoom(17);
         reverseGeocode(newLat, newLng);
       } else {
@@ -279,6 +365,7 @@ export default function AddressMapPicker({
     try {
       const loc = await getPreciseDeviceLocation();
       setCenter({ lat: loc.latitude, lng: loc.longitude });
+      setPin({ lat: loc.latitude, lng: loc.longitude });
       setZoom(18);
       reverseGeocode(loc.latitude, loc.longitude);
     } catch (err: any) {
@@ -329,12 +416,12 @@ export default function AddressMapPicker({
 
     // Send the complete selected delivery point address to addressLine1
     const fullSelectedAddress =
-      formattedAddress.trim() || `Location (${center.lat.toFixed(5)}, ${center.lng.toFixed(5)})`;
+      formattedAddress.trim() || `Location (${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)})`;
 
     onSelectLocation({
       address: fullSelectedAddress,
-      latitude: center.lat,
-      longitude: center.lng,
+      latitude: pin.lat,
+      longitude: pin.lng,
       city: finalCity,
       state: finalState,
       pincode: finalPincode,
@@ -467,6 +554,7 @@ export default function AddressMapPicker({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onDoubleClick={handleDoubleClick}
         onWheel={handleWheel}
         className={`relative flex-1 min-h-[220px] w-full bg-[#f2efe9] overflow-hidden select-none touch-none ${
           isDragging ? 'cursor-grabbing' : 'cursor-grab'
@@ -508,69 +596,84 @@ export default function AddressMapPicker({
         {/* Floating Helper Banner */}
         <div className="absolute top-2.5 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-black/75 backdrop-blur-md border border-white/15 text-[11px] text-white shadow-xl pointer-events-none flex items-center gap-1.5 z-10">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>Move map to position pin on your doorstep</span>
+          <span>Move map or click anywhere to position pin</span>
         </div>
 
         {/* Zoom Controls (+ / -) */}
-        <div className="absolute bottom-4 right-4 flex flex-col gap-1.5 z-10">
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute bottom-4 right-4 flex flex-col bg-white/95 backdrop-blur-md rounded-xl shadow-xl border border-neutral-300 overflow-hidden z-20"
+        >
           <button
             type="button"
-            onClick={() => setZoom((z) => Math.min(19, z + 1))}
-            className="w-8 h-8 rounded-lg bg-white/95 text-neutral-800 hover:bg-white shadow-lg border border-neutral-300 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
-            title="Zoom In"
+            onClick={(e) => {
+              e.stopPropagation();
+              setZoom((z) => Math.min(19, z + 1));
+            }}
+            className="w-9 h-9 sm:w-10 sm:h-10 text-neutral-800 hover:bg-neutral-100 active:bg-neutral-200 flex items-center justify-center transition-all cursor-pointer"
+            title="Zoom In (+)"
           >
-            <Plus size={16} />
+            <Plus size={18} strokeWidth={2.5} />
           </button>
+          <div className="w-full h-px bg-neutral-200" />
           <button
             type="button"
-            onClick={() => setZoom((z) => Math.max(5, z - 1))}
-            className="w-8 h-8 rounded-lg bg-white/95 text-neutral-800 hover:bg-white shadow-lg border border-neutral-300 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
-            title="Zoom Out"
+            onClick={(e) => {
+              e.stopPropagation();
+              setZoom((z) => Math.max(5, z - 1));
+            }}
+            className="w-9 h-9 sm:w-10 sm:h-10 text-neutral-800 hover:bg-neutral-100 active:bg-neutral-200 flex items-center justify-center transition-all cursor-pointer"
+            title="Zoom Out (-)"
           >
-            <Minus size={16} />
+            <Minus size={18} strokeWidth={2.5} />
           </button>
         </div>
 
         {/* Re-Center on Device GPS Button */}
         <button
           type="button"
-          onClick={handleLocateMe}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLocateMe();
+          }}
           disabled={locatingUser}
-          className="absolute bottom-4 left-4 z-10 px-3 py-1.5 bg-white/95 hover:bg-white text-neutral-800 rounded-lg shadow-lg border border-neutral-300 flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 cursor-pointer"
+          className="absolute bottom-4 left-4 z-20 px-3.5 py-2 bg-white/95 hover:bg-white text-neutral-900 rounded-xl shadow-xl border border-neutral-300 flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 cursor-pointer disabled:opacity-60"
         >
-          <Navigation size={13} className="text-blue-600" />
+          <Navigation size={14} className="text-blue-600 fill-blue-600" />
           <span>Locate Me</span>
         </button>
 
-        {/* Stationary Center Delivery Pin */}
+        {/* Dynamic Delivery Pin Marker (Placed exactly at pin coordinates) */}
         <div
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center transition-transform duration-150"
+          className="absolute pointer-events-none z-30 flex flex-col items-center -translate-x-1/2 -translate-y-full transition-[top,left] duration-150 ease-out"
           style={{
-            transform: isDragging
-              ? 'translate(-50%, -100%) translateY(-10px) scale(1.08)'
-              : 'translate(-50%, -100%)',
+            left: `${pinScreenPos.x}px`,
+            top: `${pinScreenPos.y}px`,
           }}
         >
+          {/* Animated Badge on the Pin */}
+          <div className="mb-1 px-2.5 py-0.5 rounded-full bg-black/85 text-white text-[10px] font-bold whitespace-nowrap shadow-lg flex items-center gap-1 border border-white/20 animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+            <span>Delivery Point</span>
+          </div>
+
           {/* SVG Marker Pin */}
           <div className="relative">
             <svg
-              className="w-9 h-11 drop-shadow-xl text-red-600"
+              className="w-10 h-12 drop-shadow-2xl text-red-600 filter"
               viewBox="0 0 24 24"
               fill="currentColor"
             >
               <path d="M12 0C7.58 0 4 3.58 4 8c0 5.25 7 13 8 13s8-7.75 8-13c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" />
             </svg>
-            <div className="absolute top-[8px] left-[11px] w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-inner">
+            <div className="absolute top-[8px] left-[13px] w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-inner">
               <div className="w-1.5 h-1.5 bg-red-600 rounded-full" />
             </div>
           </div>
 
           {/* Pulse Shadow at the Pin Point */}
-          <div
-            className={`w-3 h-1.5 bg-black/40 rounded-full blur-[1px] transition-all duration-150 ${
-              isDragging ? 'scale-75 opacity-30' : 'scale-100 opacity-80'
-            }`}
-          />
+          <div className="w-3.5 h-1.5 bg-black/50 rounded-full blur-[1px] -mt-0.5" />
         </div>
       </div>
 
@@ -590,12 +693,12 @@ export default function AddressMapPicker({
                 className="text-xs text-ztext font-medium leading-snug line-clamp-2 mt-0.5"
                 title={formattedAddress}
               >
-                {formattedAddress || 'Move map to pinpoint delivery address'}
+                {formattedAddress || 'Click anywhere on map to pinpoint delivery address'}
               </p>
             </div>
           </div>
           <span className="font-mono text-[10px] sm:text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-2 py-1 rounded-lg font-semibold shrink-0">
-            📍 {center.lat.toFixed(5)}, {center.lng.toFixed(5)}
+            📍 {pin.lat.toFixed(5)}, {pin.lng.toFixed(5)}
           </span>
         </div>
 
