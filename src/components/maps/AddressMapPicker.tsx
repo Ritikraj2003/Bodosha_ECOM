@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapPin, Search, X, Check, Loader2, AlertCircle } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { MapPin, Search, X, Check, Loader2, Navigation, Plus, Minus } from 'lucide-react';
 import { getPreciseDeviceLocation } from '@/lib/device-location';
 
 export interface LocationResult {
@@ -24,11 +24,23 @@ interface AddressMapPickerProps {
   isInline?: boolean;
 }
 
-declare global {
-  interface Window {
-    google?: any;
-    gm_authFailure?: () => void;
-  }
+// Slippy Map Math Helpers
+function latLngToPixel(lat: number, lng: number, zoom: number) {
+  const n = Math.pow(2, zoom);
+  const x = ((lng + 180) / 360) * n * 256;
+  const latRad = (lat * Math.PI) / 180;
+  const clampedLat = Math.max(-85.0511, Math.min(85.0511, lat));
+  const clampedLatRad = (clampedLat * Math.PI) / 180;
+  const y = ((1 - Math.log(Math.tan(clampedLatRad) + 1 / Math.cos(clampedLatRad)) / Math.PI) / 2) * n * 256;
+  return { x, y };
+}
+
+function pixelToLatLng(x: number, y: number, zoom: number) {
+  const n = Math.pow(2, zoom);
+  const lng = (x / (256 * n)) * 360 - 180;
+  const latRad = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / (256 * n))));
+  const lat = (latRad * 180) / Math.PI;
+  return { lat, lng };
 }
 
 export default function AddressMapPicker({
@@ -39,17 +51,20 @@ export default function AddressMapPicker({
   onClose,
   isInline = false,
 }: AddressMapPickerProps) {
-  const mapRef = useRef<HTMLDivElement | null>(null);
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // Dynamic user coordinates
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(() => {
+  // Center coordinates (Default to initial or Bilekahalli, Bengaluru)
+  const [center, setCenter] = useState<{ lat: number; lng: number }>(() => {
     if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng)) {
       return { lat: initialLat, lng: initialLng };
     }
-    return null;
+    return { lat: 12.89968, lng: 77.60822 };
   });
 
+  const [zoom, setZoom] = useState<number>(17);
+  const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 600, h: 400 });
+
+  // Address details
   const [formattedAddress, setFormattedAddress] = useState<string>(initialAddress);
   const [city, setCity] = useState<string>('');
   const [state, setState] = useState<string>('');
@@ -57,77 +72,89 @@ export default function AddressMapPicker({
   const [locality, setLocality] = useState<string>('');
   const [addressLine1, setAddressLine1] = useState<string>('');
 
-  const [loadingMap, setLoadingMap] = useState<boolean>(true);
-  const [locatingUser, setLocatingUser] = useState<boolean>(true);
+  // UI state
+  const [isDragging, setIsDragging] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searching, setSearching] = useState<boolean>(false);
-  const [errorMsg, setErrorMsg] = useState<string>('');
-  const [useEmbedFallback, setUseEmbedFallback] = useState<boolean>(false);
+  const [locatingUser, setLocatingUser] = useState<boolean>(false);
+  const [geocoding, setGeocoding] = useState<boolean>(false);
 
-  // Google Map instances
-  const googleMapInstance = useRef<any>(null);
-  const googleMarkerInstance = useRef<any>(null);
+  // Drag interaction refs
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    startCenter: { lat: number; lng: number };
+    isPointerDown: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    startCenter: center,
+    isPointerDown: false,
+  });
 
-  // Reverse geocode to get street address from coordinates
-  const reverseGeocode = useCallback((lat: number, lng: number) => {
-    if (window.google?.maps?.Geocoder) {
-      const geocoder = new window.google.maps.Geocoder();
-      geocoder.geocode({ location: { lat, lng } }, (results: any[], status: string) => {
-        if (status === 'OK' && results && results[0]) {
-          const res = results[0];
-          setFormattedAddress(res.formatted_address);
-
-          let detectedPincode = '';
-          let detectedCity = '';
-          let detectedState = '';
-          let detectedLocality = '';
-          let detectedRoute = '';
-          let detectedBuilding = '';
-
-          for (const comp of res.address_components || []) {
-            if (comp.types.includes('postal_code')) detectedPincode = comp.long_name;
-            if (comp.types.includes('locality')) detectedCity = comp.long_name;
-            if (comp.types.includes('administrative_area_level_1')) detectedState = comp.long_name;
-            if (comp.types.includes('sublocality_level_1')) detectedLocality = comp.long_name;
-            if (comp.types.includes('route')) detectedRoute = comp.long_name;
-            if (comp.types.includes('premise') || comp.types.includes('point_of_interest') || comp.types.includes('establishment')) {
-              detectedBuilding = comp.long_name;
-            }
-          }
-
-          if (detectedCity) setCity(detectedCity);
-          if (detectedState) setState(detectedState);
-          if (detectedPincode) setPincode(detectedPincode);
-          if (detectedLocality) setLocality(detectedLocality);
-          const line1 = [detectedBuilding, detectedRoute, detectedLocality].filter(Boolean).join(', ') || res.formatted_address.split(',')[0];
-          setAddressLine1(line1);
-          return;
-        }
-        fetchReverseFallback(lat, lng);
-      });
-    } else {
-      fetchReverseFallback(lat, lng);
-    }
+  // Measure container size
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const updateSize = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setContainerSize({ w: Math.max(200, rect.width), h: Math.max(150, rect.height) });
+      }
+    };
+    updateSize();
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  const fetchReverseFallback = (lat: number, lng: number) => {
-    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`)
+  // Reverse geocoding on drag end or position change
+  const reverseGeocode = useCallback((lat: number, lng: number) => {
+    setGeocoding(true);
+    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+      headers: { 'Accept-Language': 'en' },
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data && data.display_name) {
-          setFormattedAddress(data.display_name);
+          const fullDisplayName = data.display_name;
+          setFormattedAddress(fullDisplayName);
           const addr = data.address || {};
-          const detectedCity = addr.city || addr.town || addr.village || addr.city_district || addr.county || '';
-          const detectedState = addr.state || '';
-          const detectedPincode = addr.postcode || '';
-          const detectedLocality = addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || '';
 
-          const parts = [
-            addr.amenity || addr.shop || addr.building || addr.office,
-            addr.road || addr.pedestrian,
-            addr.suburb || addr.neighbourhood,
-          ].filter(Boolean);
-          const line1 = parts.length > 0 ? parts.join(', ') : data.display_name.split(',').slice(0, 3).join(', ');
+          // City detection: city > town > village > city_district > county
+          const detectedCity =
+            addr.city || addr.town || addr.village || addr.city_district || addr.county || '';
+          
+          // State detection
+          const detectedState = addr.state || '';
+
+          // 6-digit Pincode detection (from addr.postcode or regex on display_name)
+          let detectedPincode = addr.postcode || '';
+          if (!detectedPincode || !/^\d{6}$/.test(detectedPincode)) {
+            const m = fullDisplayName.match(/\b([1-9][0-9]{5})\b/);
+            if (m) detectedPincode = m[1];
+          }
+
+          // Locality detection: suburb > neighbourhood > quarter > residential
+          const detectedLocality =
+            addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || '';
+
+          // Build Area & Street addressLine1 intelligently:
+          // e.g. "Hongasandra, Bommanahalli" or premise + road + suburb
+          const premise = addr.amenity || addr.shop || addr.building || addr.office || addr.house_number;
+          const road = addr.road || addr.pedestrian || addr.street;
+          const quarter = addr.quarter;
+          const suburb = addr.suburb || addr.neighbourhood;
+
+          const localParts = [premise, road, quarter, suburb].filter(Boolean);
+          // Remove duplicates
+          const uniqueParts = Array.from(new Set(localParts));
+
+          let line1 = '';
+          if (uniqueParts.length > 0) {
+            line1 = uniqueParts.join(', ');
+          } else {
+            const segs = fullDisplayName.split(',').map((s: string) => s.trim());
+            line1 = segs.slice(0, Math.min(2, segs.length)).join(', ');
+          }
 
           setCity(detectedCity);
           setState(detectedState);
@@ -136,183 +163,88 @@ export default function AddressMapPicker({
           setAddressLine1(line1);
         }
       })
-      .catch(() => {});
-  };
+      .catch((e) => console.warn('Reverse geocode error:', e))
+      .finally(() => setGeocoding(false));
+  }, []);
 
-  // Update pin and coordinates
-  const handlePositionChange = useCallback(
-    (lat: number, lng: number, shouldGeocode = true) => {
-      setCoords({ lat, lng });
-
-      // Update Google marker if active
-      if (googleMapInstance.current && googleMarkerInstance.current) {
-        const newPos = new window.google.maps.LatLng(lat, lng);
-        googleMapInstance.current.panTo(newPos);
-        googleMarkerInstance.current.setPosition(newPos);
-      }
-
-      if (shouldGeocode) {
-        reverseGeocode(lat, lng);
-      }
-    },
-    [reverseGeocode]
-  );
-
-  // 1. DYNAMIC USER GPS: Fetch user's real location or initial address when map opens
+  // Auto-detect user device location on mount if no initial coordinates provided
   useEffect(() => {
     if (initialLat && initialLng && !isNaN(initialLat) && !isNaN(initialLng)) {
-      setCoords({ lat: initialLat, lng: initialLng });
-      setLocatingUser(false);
+      setCenter({ lat: initialLat, lng: initialLng });
+      reverseGeocode(initialLat, initialLng);
       return;
     }
 
     setLocatingUser(true);
-
     getPreciseDeviceLocation()
       .then((loc) => {
-        setCoords({ lat: loc.latitude, lng: loc.longitude });
-        setLocatingUser(false);
+        setCenter({ lat: loc.latitude, lng: loc.longitude });
         reverseGeocode(loc.latitude, loc.longitude);
       })
-      .catch((err) => {
-        console.warn('Device location auto-detect failed:', err);
-        // Fallback to initialAddress if provided
-        if (initialAddress && initialAddress.trim().length > 3) {
-          fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-              initialAddress
-            )}&countrycodes=in&limit=1`
-          )
-            .then((r) => r.json())
-            .then((data) => {
-              if (data && data.length > 0) {
-                const lat = parseFloat(data[0].lat);
-                const lng = parseFloat(data[0].lon);
-                setCoords({ lat, lng });
-                setFormattedAddress(data[0].display_name);
-              } else {
-                setCoords({ lat: 12.89968, lng: 77.60831 }); // Bilekahalli, Bengaluru
-              }
-            })
-            .catch(() => {
-              setCoords({ lat: 12.89968, lng: 77.60831 });
-            })
-            .finally(() => setLocatingUser(false));
-        } else {
-          setCoords({ lat: 12.89968, lng: 77.60831 }); // Bilekahalli, Bengaluru
-          setLocatingUser(false);
-        }
-      });
-  }, [initialAddress, initialLat, initialLng, reverseGeocode]);
+      .catch(() => {
+        // Keep default Bengaluru center
+        reverseGeocode(12.89968, 77.60822);
+      })
+      .finally(() => setLocatingUser(false));
+  }, [initialLat, initialLng, reverseGeocode]);
 
-  // Google Maps Auth Failure listener
-  useEffect(() => {
-    window.gm_authFailure = () => {
-      console.warn('Google Maps auth failure detected. Switching to Google Embed view.');
-      setUseEmbedFallback(true);
-      setLoadingMap(false);
+  // Pointer Drag Handlers
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Only left click
+    if (e.button !== 0) return;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startCenter: center,
+      isPointerDown: true,
     };
-  }, []);
+    setIsDragging(true);
+  };
 
-  // Initialize Google Map
-  useEffect(() => {
-    if (!coords) return;
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current.isPointerDown) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
 
-    if (!apiKey) {
-      setUseEmbedFallback(true);
-      setLoadingMap(false);
-      return;
-    }
+    const startPixel = latLngToPixel(
+      dragRef.current.startCenter.lat,
+      dragRef.current.startCenter.lng,
+      zoom
+    );
 
-    const scriptId = 'google-maps-script';
-    let script = document.getElementById(scriptId) as HTMLScriptElement | null;
-
-    const setupGoogle = () => {
-      if (!window.google?.maps || !mapRef.current) {
-        setUseEmbedFallback(true);
-        setLoadingMap(false);
-        return;
-      }
-
-      try {
-        const map = new window.google.maps.Map(mapRef.current, {
-          center: { lat: coords.lat, lng: coords.lng },
-          zoom: 17,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
-        });
-
-        const marker = new window.google.maps.Marker({
-          position: { lat: coords.lat, lng: coords.lng },
-          map,
-          draggable: true,
-          animation: window.google.maps.Animation.DROP,
-          title: 'Delivery Location',
-        });
-
-        googleMapInstance.current = map;
-        googleMarkerInstance.current = marker;
-
-        marker.addListener('dragend', () => {
-          const pos = marker.getPosition();
-          if (pos) handlePositionChange(pos.lat(), pos.lng(), true);
-        });
-
-        map.addListener('click', (e: any) => {
-          if (e.latLng) handlePositionChange(e.latLng.lat(), e.latLng.lng(), true);
-        });
-
-        // Places Autocomplete
-        if (searchInputRef.current && window.google.maps.places) {
-          const autocomplete = new window.google.maps.places.Autocomplete(
-            searchInputRef.current,
-            { types: ['geocode', 'establishment'], componentRestrictions: { country: 'in' } }
-          );
-          autocomplete.bindTo('bounds', map);
-          autocomplete.addListener('place_changed', () => {
-            const place = autocomplete.getPlace();
-            if (place.geometry && place.geometry.location) {
-              const lat = place.geometry.location.lat();
-              const lng = place.geometry.location.lng();
-              handlePositionChange(lat, lng, false);
-              setFormattedAddress(place.formatted_address || place.name || '');
-            }
-          });
-        }
-
-        setLoadingMap(false);
-      } catch (e) {
-        console.error('Google Map setup failed:', e);
-        setUseEmbedFallback(true);
-        setLoadingMap(false);
-      }
+    const newPixel = {
+      x: startPixel.x - dx,
+      y: startPixel.y - dy,
     };
 
-    if (window.google?.maps) {
-      setupGoogle();
-    } else {
-      if (!script) {
-        script = document.createElement('script');
-        script.id = scriptId;
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-        script.async = true;
-        script.defer = true;
-        script.onload = setupGoogle;
-        script.onerror = () => {
-          setUseEmbedFallback(true);
-          setLoadingMap(false);
-        };
-        document.head.appendChild(script);
-      } else {
-        script.addEventListener('load', setupGoogle);
-      }
-    }
-  }, [coords, handlePositionChange]);
+    const newCenter = pixelToLatLng(newPixel.x, newPixel.y, zoom);
+    setCenter(newCenter);
+  };
 
-  // Handle Search submit
-  const handleSearchSubmit = async (e: React.FormEvent) => {
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!dragRef.current.isPointerDown) return;
+    dragRef.current.isPointerDown = false;
+    setIsDragging(false);
+    try {
+      (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+    } catch {}
+    // Reverse geocode new center when drag stops
+    reverseGeocode(center.lat, center.lng);
+  };
+
+  // Wheel Zoom with preventDefault
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    if (e.deltaY < 0) {
+      setZoom((z) => Math.min(19, z + 1));
+    } else if (e.deltaY > 0) {
+      setZoom((z) => Math.max(5, z - 1));
+    }
+  };
+
+  // Search Address / Landmark
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
@@ -321,67 +253,139 @@ export default function AddressMapPicker({
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
           searchQuery.trim()
-        )}&countrycodes=in&limit=1`
+        )}&countrycodes=in&limit=1`,
+        { headers: { 'Accept-Language': 'en' } }
       );
       const data = await res.json();
       if (data && data.length > 0) {
-        const item = data[0];
-        const lat = parseFloat(item.lat);
-        const lng = parseFloat(item.lon);
-        handlePositionChange(lat, lng, false);
-        setFormattedAddress(item.display_name);
+        const newLat = parseFloat(data[0].lat);
+        const newLng = parseFloat(data[0].lon);
+        setCenter({ lat: newLat, lng: newLng });
+        setZoom(17);
+        reverseGeocode(newLat, newLng);
       } else {
-        alert('Location not found. Please try dragging the pin directly on the map.');
+        alert('Location not found. Please try dragging the map to your area.');
       }
     } catch {
-      alert('Could not search location. Please try dragging the pin.');
+      alert('Search failed. Please try dragging the map directly.');
     } finally {
       setSearching(false);
     }
   };
 
-  // Re-fetch Live GPS
-  const handleReLocate = async () => {
+  // Re-center on Device GPS
+  const handleLocateMe = async () => {
     setLocatingUser(true);
-    setErrorMsg('');
     try {
       const loc = await getPreciseDeviceLocation();
-      handlePositionChange(loc.latitude, loc.longitude, true);
-      if (googleMapInstance.current) {
-        googleMapInstance.current.setZoom(17);
-      }
+      setCenter({ lat: loc.latitude, lng: loc.longitude });
+      setZoom(18);
+      reverseGeocode(loc.latitude, loc.longitude);
     } catch (err: any) {
-      console.warn('GPS location request error:', err);
-      if (err?.isPermissionDenied) {
-        setErrorMsg('Location access is blocked. Tap anywhere on map or drag pin.');
-      } else {
-        setErrorMsg('Could not detect device GPS. Please drag the pin or search your area.');
-      }
+      alert(err?.message || 'Could not fetch device GPS. Please drag the pin on map.');
     } finally {
       setLocatingUser(false);
     }
   };
 
+  // Confirm Location Handler
   const handleConfirm = () => {
-    if (!coords) return;
-    onSelectLocation({
-      address: formattedAddress.trim() || `Coordinates: ${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`,
-      latitude: coords.lat,
-      longitude: coords.lng,
-      city,
-      state,
-      pincode,
-      locality,
-      addressLine1,
-    });
-    if (onClose) {
-      onClose();
+    let finalPincode = pincode;
+    if (!finalPincode && formattedAddress) {
+      const pinMatch = formattedAddress.match(/\b([1-9][0-9]{5})\b/);
+      if (pinMatch) finalPincode = pinMatch[1];
     }
+
+    let finalState = state;
+    if (!finalState && formattedAddress) {
+      const INDIAN_STATES_LIST = [
+        'Andaman and Nicobar Islands', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar',
+        'Chandigarh', 'Chhattisgarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+        'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jammu and Kashmir', 'Jharkhand',
+        'Karnataka', 'Kerala', 'Ladakh', 'Lakshadweep', 'Madhya Pradesh', 'Maharashtra',
+        'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Puducherry', 'Punjab',
+        'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura', 'Uttar Pradesh',
+        'Uttarakhand', 'West Bengal'
+      ];
+      const matched = INDIAN_STATES_LIST.find((st) => formattedAddress.toLowerCase().includes(st.toLowerCase()));
+      if (matched) finalState = matched;
+    }
+
+    let finalCity = city;
+    if (!finalCity && formattedAddress) {
+      const parts = formattedAddress.split(',').map((s) => s.trim());
+      if (parts.length >= 4) {
+        finalCity = parts[parts.length - 4] || parts[parts.length - 3] || '';
+      }
+    }
+
+    let finalLocality = locality;
+    if (!finalLocality && formattedAddress) {
+      const parts = formattedAddress.split(',').map((s) => s.trim());
+      if (parts.length > 1) {
+        finalLocality = parts[1] || parts[0] || '';
+      }
+    }
+
+    // Send the complete selected delivery point address to addressLine1
+    const fullSelectedAddress =
+      formattedAddress.trim() || `Location (${center.lat.toFixed(5)}, ${center.lng.toFixed(5)})`;
+
+    onSelectLocation({
+      address: fullSelectedAddress,
+      latitude: center.lat,
+      longitude: center.lng,
+      city: finalCity,
+      state: finalState,
+      pincode: finalPincode,
+      locality: finalLocality,
+      addressLine1: fullSelectedAddress,
+    });
+    if (onClose) onClose();
   };
 
+  // Calculate visible tiles for current center, zoom, and container size
+  const tiles = useMemo(() => {
+    const centerPixel = latLngToPixel(center.lat, center.lng, zoom);
+    const tlX = centerPixel.x - containerSize.w / 2;
+    const tlY = centerPixel.y - containerSize.h / 2;
+
+    const numTiles = Math.pow(2, zoom);
+    const minTileX = Math.floor(tlX / 256);
+    const maxTileX = Math.floor((tlX + containerSize.w) / 256);
+    const minTileY = Math.max(0, Math.floor(tlY / 256));
+    const maxTileY = Math.min(numTiles - 1, Math.floor((tlY + containerSize.h) / 256));
+
+    const tileList: Array<{ key: string; url: string; wrappedX: number; y: number; left: number; top: number }> = [];
+
+    for (let x = minTileX; x <= maxTileX; x++) {
+      for (let y = minTileY; y <= maxTileY; y++) {
+        const wrappedX = ((x % numTiles) + numTiles) % numTiles;
+        const left = Math.round(x * 256 - tlX);
+        const top = Math.round(y * 256 - tlY);
+        // Google Maps Standard Raster Tiles (No API key required, zero watermark)
+        const sub = Math.abs((wrappedX + y) % 4);
+        const url = `https://mt${sub}.google.com/vt/lyrs=m&x=${wrappedX}&y=${y}&z=${zoom}`;
+        tileList.push({
+          key: `${zoom}-${wrappedX}-${y}`,
+          url,
+          wrappedX,
+          y,
+          left,
+          top,
+        });
+      }
+    }
+    return tileList;
+  }, [center, zoom, containerSize]);
+
   const mapBody = (
-    <div className={`flex flex-col h-full w-full overflow-hidden ${!isInline ? 'bg-zcard border border-zborder rounded-2xl shadow-2xl h-[88vh] max-h-[600px] sm:max-h-[640px]' : ''}`}>
-      {/* Header - only show if NOT isInline */}
+    <div
+      className={`flex flex-col h-full w-full overflow-hidden ${
+        !isInline ? 'bg-zcard border border-zborder rounded-2xl shadow-2xl h-[88vh] max-h-[640px]' : ''
+      }`}
+    >
+      {/* 1. Header */}
       {!isInline && (
         <div className="px-4 sm:px-5 py-3 border-b border-zborder flex items-center justify-between bg-zsurface shrink-0">
           <div className="flex items-center gap-2.5">
@@ -391,14 +395,15 @@ export default function AddressMapPicker({
             <div>
               <h3 className="text-sm sm:text-base font-bold text-ztext">Pin Delivery Location</h3>
               <p className="text-[11px] text-ztext-light">
-                {locatingUser ? 'Detecting your device GPS location...' : 'Drag the red pin to your exact room / building'}
+                Drag the map to place the red pin on your exact doorstep
               </p>
             </div>
           </div>
           {onClose && (
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zcard transition-colors"
+              className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zcard transition-colors cursor-pointer"
             >
               <X size={18} />
             </button>
@@ -406,149 +411,200 @@ export default function AddressMapPicker({
         </div>
       )}
 
-      {/* Search Bar & GPS Button */}
-      <form onSubmit={handleSearchSubmit} className="p-2 sm:p-2.5 bg-zcard border-b border-zborder flex items-center gap-2 shrink-0">
+      {/* 2. Clean Search Bar (Free from Google Places errors or warning icons) */}
+      <form
+        onSubmit={handleSearch}
+        className="p-2 sm:p-2.5 bg-zcard border-b border-zborder flex items-center gap-2 shrink-0"
+      >
         <div className="relative flex-1">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ztext-light" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ztext-light pointer-events-none" />
           <input
-            ref={searchInputRef}
             type="text"
-            placeholder="Search hostel, colony, landmark or area..."
+            placeholder="Search colony, landmark, area or street..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="input-z w-full pl-8 sm:pl-9 text-xs sm:text-sm h-8 sm:h-9"
+            className="w-full pl-8 pr-8 py-2 bg-zsurface border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder:text-ztext-light/50 focus:outline-none focus:border-blue-500 transition-colors"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ztext-light hover:text-white"
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
+
         <button
           type="submit"
           disabled={searching || !searchQuery.trim()}
-          className="button-z button-z-secondary h-8 sm:h-9 px-3 text-xs shrink-0 font-medium"
+          className="px-3.5 py-2 bg-zsurface hover:bg-zborder border border-zborder text-ztext rounded-xl text-xs font-semibold shrink-0 cursor-pointer disabled:opacity-50 transition-colors"
         >
-          {searching ? <Loader2 size={13} className="animate-spin text-zred" /> : 'Search'}
+          {searching ? <Loader2 size={13} className="animate-spin text-blue-500" /> : 'Search'}
         </button>
+
         <button
           type="button"
-          onClick={handleReLocate}
+          onClick={handleLocateMe}
           disabled={locatingUser}
-          className="h-8 sm:h-9 px-2.5 sm:px-3.5 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-xl text-xs flex items-center gap-1.5 shrink-0 font-bold transition-all shadow-md shadow-red-600/20 cursor-pointer"
-          title="Detect Your Location"
+          className="px-3 py-2 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-1.5 transition-all shadow-md shadow-red-600/20 cursor-pointer disabled:opacity-50"
+          title="Detect Your GPS Location"
         >
           {locatingUser ? (
-            <Loader2 size={13} className="animate-spin text-white" />
+            <Loader2 size={14} className="animate-spin text-white" />
           ) : (
-            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="7" />
-              <circle cx="12" cy="12" r="3" fill="currentColor" />
-              <line x1="12" y1="2" x2="12" y2="5" />
-              <line x1="12" y1="19" x2="12" y2="22" />
-              <line x1="2" y1="12" x2="5" y2="12" />
-              <line x1="19" y1="12" x2="22" y2="12" />
-            </svg>
+            <Navigation size={14} />
           )}
-          <span>Your Location</span>
+          <span className="hidden sm:inline">My Location</span>
         </button>
       </form>
 
-      {/* Error notification banner if location blocked */}
-      {errorMsg && (
-        <div className="px-3 py-1.5 bg-red-500/15 border-b border-red-500/25 text-red-400 text-xs flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <AlertCircle size={14} className="shrink-0 text-red-400" />
-            <span className="truncate">{errorMsg}</span>
+      {/* 3. Interactive Slippy Map Canvas */}
+      <div
+        ref={containerRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+        onWheel={handleWheel}
+        className={`relative flex-1 min-h-[220px] w-full bg-[#f2efe9] overflow-hidden select-none touch-none ${
+          isDragging ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+      >
+        {/* Render Tiles */}
+        <div className="absolute inset-0 pointer-events-none">
+          {tiles.map((t) => (
+            <img
+              key={t.key}
+              src={t.url}
+              alt=""
+              loading="lazy"
+              draggable={false}
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (!img.dataset.fallback) {
+                  img.dataset.fallback = 'true';
+                  img.src = `https://tile.openstreetmap.org/${zoom}/${t.wrappedX}/${t.y}.png`;
+                }
+              }}
+              className="absolute w-[256px] h-[256px] select-none"
+              style={{
+                left: `${t.left}px`,
+                top: `${t.top}px`,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Loading / Locating Overlay */}
+        {locatingUser && (
+          <div className="absolute inset-0 bg-zsurface/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 z-20 pointer-events-none">
+            <Loader2 size={24} className="animate-spin text-blue-500" />
+            <p className="text-xs font-medium text-ztext">Acquiring your GPS location...</p>
           </div>
+        )}
+
+        {/* Floating Helper Banner */}
+        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 px-3.5 py-1 rounded-full bg-black/75 backdrop-blur-md border border-white/15 text-[11px] text-white shadow-xl pointer-events-none flex items-center gap-1.5 z-10">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span>Move map to position pin on your doorstep</span>
+        </div>
+
+        {/* Zoom Controls (+ / -) */}
+        <div className="absolute bottom-4 right-4 flex flex-col gap-1.5 z-10">
           <button
             type="button"
-            onClick={() => setErrorMsg('')}
-            className="text-red-400 hover:text-white text-xs ml-2 px-1 rounded cursor-pointer"
+            onClick={() => setZoom((z) => Math.min(19, z + 1))}
+            className="w-8 h-8 rounded-lg bg-white/95 text-neutral-800 hover:bg-white shadow-lg border border-neutral-300 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+            title="Zoom In"
           >
-            ✕
+            <Plus size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setZoom((z) => Math.max(5, z - 1))}
+            className="w-8 h-8 rounded-lg bg-white/95 text-neutral-800 hover:bg-white shadow-lg border border-neutral-300 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+            title="Zoom Out"
+          >
+            <Minus size={16} />
           </button>
         </div>
-      )}
 
-      {/* Map Container */}
-      <div className="relative flex-1 min-h-[160px] min-w-0 bg-zsurface flex items-center justify-center overflow-hidden">
-        {useEmbedFallback && coords ? (
-          <iframe
-            title="Google Maps Location Picker"
-            src={`https://maps.google.com/maps?q=${coords.lat},${coords.lng}&hl=en&z=17&output=embed`}
-            className="w-full h-full border-0 absolute inset-0"
-            loading="lazy"
-            allowFullScreen
-          />
-        ) : (
-          <div ref={mapRef} className="w-full h-full" />
-        )}
-
-        {(loadingMap || locatingUser) && (
-          <div className="absolute inset-0 bg-zsurface/85 backdrop-blur-sm flex flex-col items-center justify-center gap-2 z-10">
-            <Loader2 size={24} className="animate-spin text-zred" />
-            <p className="text-xs font-medium text-ztext">
-              {locatingUser ? 'Acquiring your GPS location...' : 'Loading Interactive Map...'}
-            </p>
-          </div>
-        )}
-
-        {/* Floating Helper */}
-        {!loadingMap && !locatingUser && (
-          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/80 backdrop-blur-md border border-white/15 text-[11px] text-white shadow-lg pointer-events-none flex items-center gap-1.5 z-10">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Drag pin or tap map to adjust delivery point</span>
-          </div>
-        )}
-
-        {/* Floating "Your Location" Crosshair Target Button on Map */}
+        {/* Re-Center on Device GPS Button */}
         <button
           type="button"
-          onClick={handleReLocate}
+          onClick={handleLocateMe}
           disabled={locatingUser}
-          className="absolute bottom-3 right-3 z-10 p-2 sm:px-3 sm:py-2 bg-white hover:bg-neutral-50 active:scale-95 rounded-xl shadow-xl border border-neutral-200 flex items-center gap-1.5 transition-all cursor-pointer group"
-          title="Your Location"
-          aria-label="Your Location"
+          className="absolute bottom-4 left-4 z-10 px-3 py-1.5 bg-white/95 hover:bg-white text-neutral-800 rounded-lg shadow-lg border border-neutral-300 flex items-center gap-1.5 text-xs font-bold transition-all active:scale-95 cursor-pointer"
         >
-          {locatingUser ? (
-            <Loader2 size={18} className="animate-spin text-blue-600" />
-          ) : (
-            <div className="relative flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-600 group-hover:scale-110 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="7" />
-                <circle cx="12" cy="12" r="3" fill="currentColor" />
-                <line x1="12" y1="2" x2="12" y2="5" />
-                <line x1="12" y1="19" x2="12" y2="22" />
-                <line x1="2" y1="12" x2="5" y2="12" />
-                <line x1="19" y1="12" x2="22" y2="12" />
-              </svg>
-            </div>
-          )}
-          <span className="text-xs font-semibold text-neutral-800 hidden sm:inline">Your Location</span>
+          <Navigation size={13} className="text-blue-600" />
+          <span>Locate Me</span>
         </button>
+
+        {/* Stationary Center Delivery Pin */}
+        <div
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 pointer-events-none z-10 flex flex-col items-center transition-transform duration-150"
+          style={{
+            transform: isDragging
+              ? 'translate(-50%, -100%) translateY(-10px) scale(1.08)'
+              : 'translate(-50%, -100%)',
+          }}
+        >
+          {/* SVG Marker Pin */}
+          <div className="relative">
+            <svg
+              className="w-9 h-11 drop-shadow-xl text-red-600"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
+              <path d="M12 0C7.58 0 4 3.58 4 8c0 5.25 7 13 8 13s8-7.75 8-13c0-4.42-3.58-8-8-8zm0 11c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z" />
+            </svg>
+            <div className="absolute top-[8px] left-[11px] w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-inner">
+              <div className="w-1.5 h-1.5 bg-red-600 rounded-full" />
+            </div>
+          </div>
+
+          {/* Pulse Shadow at the Pin Point */}
+          <div
+            className={`w-3 h-1.5 bg-black/40 rounded-full blur-[1px] transition-all duration-150 ${
+              isDragging ? 'scale-75 opacity-30' : 'scale-100 opacity-80'
+            }`}
+          />
+        </div>
       </div>
 
-      {/* Selected Address & Confirm Footer */}
-      <div className="p-2.5 sm:p-3 bg-zsurface border-t border-zborder shrink-0 space-y-2 z-20">
-        <div className="bg-zcard p-2 sm:p-2.5 rounded-xl border border-zborder flex items-start justify-between gap-2">
-          <div className="flex items-start gap-1.5 flex-1 min-w-0">
-            <MapPin size={14} className="text-red-500 shrink-0 mt-0.5" />
+      {/* 4. Footer with Selected Location & Confirm Button */}
+      <div className="p-3 bg-zsurface border-t border-zborder shrink-0 space-y-2 z-20">
+        <div className="bg-zcard p-2.5 rounded-xl border border-zborder flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <MapPin size={16} className="text-red-500 shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
-              <p className="text-[9px] uppercase font-bold text-ztext-light tracking-wider">Selected Delivery Location</p>
-              <p className="text-xs text-ztext font-medium leading-snug line-clamp-2 mt-0.5" title={formattedAddress}>
-                {formattedAddress || 'Tap map or drag pin to select address'}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase font-bold text-ztext-light tracking-wider">
+                  Selected Delivery Point
+                </span>
+                {geocoding && <Loader2 size={11} className="animate-spin text-blue-400" />}
+              </div>
+              <p
+                className="text-xs text-ztext font-medium leading-snug line-clamp-2 mt-0.5"
+                title={formattedAddress}
+              >
+                {formattedAddress || 'Move map to pinpoint delivery address'}
               </p>
             </div>
           </div>
-          {coords && (
-            <span className="font-mono text-[9px] sm:text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded font-semibold shrink-0">
-              📍 {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
-            </span>
-          )}
+          <span className="font-mono text-[10px] sm:text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 px-2 py-1 rounded-lg font-semibold shrink-0">
+            📍 {center.lat.toFixed(5)}, {center.lng.toFixed(5)}
+          </span>
         </div>
 
-        <div className="flex items-center justify-between sm:justify-end gap-2 pt-0.5">
+        <div className="flex items-center justify-between sm:justify-end gap-2.5 pt-0.5">
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="px-3 sm:px-4 py-2 rounded-xl text-xs font-semibold text-ztext-light hover:text-ztext hover:bg-zcard transition-colors uppercase tracking-wider"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-ztext-light hover:text-ztext hover:bg-zcard transition-colors uppercase tracking-wider cursor-pointer"
             >
               Cancel
             </button>
@@ -556,8 +612,7 @@ export default function AddressMapPicker({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={!coords}
-            className="flex-1 sm:flex-initial px-5 sm:px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-[0.98] text-white text-xs sm:text-sm font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all uppercase tracking-wider cursor-pointer disabled:opacity-50"
+            className="flex-1 sm:flex-initial px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-[0.98] text-white text-xs sm:text-sm font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition-all uppercase tracking-wider cursor-pointer"
           >
             <Check size={16} />
             <span>Confirm Location & Fill Form →</span>
@@ -572,8 +627,8 @@ export default function AddressMapPicker({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-2xl h-[88vh] max-h-[600px] sm:max-h-[640px] flex flex-col">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-2xl h-[88vh] max-h-[640px] flex flex-col">
         {mapBody}
       </div>
     </div>

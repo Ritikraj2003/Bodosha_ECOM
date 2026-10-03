@@ -1,10 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Navigation, MapPin, Loader2 } from 'lucide-react';
+import { X, Navigation, MapPin, Loader2, Check } from 'lucide-react';
 import type { Address } from '@/types';
 import type { AddressInput } from '../actions';
 import { getPreciseDeviceLocation } from '@/lib/device-location';
+import dynamic from 'next/dynamic';
+import type { LocationResult } from '@/components/maps/AddressMapPicker';
+
+const AddressMapPicker = dynamic(() => import('@/components/maps/AddressMapPicker'), { ssr: false });
 
 export const INDIAN_STATES = [
   'Andaman and Nicobar Islands',
@@ -76,11 +80,14 @@ export default function AddressModal({
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
 
+  const [showMapModal, setShowMapModal] = useState(false);
   const [locating, setLocating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [geoPermission, setGeoPermission] = useState<'prompt' | 'granted' | 'denied' | 'unknown'>('unknown');
 
+  const [mapSuccessMsg, setMapSuccessMsg] = useState('');
+  const userPinnedOnMap = useRef(false);
   const hasAutoRequestedLoc = useRef(false);
 
   // Monitor browser geolocation permission state
@@ -133,6 +140,8 @@ export default function AddressModal({
       setLongitude(null);
     }
     setError('');
+    setMapSuccessMsg('');
+    userPinnedOnMap.current = false;
   }, [initialData, defaultName, defaultPhone, isOpen]);
 
   // As soon as user opens modal to add an address, automatically ask for device location
@@ -151,19 +160,24 @@ export default function AddressModal({
   if (!isOpen) return null;
 
   async function fillFromCoords(lat: number, lng: number) {
+    // If user already pinned on map, don't overwrite with background geocode
+    if (userPinnedOnMap.current) return;
+
     setLatitude(lat);
     setLongitude(lng);
 
     // 1. Try Google Maps Geocoder if loaded on page
-    if (typeof window !== 'undefined' && window.google?.maps?.Geocoder) {
+    if (typeof window !== 'undefined' && (window as any).google?.maps?.Geocoder) {
       try {
-        const geocoder = new window.google.maps.Geocoder();
+        const geocoder = new (window as any).google.maps.Geocoder();
         const results = await new Promise<any[]>((resolve, reject) => {
           geocoder.geocode({ location: { lat, lng } }, (res: any[], status: string) => {
             if (status === 'OK' && res && res.length > 0) resolve(res);
             else reject(status);
           });
         });
+
+        if (userPinnedOnMap.current) return;
 
         if (results && results[0]) {
           const res = results[0];
@@ -188,7 +202,7 @@ export default function AddressModal({
           if (detectedPincode) setPostalCode(detectedPincode);
           if (detectedCity) setCity(detectedCity);
           if (detectedLocality) setLocality(detectedLocality);
-          const line1 = [detectedBuilding, detectedRoute, detectedLocality].filter(Boolean).join(', ') || res.formatted_address.split(',')[0];
+          const line1 = res.formatted_address || [detectedBuilding, detectedRoute, detectedLocality].filter(Boolean).join(', ');
           if (line1) setAddressLine1(line1);
 
           if (detectedState) {
@@ -210,6 +224,7 @@ export default function AddressModal({
       const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
         headers: { 'Accept-Language': 'en' },
       });
+      if (userPinnedOnMap.current) return;
       if (res.ok) {
         const data = await res.json();
         const addr = data.address || {};
@@ -219,17 +234,12 @@ export default function AddressModal({
         const fetchedState = addr.state || '';
         const fetchedLocality = addr.suburb || addr.neighbourhood || addr.quarter || addr.residential || '';
 
-        const parts = [
-          addr.amenity || addr.shop || addr.building || addr.office,
-          addr.road || addr.pedestrian,
-          addr.suburb || addr.neighbourhood,
-        ].filter(Boolean);
-        const fetchedRoad = parts.length > 0 ? parts.join(', ') : data.display_name?.split(',').slice(0, 3).join(', ') || '';
+        const fullDisplayAddress = data.display_name || '';
 
         if (fetchedPostcode) setPostalCode(fetchedPostcode);
         if (fetchedCity) setCity(fetchedCity);
         if (fetchedLocality) setLocality(fetchedLocality);
-        if (fetchedRoad) setAddressLine1(fetchedRoad);
+        if (fullDisplayAddress) setAddressLine1(fullDisplayAddress);
 
         const matchedState = INDIAN_STATES.find(
           (s) => s.toLowerCase() === fetchedState.toLowerCase() || fetchedState.toLowerCase().includes(s.toLowerCase())
@@ -258,6 +268,46 @@ export default function AddressModal({
     } finally {
       setLocating(false);
     }
+  }
+
+  function handleMapPicked(data: LocationResult) {
+    userPinnedOnMap.current = true;
+    setLocating(false);
+    setError('');
+    setMapSuccessMsg('Location & address details pinned from map! Please verify details and click Save.');
+
+    // 1. Directly patch the Latitude and Longitude into input boxes
+    setLatitude(data.latitude);
+    setLongitude(data.longitude);
+
+    // 2. Patch complete address into Address (Area and Street)
+    const fullSelectedAddress = data.address || data.addressLine1 || '';
+    if (fullSelectedAddress) {
+      setAddressLine1(fullSelectedAddress);
+    }
+
+    if (data.locality) {
+      setLocality(data.locality);
+    }
+
+    if (data.city) {
+      setCity(data.city);
+    }
+
+    if (data.state) {
+      const matched = INDIAN_STATES.find(
+        (s) => s.toLowerCase() === data.state?.toLowerCase() || data.state?.toLowerCase().includes(s.toLowerCase())
+      );
+      if (matched) setState(matched);
+      else setState(data.state);
+    }
+
+    if (data.pincode) {
+      setPostalCode(data.pincode);
+    }
+
+    setGeoPermission('granted');
+    setShowMapModal(false);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -349,16 +399,41 @@ export default function AddressModal({
               </div>
             )}
 
-            {/* Top Location Fetcher Button */}
-            <div>
+            {mapSuccessMsg && (
+              <div className="p-3 bg-emerald-500/15 border border-emerald-500/35 rounded-xl text-xs flex items-center justify-between gap-2 text-emerald-300 animate-fade-in">
+                <div className="flex items-center gap-2">
+                  <Check size={16} className="text-emerald-400 shrink-0" />
+                  <span className="font-semibold">{mapSuccessMsg}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMapSuccessMsg('')}
+                  className="p-1 hover:bg-emerald-500/20 rounded text-emerald-400"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {/* Top Location Fetcher Buttons */}
+            <div className="flex flex-col sm:flex-row gap-2.5">
               <button
                 type="button"
                 onClick={handleUseCurrentLocation}
                 disabled={locating || saving}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
                 {locating ? <Loader2 size={16} className="animate-spin text-white" /> : <Navigation size={16} />}
                 <span>{locating ? 'Detecting Location...' : 'Use Current Location'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowMapModal(true)}
+                className="px-4 py-3 bg-zsurface hover:bg-zcard border border-zborder text-ztext rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-[0.99]"
+              >
+                <MapPin size={16} className="text-red-500" />
+                <span>Pin from Map</span>
               </button>
             </div>
 
@@ -381,6 +456,15 @@ export default function AddressModal({
                   <span className="text-xs font-bold text-ztext uppercase tracking-wider">
                     GPS Coordinates
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowMapModal(true)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-[11px] font-semibold text-blue-400 transition-colors cursor-pointer"
+                    title="Open interactive map to choose pin location"
+                  >
+                    <MapPin size={11} className="text-red-400" />
+                    <span>Pin on Map</span>
+                  </button>
                 </div>
                 {/* Dynamic Permission Status Badge */}
                 {geoPermission === 'granted' ? (
@@ -527,7 +611,7 @@ export default function AddressModal({
               </label>
               <textarea
                 required
-                rows={2}
+                rows={3}
                 placeholder="Flat / House No. / Building Name, Street / Road"
                 value={addressLine1}
                 onChange={(e) => setAddressLine1(e.target.value)}
@@ -681,6 +765,17 @@ export default function AddressModal({
           </form>
         </div>
       </div>
+
+      {/* Interactive Google Map Picker Modal */}
+      {showMapModal && (
+        <AddressMapPicker
+          initialLat={latitude || undefined}
+          initialLng={longitude || undefined}
+          initialAddress={[addressLine1, locality, city, state].filter(Boolean).join(', ')}
+          onSelectLocation={handleMapPicked}
+          onClose={() => setShowMapModal(false)}
+        />
+      )}
     </>
   );
 }
