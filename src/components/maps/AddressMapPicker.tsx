@@ -124,6 +124,34 @@ export default function AddressMapPicker({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
+  // Dedicated Native Wheel Listener with { passive: false } to strictly prevent whole-page zoom or scroll
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handleWheelNative = (e: WheelEvent) => {
+      // 1. Strictly prevent browser from scrolling the page or doing whole-page zoom
+      e.preventDefault();
+      e.stopPropagation();
+
+      const now = Date.now();
+      if (now - lastWheelTimeRef.current < 120) return;
+      lastWheelTimeRef.current = now;
+
+      // 2. Only zoom the map itself!
+      if (e.deltaY < 0) {
+        setZoom((z) => Math.min(19, z + 1));
+      } else if (e.deltaY > 0) {
+        setZoom((z) => Math.max(5, z - 1));
+      }
+    };
+
+    el.addEventListener('wheel', handleWheelNative, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheelNative);
+    };
+  }, []);
+
   // Reverse geocoding on drag end or position change
   const reverseGeocode = useCallback((lat: number, lng: number) => {
     setGeocoding(true);
@@ -291,20 +319,6 @@ export default function AddressMapPicker({
     };
     const finalCenter = pixelToLatLng(finalPixel.x, finalPixel.y, zoom);
     setCenter(finalCenter);
-  };
-
-  // Wheel Zoom with smooth step throttling
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const now = Date.now();
-    if (now - lastWheelTimeRef.current < 150) return;
-    lastWheelTimeRef.current = now;
-
-    if (e.deltaY < 0) {
-      setZoom((z) => Math.min(19, z + 1));
-    } else if (e.deltaY > 0) {
-      setZoom((z) => Math.max(5, z - 1));
-    }
   };
 
   // Double Click Zoom In right onto clicked spot
@@ -555,8 +569,7 @@ export default function AddressMapPicker({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onDoubleClick={handleDoubleClick}
-        onWheel={handleWheel}
-        className={`relative flex-1 min-h-[220px] w-full bg-[#f2efe9] overflow-hidden select-none touch-none ${
+        className={`relative flex-1 min-h-[220px] w-full bg-[#f2efe9] overflow-hidden select-none touch-none overscroll-contain ${
           isDragging ? 'cursor-grabbing' : 'cursor-grab'
         }`}
       >
