@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { X, Plus, CheckCircle, Edit3, Trash2, MapPin, Navigation, Phone, User, Home, Briefcase, Tag } from 'lucide-react';
+import { X, Plus, CheckCircle, Edit3, Trash2, MapPin, Navigation, Phone, User, Home, Briefcase, Tag, ArrowLeft } from 'lucide-react';
 import type { Address } from '@/types';
 import AddressModal from './AddressModal';
 import type { AddressInput } from '../actions';
@@ -67,10 +67,10 @@ export default function AddressSelectorModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-        <div className="bg-zcard border border-zborder rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-auto max-h-[90vh] flex flex-col">
+      <div className="fixed inset-0 z-40 top-16 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
+        <div className="bg-zcard border border-zborder rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-auto max-h-[calc(100vh-5rem)] flex flex-col">
           {/* Header */}
-          <div className="px-5 py-4 border-b border-zborder flex items-center justify-between bg-zcard-inner">
+          <div className="px-5 py-4 border-b border-zborder flex items-center justify-between bg-zcard-inner shrink-0">
             <div>
               <h2 className="text-base font-bold text-ztext flex items-center gap-2">
                 <MapPin size={18} className="text-zred" />
@@ -88,8 +88,8 @@ export default function AddressSelectorModal({
             </button>
           </div>
 
-          {/* Add New Address Action Bar */}
-          <div className="p-4 bg-blue-500/5 border-b border-zborder flex items-center justify-between">
+          {/* Action Bar */}
+          <div className="px-5 py-3 bg-blue-500/5 border-b border-zborder flex items-center justify-between shrink-0">
             <span className="text-xs font-semibold text-ztext">
               {addresses.length} saved {addresses.length === 1 ? 'address' : 'addresses'}
             </span>
@@ -103,29 +103,32 @@ export default function AddressSelectorModal({
             </button>
           </div>
 
+          {/* Content Body */}
+          <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5 flex-1">
+
           {/* Address List */}
-          <div className="p-4 overflow-y-auto space-y-3 max-h-[55vh]">
-            {addresses.length === 0 ? (
-              <div className="text-center py-10 space-y-3">
-                <div className="w-12 h-12 rounded-full bg-zgray flex items-center justify-center mx-auto text-ztext-light">
-                  <MapPin size={24} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-ztext">No addresses saved yet</h3>
-                  <p className="text-xs text-ztext-light mt-1">
-                    Add your delivery address for fast 1-click checkout.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleAddNew}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center gap-1.5 shadow-md shadow-blue-600/20 cursor-pointer"
-                >
-                  <Plus size={14} /> Add Your First Address
-                </button>
+          {addresses.length === 0 ? (
+            <div className="text-center py-16 px-4 bg-zcard border border-zborder rounded-2xl space-y-4">
+              <div className="w-16 h-16 rounded-full bg-zgray flex items-center justify-center mx-auto text-ztext-light">
+                <MapPin size={32} />
               </div>
-            ) : (
-              addresses.map((addr) => {
+              <div className="max-w-sm mx-auto">
+                <h3 className="text-base font-bold text-ztext">No addresses saved yet</h3>
+                <p className="text-xs text-ztext-light mt-1.5">
+                  Add your delivery address for fast 1-click checkout.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleAddNew}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold transition-all inline-flex items-center gap-2 shadow-lg shadow-blue-600/20 cursor-pointer"
+              >
+                <Plus size={16} /> Add Your First Address
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {addresses.map((addr) => {
                 const isSelected = selectedAddressId === addr.id;
                 return (
                   <div
@@ -134,7 +137,7 @@ export default function AddressSelectorModal({
                       onSelectAddress(addr);
                       onClose();
                     }}
-                    className={`relative p-4 rounded-xl border-2 transition-all cursor-pointer flex flex-col gap-2 ${
+                    className={`relative p-4 sm:p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col gap-2.5 ${
                       isSelected
                         ? 'border-blue-600 bg-blue-500/5 shadow-md shadow-blue-500/10'
                         : 'border-zborder hover:border-zborder-hover bg-zcard'
@@ -179,7 +182,7 @@ export default function AddressSelectorModal({
                           title="Edit address"
                           className="p-1.5 rounded-lg text-ztext-light hover:text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer"
                         >
-                          <Edit3 size={14} />
+                          <Edit3 size={15} />
                         </button>
                         <button
                           type="button"
@@ -188,13 +191,13 @@ export default function AddressSelectorModal({
                           title="Delete address"
                           className="p-1.5 rounded-lg text-ztext-light hover:text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={15} />
                         </button>
                       </div>
                     </div>
 
                     {/* Address details */}
-                    <p className="text-xs text-ztext-light pl-6 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-ztext-light pl-6 leading-relaxed">
                       {addr.addressLine1 || addr.fullAddress}
                       {addr.locality ? `, ${addr.locality}` : ''}
                       {addr.city ? `, ${addr.city}` : ''}
@@ -203,25 +206,25 @@ export default function AddressSelectorModal({
                     </p>
 
                     {addr.landmark && (
-                      <p className="text-[11px] text-ztext-muted pl-6 italic">
+                      <p className="text-xs text-ztext-muted pl-6 italic">
                         Landmark: {addr.landmark}
                       </p>
                     )}
 
                     {/* Phone & GPS badge */}
-                    <div className="flex items-center gap-4 pl-6 pt-1 text-[11px] text-ztext-muted">
+                    <div className="flex items-center gap-4 pl-6 pt-1 text-xs text-ztext-muted flex-wrap">
                       {addr.phone && (
-                        <span className="flex items-center gap-1 text-ztext font-medium">
-                          <Phone size={11} className="text-ztext-light" />
+                        <span className="flex items-center gap-1.5 text-ztext font-medium">
+                          <Phone size={12} className="text-ztext-light" />
                           {addr.phone}
                           {addr.alternatePhone && ` (Alt: ${addr.alternatePhone})`}
                         </span>
                       )}
 
                       {addr.latitude && addr.longitude && (
-                        <span className="inline-flex items-center gap-1 text-emerald-400 font-semibold">
+                        <span className="inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          GPS Tagged
+                          GPS Tagged ({Number(addr.latitude).toFixed(4)}, {Number(addr.longitude).toFixed(4)})
                         </span>
                       )}
                     </div>
@@ -236,7 +239,7 @@ export default function AddressSelectorModal({
                             onSelectAddress(addr);
                             onClose();
                           }}
-                          className="w-full sm:w-auto px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition-all text-center"
+                          className="w-full sm:w-auto px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all text-center cursor-pointer"
                         >
                           DELIVER HERE
                         </button>
@@ -244,22 +247,31 @@ export default function AddressSelectorModal({
                     )}
                   </div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
+        </div>
 
-          {/* Footer */}
-          <div className="p-4 border-t border-zborder bg-zcard-inner flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2 text-xs font-semibold text-ztext-light hover:text-ztext transition-colors"
-            >
-              Close
-            </button>
-          </div>
+        {/* Modal Footer */}
+        <div className="p-4 border-t border-zborder bg-zcard-inner flex items-center justify-between shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-semibold text-ztext-light hover:text-ztext transition-colors cursor-pointer"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={handleAddNew}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+          >
+            <Plus size={14} />
+            <span>Add New Address</span>
+          </button>
         </div>
       </div>
+    </div>
 
       {isFormOpen && (
         <AddressModal

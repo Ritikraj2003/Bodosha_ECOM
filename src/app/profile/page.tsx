@@ -447,13 +447,12 @@ export default function ProfilePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="font-semibold text-ztext text-sm">Delivery addresses</p>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddressModal(true)}
+                    <Link
+                      href="/addresses?returnTo=/profile"
                       className="text-xs text-blue-500 font-bold hover:underline"
                     >
                       {savedAddresses.length > 0 ? `Manage (${savedAddresses.length})` : '+ Add Address'}
-                    </button>
+                    </Link>
                   </div>
                   <p className="text-xs text-ztext-light mt-1">
                     {addressLoading ? (
@@ -466,14 +465,13 @@ export default function ProfilePage() {
                     ) : 'No address saved yet'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddressModal(true)}
+                <Link
+                  href="/addresses?returnTo=/profile"
                   className="size-7 grid place-items-center rounded-md hover:bg-zgray text-ztext-muted hover:text-blue-500 transition-colors shrink-0 mt-0.5"
                   title="Manage addresses"
                 >
                   <Pencil size={14} />
-                </button>
+                </Link>
               </div>
 
               {/* Email */}
@@ -604,49 +602,6 @@ export default function ProfilePage() {
         }}
       />
 
-      {showAddressModal && (
-        <AddressSelectorModal
-          isOpen={showAddressModal}
-          onClose={() => setShowAddressModal(false)}
-          addresses={savedAddresses}
-          selectedAddressId={savedAddresses.find((a) => a.isDefault)?.id || savedAddresses[0]?.id}
-          onSelectAddress={async (addr) => {
-            await setDefaultUserAddress(addr.id);
-            setAddress(addr.fullAddress || addr.addressLine1 || '');
-            const res = await getUserAddresses();
-            if (res.success && res.addresses) setSavedAddresses(res.addresses);
-            showToast('Default address updated');
-          }}
-          onSaveAddress={async (input) => {
-            const res = await saveUserAddress(input);
-            if (res.success) {
-              const refreshed = await getUserAddresses();
-              if (refreshed.success && refreshed.addresses) {
-                setSavedAddresses(refreshed.addresses);
-                const def = refreshed.addresses.find((a) => a.isDefault) || refreshed.addresses[0];
-                if (def) setAddress(def.fullAddress || def.addressLine1 || '');
-              }
-              showToast('Address saved successfully');
-            }
-            return res;
-          }}
-          onDeleteAddress={async (id) => {
-            const res = await deleteUserAddress(id);
-            if (res.success) {
-              const refreshed = await getUserAddresses();
-              if (refreshed.success && refreshed.addresses) {
-                setSavedAddresses(refreshed.addresses);
-                const def = refreshed.addresses.find((a) => a.isDefault) || refreshed.addresses[0];
-                setAddress(def ? (def.fullAddress || def.addressLine1 || '') : '');
-              }
-              showToast('Address removed');
-            }
-            return res;
-          }}
-          defaultName={user?.fullName || ''}
-          defaultPhone={user?.phone || ''}
-        />
-      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Navigation, MapPin, Loader2, Check } from 'lucide-react';
+import { X, Navigation, MapPin, Loader2, Check, ArrowLeft } from 'lucide-react';
 import type { Address } from '@/types';
 import type { AddressInput } from '../actions';
 import { getPreciseDeviceLocation } from '@/lib/device-location';
@@ -56,6 +56,7 @@ interface AddressModalProps {
   initialData?: Address | null;
   defaultName?: string;
   defaultPhone?: string;
+  inPage?: boolean;
 }
 
 export default function AddressModal({
@@ -65,6 +66,7 @@ export default function AddressModal({
   initialData,
   defaultName = '',
   defaultPhone = '',
+  inPage = false,
 }: AddressModalProps) {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -366,38 +368,20 @@ export default function AddressModal({
     }
   }
 
-  return (
+  const formBody = (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fade-in overflow-y-auto">
-        <div className="bg-zcard border border-zborder rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
-          {/* Header */}
-          <div className="px-5 py-4 border-b border-zborder flex items-center justify-between bg-zcard-inner shrink-0">
-            <h2 className="text-sm sm:text-base font-extrabold uppercase tracking-wider text-ztext flex items-center gap-2">
-              <MapPin size={18} className="text-blue-500" />
-              {initialData ? 'Edit Address' : 'Add A New Address'}
-            </h2>
-            <button
-              onClick={onClose}
-              disabled={saving}
-              className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zgray transition-colors"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 flex-1">
-            {error && (
-              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs flex items-center justify-between gap-2 text-amber-300">
-                <span className="font-semibold">{error}</span>
-                <button
-                  type="button"
-                  onClick={() => setError('')}
-                  className="p-1 hover:bg-amber-500/20 rounded text-amber-400"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
+      {error && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs flex items-center justify-between gap-2 text-amber-300">
+          <span className="font-semibold">{error}</span>
+          <button
+            type="button"
+            onClick={() => setError('')}
+            className="p-1 hover:bg-amber-500/20 rounded text-amber-400"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
             {mapSuccessMsg && (
               <div className="p-3 bg-emerald-500/15 border border-emerald-500/35 rounded-xl text-xs flex items-center justify-between gap-2 text-emerald-300 animate-fade-in">
@@ -415,95 +399,86 @@ export default function AddressModal({
               </div>
             )}
 
-            {/* Top Location Fetcher Buttons */}
-            <div className="flex flex-col sm:flex-row gap-2.5">
+            {/* Top Location Fetcher Buttons - 2 in 1 row */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
               <button
                 type="button"
                 onClick={handleUseCurrentLocation}
                 disabled={locating || saving}
-                className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 sm:px-4 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-blue-600/20 transition-all cursor-pointer disabled:opacity-50"
               >
-                {locating ? <Loader2 size={16} className="animate-spin text-white" /> : <Navigation size={16} />}
-                <span>{locating ? 'Detecting Location...' : 'Use Current Location'}</span>
+                {locating ? <Loader2 size={15} className="animate-spin text-white shrink-0" /> : <Navigation size={15} className="shrink-0" />}
+                <span className="truncate">{locating ? 'Detecting...' : 'Use Location'}</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setShowMapModal(true)}
-                className="px-4 py-3 bg-zsurface hover:bg-zcard border border-zborder text-ztext rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-[0.99]"
+                className="py-2.5 sm:py-3 px-2 sm:px-4 bg-zsurface hover:bg-zcard border border-zborder text-ztext rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer shadow-sm active:scale-[0.99]"
               >
-                <MapPin size={16} className="text-red-500" />
-                <span>Pin from Map</span>
+                <MapPin size={15} className="text-red-500 shrink-0" />
+                <span className="truncate">Pin from Map</span>
               </button>
             </div>
 
             {/* Locating banner */}
             {locating && (
-              <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center gap-3 animate-pulse">
-                <Loader2 size={18} className="animate-spin text-blue-400 shrink-0" />
+              <div className="p-2.5 sm:p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center gap-2.5 animate-pulse">
+                <Loader2 size={16} className="animate-spin text-blue-400 shrink-0" />
                 <div className="text-xs text-blue-200">
                   <span className="font-bold">Requesting device location...</span>
-                  <p className="text-[11px] text-blue-300/80">Please click "Allow" on the browser popup to auto-fill Latitude & Longitude.</p>
+                  <p className="text-[11px] text-blue-300/80">Please click "Allow" on the browser popup to auto-fill coordinates.</p>
                 </div>
               </div>
             )}
 
-            {/* Direct GPS Coordinates: Latitude & Longitude Input Boxes */}
-            <div className="p-3.5 bg-zsurface/80 border border-zborder rounded-xl space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <MapPin size={16} className="text-blue-500" />
-                  <span className="text-xs font-bold text-ztext uppercase tracking-wider">
+            {/* Direct GPS Coordinates: 2 boxes in 1 row */}
+            <div className="p-3 sm:p-3.5 bg-zsurface/80 border border-zborder rounded-xl space-y-2">
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <MapPin size={14} className="text-blue-500 shrink-0" />
+                  <span className="text-[11px] sm:text-xs font-bold text-ztext uppercase tracking-wider truncate">
                     GPS Coordinates
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowMapModal(true)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-[11px] font-semibold text-blue-400 transition-colors cursor-pointer"
-                    title="Open interactive map to choose pin location"
-                  >
-                    <MapPin size={11} className="text-red-400" />
-                    <span>Pin on Map</span>
-                  </button>
                 </div>
                 {/* Dynamic Permission Status Badge */}
                 {geoPermission === 'granted' ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-[11px] font-bold text-emerald-400 font-mono shadow-sm">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    GPS Permission Granted
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-[10px] sm:text-[11px] font-bold text-emerald-400 font-mono shadow-sm shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Permission Granted
                   </span>
                 ) : geoPermission === 'denied' ? (
                   <button
                     type="button"
                     onClick={handleUseCurrentLocation}
                     disabled={locating}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-[11px] font-bold text-rose-300 transition-all cursor-pointer active:scale-95 shadow-sm"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-[10px] sm:text-[11px] font-bold text-rose-300 transition-all cursor-pointer active:scale-95 shadow-sm shrink-0"
                     title="Permission was blocked. Click to re-request"
                   >
-                    <span className="w-2 h-2 rounded-full bg-rose-400" />
-                    <span>Permission Blocked (Click to Retry)</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                    <span>Permission Blocked</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     onClick={handleUseCurrentLocation}
                     disabled={locating}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-[11px] font-bold text-amber-300 transition-all cursor-pointer active:scale-95 shadow-sm"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-[10px] sm:text-[11px] font-bold text-amber-300 transition-all cursor-pointer active:scale-95 shadow-sm shrink-0"
                     title="Click to allow device location permission"
                   >
                     {locating ? (
-                      <Loader2 size={12} className="animate-spin text-amber-400" />
+                      <Loader2 size={11} className="animate-spin text-amber-400" />
                     ) : (
-                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
                     )}
-                    <span>{locating ? 'Requesting...' : 'Allow GPS Permission'}</span>
+                    <span>Allow GPS</span>
                   </button>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                  <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                     Latitude
                   </label>
                   <input
@@ -515,12 +490,12 @@ export default function AddressModal({
                       setLatitude(val === '' ? null : parseFloat(val));
                     }}
                     placeholder="e.g. 12.89949"
-                    className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm font-mono text-ztext placeholder:text-ztext-light/40 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm font-mono text-ztext placeholder:text-ztext-light/40 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                  <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                     Longitude
                   </label>
                   <input
@@ -532,19 +507,19 @@ export default function AddressModal({
                       setLongitude(val === '' ? null : parseFloat(val));
                     }}
                     placeholder="e.g. 77.60812"
-                    className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm font-mono text-ztext placeholder:text-ztext-light/40 focus:outline-none focus:border-blue-500 transition-colors"
+                    className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm font-mono text-ztext placeholder:text-ztext-light/40 focus:outline-none focus:border-blue-500 transition-colors"
                   />
                 </div>
               </div>
-              <p className="text-[11px] text-ztext-light">
-                Auto-filled via "Use Current Location" or enter coordinates manually.
+              <p className="text-[10px] sm:text-[11px] text-ztext-light">
+                Auto-filled via "Use Location" / "Pin from Map" or enter manually.
               </p>
             </div>
 
-            {/* Row 1: Name & 10-digit mobile */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Row 1: Name & 10-digit mobile - 2 boxes in 1 row */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                   Name *
                 </label>
                 <input
@@ -553,30 +528,30 @@ export default function AddressModal({
                   placeholder="Full Name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
-                  10-digit mobile number *
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                  Mobile Number *
                 </label>
                 <input
                   type="tel"
                   required
                   maxLength={10}
-                  placeholder="10-digit mobile number"
+                  placeholder="10-digit mobile"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
             </div>
 
-            {/* Row 2: Pincode & Locality */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Row 2: Pincode & Locality - 2 boxes in 1 row */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                   Pincode *
                 </label>
                 <input
@@ -586,27 +561,27 @@ export default function AddressModal({
                   placeholder="6-digit Pincode"
                   value={postalCode}
                   onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors font-mono font-medium"
+                  className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors font-mono font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                   Locality
                 </label>
                 <input
                   type="text"
-                  placeholder="Locality / Sector / Area"
+                  placeholder="Locality / Area"
                   value={locality}
                   onChange={(e) => setLocality(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
             </div>
 
             {/* Row 3: Address (Area and Street) */}
             <div>
-              <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+              <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                 Address (Area and Street) *
               </label>
               <textarea
@@ -615,15 +590,15 @@ export default function AddressModal({
                 placeholder="Flat / House No. / Building Name, Street / Road"
                 value={addressLine1}
                 onChange={(e) => setAddressLine1(e.target.value)}
-                className="w-full px-3.5 py-2 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors resize-none"
+                className="w-full px-2.5 sm:px-3.5 py-2 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors resize-none"
               />
             </div>
 
-            {/* Row 4: City/District/Town & State */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Row 4: City/District/Town & State - 2 boxes in 1 row */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
-                  City / District / Town *
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                  City / Town *
                 </label>
                 <input
                   type="text"
@@ -631,19 +606,19 @@ export default function AddressModal({
                   placeholder="City"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                   State *
                 </label>
                 <select
                   required
                   value={state}
                   onChange={(e) => setState(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-2 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext focus:outline-none focus:border-blue-500 transition-colors"
                 >
                   <option value="" className="bg-zcard text-ztext-muted">Select State</option>
                   {INDIAN_STATES.map((st) => (
@@ -655,32 +630,32 @@ export default function AddressModal({
               </div>
             </div>
 
-            {/* Row 5: Landmark (Optional) & Alternate Phone (Optional) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Row 5: Landmark (Optional) & Alternate Phone (Optional) - 2 boxes in 1 row */}
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
                   Landmark (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Near Oxford Parlour"
+                  placeholder="e.g. Near Park"
                   value={landmark}
                   onChange={(e) => setLandmark(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
-                  Alternate Phone (Optional)
+                <label className="block text-[10px] sm:text-[11px] font-semibold text-ztext-light uppercase tracking-wider mb-1">
+                  Alternate Phone
                 </label>
                 <input
                   type="tel"
                   maxLength={10}
-                  placeholder="10-digit alternate mobile"
+                  placeholder="Alternate mobile"
                   value={alternatePhone}
                   onChange={(e) => setAlternatePhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  className="w-full px-3.5 py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
+                  className="w-full px-2.5 sm:px-3.5 py-2 sm:py-2.5 bg-zcard border border-zborder rounded-xl text-xs sm:text-sm text-ztext placeholder-ztext-muted focus:outline-none focus:border-blue-500 transition-colors"
                 />
               </div>
             </div>
@@ -743,14 +718,14 @@ export default function AddressModal({
             </label>
 
             {/* Action Buttons: SAVE and CANCEL */}
-            <div className="flex items-center gap-3 pt-4 border-t border-zborder">
+            <div className="flex items-center gap-3 pt-6 border-t border-zborder">
               <button
                 type="submit"
                 disabled={saving}
-                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md shadow-blue-600/25 transition-all flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                className="flex-1 sm:flex-none sm:px-10 py-3 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold rounded-xl text-xs sm:text-sm shadow-md shadow-blue-600/25 transition-all flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer disabled:opacity-50"
               >
                 {saving && <Loader2 size={16} className="animate-spin" />}
-                <span>{saving ? 'Saving...' : 'Save'}</span>
+                <span>{saving ? 'Saving...' : 'Save Address'}</span>
               </button>
 
               <button
@@ -762,9 +737,68 @@ export default function AddressModal({
                 Cancel
               </button>
             </div>
+    </>
+  );
+
+  return (
+    <>
+      {inPage ? (
+        <div className="bg-zcard border border-zborder rounded-2xl shadow-sm overflow-hidden animate-fade-in">
+          {/* Card Header */}
+          <div className="px-5 py-4 border-b border-zborder flex items-center justify-between bg-zcard-inner">
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={saving}
+                className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zgray transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <ArrowLeft size={16} />
+                <span className="text-xs font-semibold">Back to list</span>
+              </button>
+              <h2 className="text-base sm:text-lg font-bold text-ztext flex items-center gap-2 ml-1">
+                <MapPin size={18} className="text-blue-500" />
+                {initialData ? 'Edit Delivery Address' : 'Add A New Address'}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zgray transition-colors cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
+            {formBody}
           </form>
         </div>
-      </div>
+      ) : (
+        <div className="fixed inset-0 z-40 top-16 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-fade-in">
+          <div className="bg-zcard border border-zborder rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden my-auto max-h-[calc(100vh-5rem)] flex flex-col">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-zborder flex items-center justify-between bg-zcard-inner shrink-0">
+              <h2 className="text-base font-bold text-ztext flex items-center gap-2">
+                <MapPin size={18} className="text-blue-500" />
+                {initialData ? 'Edit Delivery Address' : 'Add A New Address'}
+              </h2>
+              <button
+                onClick={onClose}
+                disabled={saving}
+                className="p-1.5 rounded-lg text-ztext-light hover:text-ztext hover:bg-zgray transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
+              {formBody}
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Interactive Google Map Picker Modal */}
       {showMapModal && (
